@@ -211,7 +211,19 @@ POST https://api.scnet.cn/api/gw/v1/chat/completions  -H "Authorization: Bearer 
 
 ---
 
-## 12. APK 功能面测绘（2026-11-08，从 `libapp.so` 提取）
+## 12. 逆向结论（REA + 桌面客户端 asar）
+
+- REA 已可用（`~/.pi/agent/mcp.json` 里 `rea.enabled=true`，需**重启会话**才注入工具）。
+- `inspect_dart_aot` **不支持本 APK**：官方用 Dart 3.13 统一快照（`_kDartSnapshotText/Data`），
+  REA 只支持 Dart 2.14 split FullAOT。`search_strings` 也看不到快照里的字符串（Ghidra 未定义 Data）。
+  → Dart 侧只能自己按字节抠：字段名是 **UTF-16LE**（如 `conversationId` 出现 12 次）。
+- 真正有效的一手材料是 **Electron 桌面客户端 4.1.0**：`/opt/scnet-client/resources/app.asar`
+  （`npx @electron/asar extract` 解开 391 MB），`dist-electron/main/index.js` 里有完整对话协议。
+  **网络请求在主进程**，所以页面 CDP 的 Network 面板抓不到 —— 必须读代码或挂主进程。
+- 协议规格已整理进 `docs/PROTOCOL.md`（v2 stream body、SSE 事件词表、记录类型、连接状态机）。
+- 鉴权是 `Token:` + `Cookie:` 双头，不是 Bearer；桌面端配置里残留的 token 已失效（401）。
+
+## 13. APK 功能面测绘（2026-11-08，从 `libapp.so` 提取）
 
 官方 APK 用 `strings` 抽出的真实接口面（**APK 自己就是这套 HTTP API 的前端**）：
 
