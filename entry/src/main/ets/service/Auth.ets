@@ -36,6 +36,8 @@ class Auth {
     store.init(context);
     credentials.token = store.getCloudToken();
     credentials.cookie = store.getCloudCookie();
+    hilog.info(0x0000, 'SCNetLite', 'restore: token=%{public}d cookie=%{public}d',
+      credentials.token.length, credentials.cookie.length);
     return credentials.token.length > 0;
   }
 

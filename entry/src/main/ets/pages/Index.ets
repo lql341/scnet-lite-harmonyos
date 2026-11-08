@@ -1,6 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import { Gateway, ChatMessage, StreamHandlers } from '../service/Gateway';
 import { store, DEFAULT_BASE_URL } from '../service/Store';
+import { auth } from '../service/Auth';
+import { router } from '@kit.ArkUI';
 import { MODELS, ModelInfo, modelLabel } from '../model/Models';
 import { api, ApiError, ConversationSummary } from '../service/Api';
 
@@ -41,6 +43,11 @@ struct Index {
 
   aboutToAppear(): void {
     store.init(getContext(this) as common.UIAbilityContext);
+    if (!auth.isLoggedIn()) {
+      // 入口判断漏掉时的兜底，保证未登录一定先看到登录页
+      router.replaceUrl({ url: 'pages/Login' });
+      return;
+    }
     this.apiKey = store.getApiKey();
     this.baseUrl = store.getBaseUrl();
     this.model = store.getModel();
