@@ -16,6 +16,25 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 pubkey_of_cert() { openssl x509 -in "$1" -noout -pubkey | openssl sha256; }
 pubkey_of_csr()  { openssl req  -in "$1" -noout -pubkey | openssl sha256; }
 
+# .cer files from AGC are chains (root -> intermediate -> leaf, any order).
+# The app cert is the one that is NOT a CA; compare every cert and report a hit.
+cert_file_summary() {
+  local f=$1 n=0 hit=0
+  openssl crl2pkcs7 -nocrl -certfile "$f" 2>/dev/null \
+    | openssl pkcs7 -print_certs -out "$TMP/chain.pem" 2>/dev/null || return 1
+  awk -v dir="$TMP" '/BEGIN CERTIFICATE/{n++} n>0{print > (dir "/c" n ".pem")}' "$TMP/chain.pem"
+  for c in "$TMP"/c*.pem; do
+    [[ -f $c ]] || continue
+    n=$((n+1))
+    local pub subj
+    pub=$(pubkey_of_cert "$c")
+    subj=$(openssl x509 -in "$c" -noout -subject | sed 's/^subject=//')
+    echo "  cert$n: ${pub#SHA2-256(stdin)= }  $subj"
+    [[ -n "${KS_PUB:-}" && "$pub" == "$KS_PUB" ]] && hit=1
+  done
+  return $((1-hit))
+}
+
 # 1. key in keystore -> throwaway CSR (only its public key is used)
 KS_PUB=""
 if [[ -n "${SIGN_KEYSTORE:-}" && -f "${SIGN_KEYSTORE:-}" ]]; then
@@ -46,17 +65,22 @@ PY
 fi
 
 # 3. separate .cer file, if any
+CERT_HIT=0
 if [[ -n "${SIGN_CERT:-}" && -f "${SIGN_CERT:-}" ]]; then
-  echo "cert file key: $(pubkey_of_cert "$SIGN_CERT")"
+  echo "cert file    : ${SIGN_CERT##*/}"
+  cert_file_summary "$SIGN_CERT" && CERT_HIT=1
 fi
 
 echo
 if [[ -n "$KS_PUB" ]] && [[ -f "$TMP/dev.cer" ]]; then
-  if [[ "$KS_PUB" == "$(pubkey_of_cert "$TMP/dev.cer")" ]]; then
-    echo "PASS: profile certificate was issued for this keystore"
-  else
+  if [[ "$KS_PUB" != "$(pubkey_of_cert "$TMP/dev.cer")" ]]; then
     echo "FAIL: profile certificate does NOT match the keystore key."
     echo "      The cert must be re-issued from a CSR of THIS keystore."
     exit 1
   fi
+  if [[ -n "${SIGN_CERT:-}" && -f "${SIGN_CERT:-}" && $CERT_HIT -eq 0 ]]; then
+    echo "FAIL: CERT file contains no certificate for this keystore key."
+    exit 1
+  fi
+  echo "PASS: keystore / certificate / profile belong together"
 fi
