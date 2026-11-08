@@ -108,6 +108,8 @@ struct Login {
         })
       Button(this.busy ? '登录中…' : '登录')
         .width('100%')
+        .height(44)
+        .backgroundColor('#0E2A47')
         .enabled(!this.busy)
         .onClick(() => {
           this.doPasswordLogin();
@@ -143,6 +145,8 @@ struct Login {
       .width('100%')
       Button(this.busy ? '登录中…' : '登录 / 注册')
         .width('100%')
+        .height(44)
+        .backgroundColor('#0E2A47')
         .enabled(!this.busy)
         .onClick(() => {
           this.doSmsLogin();
@@ -154,10 +158,15 @@ struct Login {
   build() {
     Column({ space: 14 }) {
       Blank().layoutWeight(1)
-      Text('SCNet').fontSize(30).fontWeight(FontWeight.Bold)
-      Text('超算互联网 · 非官方客户端').fontSize(12).fontColor('#8A8F99')
-      Blank().height(20)
+      Column({ space: 6 }) {
+        Image($r('app.media.app_icon')).width(64).height(64).borderRadius(16)
+        Text('SCNet').fontSize(24).fontWeight(FontWeight.Bold).fontColor('#0E2A47')
+        Text('超算互联网 · 非官方客户端').fontSize(12).fontColor('#8A8F99')
+      }
+      .width('100%')
+      Blank().height(24)
 
+      Column({ space: 14 }) {
       Row({ space: 0 }) {
         Text('账号密码')
           .layoutWeight(1)
@@ -191,6 +200,13 @@ struct Login {
         this.smsForm()
       }
 
+      }
+      .width('100%')
+      .padding(16)
+      .backgroundColor('#FFFFFF')
+      .borderRadius(16)
+      .shadow({ radius: 14, color: '#0000000F', offsetY: 3 })
+
       Row({ space: 6 }) {
         Checkbox()
           .select(this.agreed)
@@ -203,6 +219,7 @@ struct Login {
           .layoutWeight(1)
       }
       .width('100%')
+      .padding({ left: 4 })
 
       if (this.errorMsg.length > 0) {
         Text(this.errorMsg).fontSize(12).fontColor('#C0392B').width('100%')

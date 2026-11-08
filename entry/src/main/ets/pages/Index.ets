@@ -8,12 +8,26 @@ import { auth } from '../service/Auth';
 import { credentials } from '../service/Http';
 import { chat } from '../service/Chat';
 import { apiKeys, LLM_BASE } from '../service/ApiKeys';
+import { ModelSheet } from '../view/ModelSheet';
 import { MODELS, ModelInfo, modelLabel } from '../model/Models';
 import { ModelItem, Conversation, ChatConfig, UserInfo } from '../model/Types';
 
 interface RenderMsg {
   role: string;
   content: string;
+}
+
+/** 网关模型 id 形如 DeepSeek-V4.1-Flash-1017，展示时去掉末尾日期后缀并换成空格分词的短名。 */
+function prettyModel(name: string): string {
+  let out: string = name;
+  const dash: number = out.lastIndexOf('-');
+  if (dash > 0) {
+    const tail: string = out.substring(dash + 1);
+    if (tail.length >= 4 && Number.isNaN(Number(tail)) === false) {
+      out = out.substring(0, dash);
+    }
+  }
+  return out.replace(/-/g, ' ');
 }
 
 function msg(role: string, content: string): RenderMsg {
@@ -37,6 +51,7 @@ struct Index {
   @State platformName: string = '';
   @State modelId: number = 0;
   @State platformModels: ModelItem[] = [];
+  @State gatewayModels: string[] = [];
   @State conversations: Conversation[] = [];
   @State drawerOpen: boolean = false;
   @State showSettings: boolean = false;
@@ -242,35 +257,59 @@ struct Index {
         .textAlign(TextAlign.Center)
     }
     .width('100%')
-    .padding({ top: 80 })
+    .layoutWeight(1)
+    .justifyContent(FlexAlign.Center)
+    .padding({ left: 24, right: 24, bottom: 40 })
   }
 
   @Builder
   composer() {
-    Column({ space: 6 }) {
+    Column({ space: 0 }) {
+      TextArea({ text: this.input, placeholder: '发消息…' })
+        .constraintSize({ minHeight: 44, maxHeight: 132 })
+        .width('100%')
+        .backgroundColor(Color.Transparent)
+        .padding({ left: 14, right: 14, top: 10, bottom: 6 })
+        .fontSize(15)
+        .lineHeight(21)
+        .onChange((value: string) => {
+          this.input = value;
+        })
+
       Row({ space: 8 }) {
         Text('＋')
-          .fontSize(20)
-          .fontColor('#3B4048')
-          .width(32)
-          .height(32)
+          .fontSize(18)
+          .fontColor('#5B6270')
+          .width(30)
+          .height(30)
           .textAlign(TextAlign.Center)
-        TextArea({ text: this.input, placeholder: '发消息…' })
-          .layoutWeight(1)
-          .height(40)
-          .backgroundColor(Color.Transparent)
-          .padding(0)
-          .fontSize(15)
-          .onChange((value: string) => {
-            this.input = value;
+          .borderRadius(15)
+          .backgroundColor('#F1F3F5')
+
+        Text(this.gatewayModel.length > 0 ? prettyModel(this.gatewayModel) : '选择模型')
+          .fontSize(11)
+          .fontColor('#3B4048')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .constraintSize({ maxWidth: 170 })
+          .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+          .backgroundColor('#F1F3F5')
+          .borderRadius(11)
+          .onClick(() => {
+            this.showModelSheet = true;
           })
+
+        Blank().layoutWeight(1)
+
         if (this.busy) {
           Text('■')
-            .fontSize(14)
-            .fontColor('#C0392B')
-            .width(32)
-            .height(32)
+            .fontSize(12)
+            .fontColor('#FFFFFF')
+            .width(30)
+            .height(30)
             .textAlign(TextAlign.Center)
+            .borderRadius(15)
+            .backgroundColor('#C0392B')
             .onClick(() => {
               chat.cancel();
               this.gateway.cancel();
@@ -278,12 +317,12 @@ struct Index {
             })
         } else {
           Text('↑')
-            .fontSize(18)
+            .fontSize(17)
             .fontColor('#FFFFFF')
-            .width(32)
-            .height(32)
+            .width(30)
+            .height(30)
             .textAlign(TextAlign.Center)
-            .borderRadius(16)
+            .borderRadius(15)
             .backgroundColor(this.input.trim().length > 0 ? '#0E2A47' : '#C7CCD4')
             .onClick(() => {
               this.send();
@@ -291,54 +330,14 @@ struct Index {
         }
       }
       .width('100%')
-      .padding({ left: 6, right: 6, top: 6, bottom: 6 })
-      .backgroundColor('#FFFFFF')
-      .borderRadius(14)
-      .border({ width: 1, color: '#E6E8EB' })
-
-      Row({ space: 6 }) {
-        Text(this.platformName.length > 0 ? this.platformName : modelLabel(this.gatewayModel))
-          .fontSize(11)
-          .fontColor('#3B4048')
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-          .backgroundColor('#F1F3F5')
-          .borderRadius(10)
-          .onClick(() => {
-            this.showModelSheet = !this.showModelSheet;
-          })
-        Text('内容由 AI 生成，请仔细甄别').fontSize(10).fontColor('#A8ADB6').layoutWeight(1)
-          .textAlign(TextAlign.End)
-      }
-      .width('100%')
+      .padding({ left: 10, right: 10, bottom: 8 })
     }
     .width('100%')
-    .padding({ left: 12, right: 12, bottom: 10 })
-  }
-
-  @Builder
-  modelSheet() {
-    Column({ space: 4 }) {
-      ForEach(this.platformModels, (item: ModelItem) => {
-        Row() {
-          Text(item.name ?? `模型 ${item.id}`).fontSize(14).layoutWeight(1)
-          if (item.id === this.modelId) {
-            Text('✓').fontSize(14).fontColor('#0A7EA4')
-          }
-        }
-        .width('100%')
-        .padding({ top: 10, bottom: 10 })
-        .onClick(() => {
-          this.modelId = item.id ?? 0;
-          this.platformName = item.name ?? '';
-          this.showModelSheet = false;
-        })
-      }, (item: ModelItem) => `${item.id}`)
-    }
-    .width('100%')
-    .padding({ left: 14, right: 14, top: 8, bottom: 8 })
     .backgroundColor('#FFFFFF')
-    .borderRadius(12)
+    .borderRadius(18)
     .border({ width: 1, color: '#E6E8EB' })
+    .shadow({ radius: 10, color: '#00000010', offsetY: 2 })
+    .margin({ left: 12, right: 12, bottom: 8 })
   }
 
   @Builder
@@ -455,7 +454,7 @@ struct Index {
             .fontSize(12)
             .fontColor('#C0392B')
             .width('100%')
-            .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+            .padding({ left: 14, right: 14, top: 8, bottom: 8 })
             .backgroundColor('#FDECEA')
         }
 
@@ -477,17 +476,37 @@ struct Index {
           }
           .layoutWeight(1)
           .width('100%')
-          .padding({ left: 12, right: 12, top: 8 })
+          .padding({ left: 12, right: 12, top: 8, bottom: 10 })
         }
 
-        if (this.showModelSheet) {
-          this.modelSheet()
-        }
         this.composer()
       }
       .width('100%')
       .height('100%')
       .backgroundColor('#F7F8FA')
+
+      if (this.showModelSheet) {
+        Column() {
+          Blank().layoutWeight(1).width('100%').onClick(() => {
+            this.showModelSheet = false;
+          })
+          ModelSheet({
+            models: this.gatewayModels.length > 0 ? this.gatewayModels : MODELS.map((m: ModelInfo): string => m.id),
+            current: this.gatewayModel,
+            onPick: (name: string) => {
+              this.gatewayModel = name;
+              store.setModel(name);
+              this.showModelSheet = false;
+            },
+            onClose: () => {
+              this.showModelSheet = false;
+            }
+          })
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#00000033')
+      }
 
       if (this.drawerOpen) {
         Row() {

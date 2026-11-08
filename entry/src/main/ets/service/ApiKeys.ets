@@ -205,6 +205,43 @@ class ApiKeys {
     return '';
   }
 
+  /** 拉网关模型 id 列表（/api/llm/v1/models，33 个，手机端就是这份）。 */
+  async listGatewayModels(key: string): Promise<string[]> {
+    const header: GWHeader = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${key}`
+    };
+    const options: http.HttpRequestOptions = {
+      method: http.RequestMethod.GET,
+      header: header,
+      expectDataType: http.HttpDataType.STRING,
+      connectTimeout: 15000,
+      readTimeout: 20000
+    };
+    const request = http.createHttp();
+    try {
+      const resp = await request.request(LLM_BASE + '/models', options);
+      const text: string = typeof resp.result === 'string' ? resp.result as string : '';
+      const parsed = JSON.parse(text) as GatewayModelList;
+      const list: GatewayModel[] = parsed.data ?? [];
+      const out: string[] = [];
+      for (let i = 0; i < list.length; i++) {
+        const id: string = list[i].id ?? '';
+        if (id.length > 0) {
+          out.push(id);
+        }
+      }
+      hilog.info(0x0000, TAG, 'gateway models loaded: %{public}d', out.length);
+      return out;
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'gateway models load failed');
+      return [];
+    } finally {
+      request.destroy();
+    }
+  }
+
   /** 探一次网关，返回是否可用与首个模型 id。 */
   async probeGateway(key: string): Promise<GatewayProbe> {
     const header: GWHeader = {
