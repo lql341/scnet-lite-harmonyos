@@ -7,6 +7,16 @@
 > （`libflutter.so` + AOT `libapp.so`，Dart 3.13.0），源码不可得，AOT 快照也不可能换引擎重跑。
 > 因此本仓库不含厂商的任何二进制或产物，只复用公开的 HTTP 接口契约。
 
+## 文档索引
+
+| 文档 | 内容 |
+| --- | --- |
+| [`docs/NEXT.md`](docs/NEXT.md) | **接手先看这个**：当前卡点、下一步命令、换机器要带什么 |
+| [`docs/PLAN.md`](docs/PLAN.md) | 对标手机 APK 的分阶段开发计划（P0~P6，约 11 天） |
+| [`docs/PARITY.md`](docs/PARITY.md) | 功能对齐 checklist（从 APK 提取，带证据） |
+| [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | 平台对话协议（鉴权 4 头、v2 stream、SSE 43 字段、状态机） |
+| [`HANDOFF.md`](HANDOFF.md) | 立项背景、环境、已踩的坑、逆向结论 |
+
 ## 现状（v0.1.0）
 
 | 能力 | 状态 |
