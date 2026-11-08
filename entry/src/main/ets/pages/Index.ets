@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { Gateway, ChatMessage, StreamHandlers } from '../service/Gateway';
 import { store, DEFAULT_BASE_URL } from '../service/Store';
 import { MODELS, ModelInfo, modelLabel } from '../model/Models';
+import { api, ApiError, ConversationSummary } from '../service/Api';
 
 interface RenderMsg {
   role: string;
@@ -28,6 +29,8 @@ struct Index {
   @State draftUrl: string = DEFAULT_BASE_URL;
   @State errorMsg: string = '';
   @State input: string = '';
+  @State draftCloud: string = '';
+  @State cloudStatus: string = '';
 
   private gateway: Gateway = new Gateway();
   private scroller: Scroller = new Scroller();
@@ -43,6 +46,8 @@ struct Index {
     this.model = store.getModel();
     this.draftKey = this.apiKey;
     this.draftUrl = this.baseUrl;
+    this.draftCloud = store.getCloudToken();
+    api.setToken(this.draftCloud);
     if (this.apiKey.length === 0) {
       this.showSettings = true;
     }
@@ -120,6 +125,24 @@ struct Index {
     this.gateway.stream(this.baseUrl, this.apiKey, this.model, history, handlers);
   }
 
+  private async probeCloud(): Promise<void> {
+    const token: string = this.draftCloud.trim();
+    if (token.length === 0) {
+      this.cloudStatus = '先填平台 accessToken';
+      return;
+    }
+    this.cloudStatus = '请求中…';
+    api.setToken(token);
+    try {
+      const list: ConversationSummary[] = await api.conversationList();
+      this.cloudStatus = `OK：云端会话 ${list.length} 条`;
+      store.setCloudToken(token);
+    } catch (e) {
+      const err = e as ApiError;
+      this.cloudStatus = `失败 ${err.code}: ${err.message}`;
+    }
+  }
+
   @Builder
   bubbleView(role: string, text: string) {
     Row() {
@@ -160,6 +183,18 @@ struct Index {
             this.model = MODELS[index].id;
             store.setModel(this.model);
           })
+      }
+      .width('100%')
+      TextInput({ text: this.draftCloud, placeholder: '平台 accessToken（www.scnet.cn，可空）' })
+        .type(InputType.Password)
+        .onChange((value: string) => {
+          this.draftCloud = value;
+        })
+      Row({ space: 10 }) {
+        Button('测试云端会话').fontSize(12).height(32).layoutWeight(1).onClick(() => {
+          this.probeCloud();
+        })
+        Text(this.cloudStatus).fontSize(11).fontColor('#6B7280').layoutWeight(1)
       }
       .width('100%')
       Row({ space: 10 }) {

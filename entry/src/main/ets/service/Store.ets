@@ -6,6 +6,7 @@ const STORE_NAME: string = 'scnet_lite';
 const KEY_API_KEY: string = 'apiKey';
 const KEY_BASE_URL: string = 'baseUrl';
 const KEY_MODEL: string = 'model';
+const KEY_CLOUD_TOKEN: string = 'cloudToken';
 
 export const DEFAULT_BASE_URL: string = 'https://api.scnet.cn/api/gw/v1';
 
@@ -42,6 +43,14 @@ class Store {
 
   setModel(value: string): void {
     this.writeString(KEY_MODEL, value);
+  }
+
+  getCloudToken(): string {
+    return this.readString(KEY_CLOUD_TOKEN, '');
+  }
+
+  setCloudToken(value: string): void {
+    this.writeString(KEY_CLOUD_TOKEN, value);
   }
 
   private readString(key: string, fallback: string): string {
