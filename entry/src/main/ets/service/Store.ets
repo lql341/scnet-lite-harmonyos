@@ -8,6 +8,7 @@ const KEY_BASE_URL: string = 'baseUrl';
 const KEY_MODEL: string = 'model';
 const KEY_CLOUD_TOKEN: string = 'cloudToken';
 const KEY_CLOUD_COOKIE: string = 'cloudCookie';
+const KEY_AUTO_KEY: string = 'autoGatewayKey';
 
 export const DEFAULT_BASE_URL: string = 'https://api.scnet.cn/api/gw/v1';
 
@@ -60,6 +61,14 @@ class Store {
 
   setCloudCookie(value: string): void {
     this.writeString(KEY_CLOUD_COOKIE, value);
+  }
+
+  getAutoKey(): string {
+    return this.readString(KEY_AUTO_KEY, '');
+  }
+
+  setAutoKey(value: string): void {
+    this.writeString(KEY_AUTO_KEY, value);
   }
 
   clearCloudAuth(): void {

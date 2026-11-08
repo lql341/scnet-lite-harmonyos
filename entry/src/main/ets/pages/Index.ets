@@ -7,6 +7,7 @@ import { store, DEFAULT_BASE_URL } from '../service/Store';
 import { auth } from '../service/Auth';
 import { credentials } from '../service/Http';
 import { chat } from '../service/Chat';
+import { apiKeys, LLM_BASE } from '../service/ApiKeys';
 import { MODELS, ModelInfo, modelLabel } from '../model/Models';
 import { ModelItem, Conversation, ChatConfig, UserInfo } from '../model/Types';
 
@@ -83,6 +84,27 @@ struct Index {
     } catch (e) {
       hilog.warn(0x0000, 'SCNetLite', 'config failed');
     }
+    // 手机端真正走的是网关：平台会自动下发一个 key，拿到就用它（v2 agent 接口实测回「系统繁忙」）
+    try {
+      const key: string = await apiKeys.ensureKey();
+      hilog.info(0x0000, 'SCNetLite', 'gateway key len=%{public}d', key.length);
+      if (key.length > 0) {
+        const probe = await apiKeys.probeGateway(key);
+        hilog.info(0x0000, 'SCNetLite', 'gateway probe ok=%{public}s status=%{public}d model=%{public}s',
+          String(probe.ok), probe.status, probe.models);
+        if (probe.ok) {
+          this.apiKey = key;
+          // 手机 APK 走的是 /api/llm/v1（实测 models 200，33 个模型）
+          this.baseUrl = LLM_BASE;
+          this.gatewayModel = probe.models;
+          store.setApiKey(key);
+          store.setBaseUrl(this.baseUrl);
+          store.setModel(this.gatewayModel);
+        }
+      }
+    } catch (e) {
+      hilog.warn(0x0000, 'SCNetLite', 'ensureKey failed');
+    }
     await this.reloadConversations();
   }
 
@@ -142,14 +164,14 @@ struct Index {
       }
     };
 
-    if (this.modelId > 0) {
-      chat.stream(this.modelId, text, handlers);
-    } else if (this.apiKey.length > 0) {
+    if (this.apiKey.length > 0) {
       const history: ChatMessage[] = this.messages.map((m: RenderMsg): ChatMessage => {
         const item: ChatMessage = { role: m.role, content: m.content };
         return item;
       });
       this.gateway.stream(this.baseUrl, this.apiKey, this.gatewayModel, history, handlers);
+    } else if (this.modelId > 0) {
+      chat.stream(this.modelId, text, handlers);
     } else {
       this.errorMsg = '没有可用通道：模型目录未加载，且没有网关 key';
       this.busy = false;
