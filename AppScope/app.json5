@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "cn.scnet.lite",
+    "bundleName": "cn.kylinlu.scnetlite",
     "vendor": "unofficial",
     "versionCode": 1,
     "versionName": "0.1.0",

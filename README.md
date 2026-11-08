@@ -19,6 +19,7 @@
 | 作业/队列/文件 | ❌ |
 | 多会话、PDF 预览 | ❌ |
 
+Bundle name：`cn.kylinlu.scnetlite`（v0.1.0，minAPI 26）。
 产物：`entry/build/default/outputs/default/entry-default-unsigned.hap`（约 78 KB）。
 
 ## 构建
@@ -40,13 +41,21 @@ DEVECO_SDK_HOME="$CLT/sdk" "$CLT/hvigor/bin/hvigorw" assembleHap \
 
 `build-profile.json5` 里 `signingConfigs` 为空，hvigor 会跳过签名。两条路：
 
-1. **华为真机**：DevEco Studio → Project Structure → Signing Configs 自动生成（需登录华为账号）。
+1. **华为真机**：DevEco Studio → Project Structure → Signing Configs 自动生成（需登录华为账号），
+   或从 AGC 下载证书 + profile（profile 里的 bundleName 必须是 `cn.kylinlu.scnetlite`）。
+   把材料放到 `signing/`，然后 `scripts/sign.sh`。
 2. **OpenHarmony 设备 / 模拟器**：用 SDK 自带的
    `sdk/default/openharmony/toolchains/lib/{hap-sign-tool.jar,OpenHarmony.p12,UnsgnedDebugProfileTemplate.json}`
    走 `generate-keypair → generate-csr → generate-app-cert → sign-profile → sign-app`，
    再把 keystore/profile 填回 `signingConfigs`。
 
-安装：`hdc install entry/build/default/outputs/default/entry-default-signed.hap`。
+```bash
+cp signing/signing.env.example signing/signing.env   # 填 keystore/cer/p7b/密码
+scripts/sign.sh                 # → entry-default-signed.hap
+scripts/sign.sh --install       # 顺便 hdc install -r
+```
+
+安装：`hdc install -r entry/build/default/outputs/default/entry-default-signed.hap`。
 
 ## 接口契约（实测）
 

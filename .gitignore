@@ -5,3 +5,4 @@ local.properties
 *.p12
 *.cer
 *.p7b
+signing/

@@ -25,7 +25,9 @@
 
 ## 2. 当前状态
 
-- 分支 `main`，最新提交 `da4a0b3`（README/ LICENSE），在此之前 `152b626`（MVP 代码）。
+- bundleName **`cn.kylinlu.scnetlite`**（v0.1.0，minAPI 26，已据此重构验过 `assembleHap`）。
+  **改包名要趁签名之前**：证书/ profile 一旦签发就绑定这个 bundleName，改了就重签。
+- 分支 `main`。
 - 构建产物：`entry/build/default/outputs/default/entry-default-unsigned.hap`（约 78 KB，**未签名**）。
 - 已实现：SSE 流式对话（含 `reasoning_content`）、11 个网关模型切换、API Key/Base URL 设置
   + preferences 持久化、停止生成。
@@ -45,8 +47,13 @@
   ├─ sdk/default/openharmony/toolchains/hdc
   └─ sdk/default/openharmony/toolchains/lib/
         hap-sign-tool.jar  OpenHarmony.p12  UnsgnedDebugProfileTemplate.json
-node v26.13.0 · jdk 21 · 无设备连接（`hdc list targets` 为空）
+node v26.13.0 · jdk 21
 ```
+
+**已连接真机**（hdc over TCP）：`192.168.1.63:36333`，HUAWEI **PLA-AL10**，
+`7.0.0.111(SP12C00E111R9P3)`，API 26，UDID
+`01EB73B36178DC1617F81CD8E07625C84F80DC2CC2D90103E3A01C8166DC37FB`。
+它是 HarmonyOS NEXT 底座（API 26），**装不了 APK**，也**不接受 OpenHarmony 自签证书**。
 
 ## 4. 构建 / 签名 / 安装
 
@@ -63,14 +70,28 @@ $CLT/sdk/default/openharmony/toolchains/hdc install \
   entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
-签名两条路（当前 `build-profile.json5` 的 `signingConfigs` 为空，hvigor 会跳过签名）：
+签名两条路（当前 `build-profile.json5` 的 `signingConfigs` 为空，hvigor 会跳过签名，
+签名改由仓库自带脚本做，避免 DevEco 加密密码问题）：
 
-1. **华为真机**：装 DevEco Studio → 打开本工程 → Project Structure → Signing Configs 勾选自动生成
-   （需登录华为账号），会写回 `build-profile.json5`，然后重跑 `assembleHap`。
+```bash
+cp signing/signing.env.example signing/signing.env   # SIGN_KEYSTORE/KEY_ALIAS/密码/CERT/PROFILE
+scripts/sign.sh              # hap-sign-tool sign-app → entry-default-signed.hap
+scripts/sign.sh --install    # 再 hdc install -r
+```
+
+1. **华为真机（当前目标）**：DevEco Studio → Project Structure → Signing Configs 自动生成
+   （需登录华为账号），或 AGC 下载 debug 证书 + profile。需要的东西：
+   - `.p12` keystore + store 密码 + key 别名 + key 密码；
+   - `.cer` 应用签名证书；
+   - `.p7b` 已签名 profile，其中 `bundle-name` 必须是 `cn.kylinlu.scnetlite`，
+     且 debug profile 的 `device-ids` 必须含上面那个 UDID（否则安装时报 `9568322`/权限校验失败）。
+   - `signAlg`：ECDSA 密钥用 `SHA256withECDSA`，RSA 用 `SHA256withRSA`（AGC 下发的以证书为准）。
 2. **OpenHarmony 设备 / 模拟器**：用 SDK 自带材料自签，顺序
    `generate-keypair → generate-csr → generate-app-cert → sign-profile → sign-app`
-   （`java -jar $CLT/.../lib/hap-sign-tool.jar <subcommand> --help` 查参数），
-   把 keystore/profile 填进 `signingConfigs`。自签证书在华为真机上会被拒，别混用。
+   （`java -jar $CLT/.../lib/hap-sign-tool.jar <subcommand> --help` 查参数）。
+   自签证书在华为真机上会被拒，别混用。
+
+安装后校验：`hdc shell bm dump -n cn.kylinlu.scnetlite | head -20`。
 
 ---
 
@@ -84,7 +105,8 @@ $CLT/sdk/default/openharmony/toolchains/hdc install \
 | `entry/src/main/ets/model/Models.ets` | 内置模型目录（11 个） | 来源：桌面客户端 `~/.sclaw/agent/models.json` 的 `visibleModelIds`（32 个），按需加 |
 | `entry/src/main/ets/entryability/EntryAbility.ets` | 入口 Ability | `windowStage.loadContent('pages/Index')` |
 | `entry/src/main/module.json5` | 权限 | 已声明 `ohos.permission.INTERNET`、`ohos.permission.GET_NETWORK_INFO` |
-| `build-profile.json5` | 产品配置 | `compatibleSdkVersion`/`targetSdkVersion` 都是 `"26.0.0"`（见坑 2） |
+| `build-profile.json5` | 产品配置 | `compatibleSdkVersion`/`targetSdkVersion` 都是 `"26.0.0"`（见坑 2）；`signingConfigs` 故意留空，签名走 `scripts/sign.sh` |
+| `scripts/sign.sh` | 用 SDK 的 `hap-sign-tool.jar` 做 localSign | 读 `signing/signing.env`；`-compatibleVersion 26`、`-signCode 1`；`--install` 顺带安装 |
 
 ---
 
@@ -121,6 +143,11 @@ POST https://api.scnet.cn/api/gw/v1/chat/completions  -H "Authorization: Bearer 
 ---
 
 ## 8. 待办（按建议顺序）
+
+### P0-a 签名 + 上机验证（阻塞项，先做这个）
+已确认目标设备是 HarmonyOS NEXT（API 26），只能走华为证书 + debug profile 安装。
+缺的材料：`.p12` / `.cer` / `.p7b` / 密码（见 §4）。拿到后 `scripts/sign.sh --install`，
+然后跑 §9 的验证清单。
 
 ### P0 登录（替代手填 key）
 现状：用户手动粘贴网关 key。目标：账号/短信登录。
@@ -161,11 +188,12 @@ POST https://api.scnet.cn/api/gw/v1/chat/completions  -H "Authorization: Bearer 
 5. 切模型后同一个问题能得到不同模型回答（`/models` 交叉验证）。
 6. 断网发消息：报错可读、可重试，不卡在 loading。
 
-## 10. 需要人确认的问题
+## 10. 已确认 / 仍待确认
 
-- 目标设备是 HarmonyOS **4.x** 还是 **NEXT/6.x**？（决定“侧载 APK”是否是零成本选项）
-- 平台是否有可登录的 **Web 端**入口？（决定 ArkWeb 套壳是否比原生重写更划算）
+- ~~目标设备是 HarmonyOS 4.x 还是 NEXT？~~ → **NEXT，PLA-AL10 / 7.0.0.111 / API 26**，侧载 APK 不可行。
+- 平台是否有可登录的 Web 端入口？（决定 ArkWeb 套壳是否比原生重写更划算）
 - 是否要发布到应用市场？涉及实名/签名证书/隐私声明与合规，会改变实现要求。
+- bundleName `cn.kylinlu.scnetlite` 是否就用这个（换域名前缀要趁现在，证书绑定它）。
 
 ## 11. 禁止事项
 
