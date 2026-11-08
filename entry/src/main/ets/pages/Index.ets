@@ -115,6 +115,13 @@ struct Index {
           store.setApiKey(key);
           store.setBaseUrl(this.baseUrl);
           store.setModel(this.gatewayModel);
+          const models: string[] = await apiKeys.listGatewayModels(key);
+          this.gatewayModels = models;
+          if (models.length > 0) {
+            this.gatewayModel = models[0];
+            store.setModel(models[0]);
+          }
+          hilog.info(0x0000, 'SCNetLite', 'gatewayModels %{public}d', models.length);
         }
       }
     } catch (e) {
@@ -179,16 +186,17 @@ struct Index {
       }
     };
 
-    if (this.apiKey.length > 0) {
-      const history: ChatMessage[] = this.messages.map((m: RenderMsg): ChatMessage => {
-        const item: ChatMessage = { role: m.role, content: m.content };
-        return item;
-      });
-      this.gateway.stream(this.baseUrl, this.apiKey, this.gatewayModel, history, handlers);
-    } else if (this.modelId > 0) {
+    const history: ChatMessage[] = this.messages.map((m: RenderMsg): ChatMessage => {
+      const item: ChatMessage = { role: m.role, content: m.content };
+      return item;
+    });
+    if (this.modelId > 0) {
+      // APK 的路径：平台 v2 智能体（modelId 是 config/list 里的数字 id）
       chat.stream(this.modelId, text, handlers);
+    } else if (this.apiKey.length > 0) {
+      this.gateway.stream(this.baseUrl, this.apiKey, this.gatewayModel, history, handlers);
     } else {
-      this.errorMsg = '没有可用通道：模型目录未加载，且没有网关 key';
+      this.errorMsg = '没有可用通道：模型目录未加载';
       this.busy = false;
     }
   }
@@ -286,7 +294,8 @@ struct Index {
           .borderRadius(15)
           .backgroundColor('#F1F3F5')
 
-        Text(this.gatewayModel.length > 0 ? prettyModel(this.gatewayModel) : '选择模型')
+        Text(this.platformName.length > 0 ? this.platformName :
+          (this.gatewayModel.length > 0 ? prettyModel(this.gatewayModel) : '选择模型'))
           .fontSize(11)
           .fontColor('#3B4048')
           .maxLines(1)
