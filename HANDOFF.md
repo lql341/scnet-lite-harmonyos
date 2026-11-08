@@ -208,3 +208,39 @@ POST https://api.scnet.cn/api/gw/v1/chat/completions  -H "Authorization: Bearer 
 - 不要从 APK 反编译/复用 Dart AOT 快照；不要试图复刻 pdfium 等 Android 原生库。
 - 不要把厂商二进制（APK/asm/资源）提交进仓库；不要使用厂商图标与商标做应用图标（当前是纯色占位 PNG）。
 - 不要在仓库或文档里声称是官方客户端。
+
+---
+
+## 12. APK 功能面测绘（2026-11-08，从 `libapp.so` 提取）
+
+官方 APK 用 `strings` 抽出的真实接口面（**APK 自己就是这套 HTTP API 的前端**）：
+
+```
+后端主域   https://www.scnet.cn/acx/*
+SSO        https://www.scnet.cn/sso/{login,register,register.action,
+             sendRegisterMessageCode.action,recommendUserName.action}
+桌面登录   /ac/api/auth/loginDesktopClient.action
+对话 v2    /acx/chatbot/v2/agent/{stream,stop,resume,check-stream}
+对话 v1    /acx/chatbot/v1/chat/reaction（点赞）
+会话       /acx/chatbot/conversation/{list,rename}、/acx/chatbot/agent/task/list
+附件       /acx/chatbot/file/{upload,download}/url
+配置/模型  /acx/chatbot/config/list、/acx/llm/api/console/model
+API Key    /acx/llm/api-key/{create,query}
+作业       /acx/jobgather/jobs/history/page-list
+用户       /acx/user/users/{current-user,current-user-info,logout,verify-code*,
+             user-base-info,user-telephone-email,user-unregister*,
+             mobile-is-available-user-v2,user-verifiedF}
+团队/集群  /acx/user/customer/group/{curuser-group-names,user-cluster-info}
+更新       /download/client/android/version.json
+Web 前端   /ui/chatbot/index.html（Nuxt，「智能体服务」，viewports 移动适配）
+           /ui/console/index.html（固定 width=1400 桌面控制台）
+```
+
+功能面（strings 证据）：短信验证码登录/注册、账号注销（10 条须知）、隐私政策+用户协议首屏、
+AI 对话（阻塞式交互组件 `componentType`、中断恢复、文献列表、点赞、生成计算报告、附件上传下载、
+语音输入、OCR、相机、Markdown+KaTeX、CSV/PDF 预览）、技能/工作流（WorkflowCar Model2、
+Quantum ESPRESSO、pro-seq、hic-seq → 生成 SLURM 脚本）、作业历史/任务产物、图形会话、容器实例、
+团队资源授权、计费发票（实缴/退金额、统一社会信用代码）、版本检查。
+
+**结论**：真正的移动端 Web 前端已经存在（`/ui/chatbot` 有 mobile viewport），
+所以"功能对齐"的最短路径是 ArkWeb 套壳 + 原生壳（登录态/文件/通知），而不是把 8~12 个页面全用 ArkTS 重写。
