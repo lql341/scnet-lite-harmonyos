@@ -27,6 +27,9 @@ interface SmsLoginBody {
 }
 
 class Auth {
+  /** 最近一次成功登录走的是哪条路径（排查用）。 */
+  lastLoginRoute: string = '';
+
   /** 启动时恢复登录态。 */
   restore(context: common.UIAbilityContext): boolean {
     store.init(context);
@@ -45,9 +48,32 @@ class Auth {
    * 若返回未登录则回落到 /sso/login 表单提交。
    */
   async loginByPassword(userName: string, password: string): Promise<void> {
+    // APK 里同时存在"客户端登录"和 SSO 表单两条路，依次试，把每条的错误都记住。
+    const attempts: string[] = [];
     const body: LoginBody = { userName: userName, password: password };
-    const raw = await httpClient.postRaw('/ac/api/auth/loginDesktopClient.action', JSON.stringify(body));
-    this.consumeResponse(raw);
+
+    try {
+      const raw = await httpClient.postRaw('/ac/api/auth/loginDesktopClient.action', JSON.stringify(body));
+      this.consumeResponse(raw);
+      this.lastLoginRoute = 'loginDesktopClient';
+      return;
+    } catch (e) {
+      const err = e as ApiError;
+      attempts.push(`loginDesktopClient: ${err.code} ${err.message}`);
+    }
+
+    try {
+      const form = `userName=${encodeURIComponent(userName)}&password=${encodeURIComponent(password)}&rememberMe=true`;
+      const raw = await httpClient.postForm('/sso/login', form);
+      this.consumeResponse(raw);
+      this.lastLoginRoute = 'sso/login';
+      return;
+    } catch (e) {
+      const err = e as ApiError;
+      attempts.push(`sso/login: ${err.code} ${err.message}`);
+    }
+
+    throw new ApiError('', attempts.join(' | '));
   }
 
   /** 发送短信验证码。 */

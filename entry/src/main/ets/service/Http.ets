@@ -115,6 +115,36 @@ class Http {
     return env.data === undefined ? new EmptyData() : env.data;
   }
 
+  /** 表单 POST（SSO 那套是 x-www-form-urlencoded，不是 JSON）。 */
+  async postForm(path: string, form: string): Promise<http.HttpResponse> {
+    const header: RequestHeaders = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json, text/plain, */*',
+      source: 'HarmonyOS',
+      version: credentials.version
+    };
+    if (credentials.cookie.length > 0) {
+      header.Cookie = credentials.cookie;
+    }
+    const options: http.HttpRequestOptions = {
+      method: http.RequestMethod.POST,
+      header: header,
+      extraData: form,
+      expectDataType: http.HttpDataType.STRING,
+      connectTimeout: 15000,
+      readTimeout: 30000
+    };
+    const request = http.createHttp();
+    try {
+      return await request.request(CLOUD_BASE + path, options);
+    } catch (e) {
+      const err = e as BusinessError;
+      throw new ApiError(String(err.code), err.message === undefined ? '网络错误' : err.message);
+    } finally {
+      request.destroy();
+    }
+  }
+
   /** 登录类接口要拿响应头里的 Set-Cookie，所以单独返回原始响应。 */
   async postRaw(path: string, body: string): Promise<http.HttpResponse> {
     const options: http.HttpRequestOptions = {
