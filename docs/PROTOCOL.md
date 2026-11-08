@@ -114,7 +114,41 @@ POST /ac/api/auth/loginDesktopClient[ByToken].action     桌面登录
 GET  /acx/platform/config/client/check-version?os&version 版本检查
 ```
 
-## 7. 未解决
+## 7. 实测（2026-11-08，用桌面客户端在跑的活体凭据）
+
+抓取方式：给主进程加 `--inspect=9229`，在 main 进程里 hook `http/https.request`，
+然后从渲染进程点 UI 触发请求，把真实头部导出到临时文件。**8 个必需头**：
+
+```
+Token: <JWT 235 字符>            Accept: application/json
+Cookie: jsessionid=…; SKIP_SESSION_UPDATE=…; Token=<uuid>
+source: Electron                 version: 4.1.0
+Content-Type: application/json   User-Agent: axios/1.20.0
+```
+
+> 只带 `Token` 不带 `jsessionid` → 401「用户未登录!」。之前用 `Authorization: Bearer` 之所以对
+> `/acx/chatbot/config/list` 能过，是那几个 chatbot 接口宽松，用户态接口一律要 Cookie。
+
+已验证可用（HTTP 200）：
+
+| 接口 | 结果 |
+| --- | --- |
+| `GET /acx/chatbot/conversation/list?page=1&size=30` | `records[{id,title,createTime,taskStatus,conversationType,protocolType}]` |
+| `GET /acx/llm/api/console/model` | 40 个模型，字段 `modelName/displayName/maxToken/modelType{LLM,VIDEO,OCR,AUDIO,Embedding,DOC_*}/inputPrice/outputPrice/cachedPrice/modalities{input,output}/logoUrl/brand/tags` |
+| `GET /acx/chatbot/config/list` | 推荐问题 + 广告位（公开） |
+| `POST /acx/chatbot/v2/agent/stream` | **body 的 `modelId` 是 long（数字），不是模型名** |
+
+stream 的错误响应直接吐出了服务端 DTO 全名，说明请求体反序列化到：
+
+```
+com.sugon.acx.chatbot.app.entity.dto.coder.VibeCodingChatDto
+ error: Cannot deserialize value of type `long` from String "GLM-5.3-Flash"
+```
+
+所以还差一步：**模型名 → 数字 modelId 的映射表**。`console/model` 里没有数字 id，
+候选来源：模型选择器实际调的接口（下一步继续 hook 主进程抓发送动作），或 `/acx/chatbot/agent/*` 家族。
+
+## 8. 未解决
 
 - 平台 `Token`/`Cookie` 的签发与刷新时机（`current-user-info?...&refresh=true` 返回的 token 才是新的）。
   桌面客户端配置里的旧 token 实测已失效（401），所以**必须自己走登录**，不能复用本地残留。
