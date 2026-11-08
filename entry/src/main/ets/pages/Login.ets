@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { auth } from '../service/Auth';
+import { auth, describeAuthError } from '../service/Auth';
 import { ApiError } from '../service/Http';
 import { store } from '../service/Store';
 import { router } from '@kit.ArkUI';
@@ -42,7 +42,7 @@ struct Login {
       this.enterApp();
     } catch (e) {
       const err = e as ApiError;
-      this.errorMsg = err.message.length > 0 ? err.message : '登录失败';
+      this.errorMsg = describeAuthError(err.code, err.message);
     } finally {
       this.busy = false;
     }
@@ -82,7 +82,7 @@ struct Login {
       this.enterApp();
     } catch (e) {
       const err = e as ApiError;
-      this.errorMsg = err.message.length > 0 ? err.message : '登录失败';
+      this.errorMsg = describeAuthError(err.code, err.message);
     } finally {
       this.busy = false;
     }

@@ -53,13 +53,19 @@ class Auth {
     const body: LoginBody = { userName: userName, password: password };
 
     try {
-      const raw = await httpClient.postRaw('/ac/api/auth/loginDesktopClient.action', JSON.stringify(body));
+      // 实测：这个 .action 端点只吃 form-urlencoded，字段名是小写 username/password。
+      const form = `username=${encodeURIComponent(userName)}&password=${encodeURIComponent(password)}`;
+      const raw = await httpClient.postForm('/ac/api/auth/loginDesktopClient.action', form);
       this.consumeResponse(raw);
       this.lastLoginRoute = 'loginDesktopClient';
       return;
     } catch (e) {
       const err = e as ApiError;
       attempts.push(`loginDesktopClient: ${err.code} ${err.message}`);
+      if (err.code === '1014') {
+        // 已经是明确的"账号或密码错误"，不用再试 SSO
+        throw new ApiError('1014', '账号或密码错误');
+      }
     }
 
     try {
@@ -176,6 +182,17 @@ class Auth {
       throw new ApiError(code, env.msg === undefined ? fallback : env.msg);
     }
   }
+}
+
+/** 平台错误码 → 中文文案（1003 参数缺失 / 1014 账号或密码错）。 */
+export function describeAuthError(code: string, msg: string): string {
+  if (code === '1003') {
+    return '登录参数缺失（服务端契约变了，请反馈给开发者）';
+  }
+  if (code === '1014') {
+    return '账号或密码错误';
+  }
+  return msg.length > 0 ? msg : `登录失败 (${code})`;
 }
 
 export const auth: Auth = new Auth();
