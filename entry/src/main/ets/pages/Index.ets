@@ -4,7 +4,10 @@ import { store, DEFAULT_BASE_URL } from '../service/Store';
 import { auth } from '../service/Auth';
 import { router } from '@kit.ArkUI';
 import { MODELS, ModelInfo, modelLabel } from '../model/Models';
+import { ModelItem, Conversation, ChatConfig, UserInfo } from '../model/Types';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { api, ApiError, ConversationSummary } from '../service/Api';
+import { chat } from '../service/Chat';
 
 interface RenderMsg {
   role: string;
@@ -33,13 +36,16 @@ struct Index {
   @State input: string = '';
   @State draftCloud: string = '';
   @State cloudStatus: string = '';
+  @State userName: string = '';
+  @State platformName: string = '';
+  @State platformModelId: number = 0;
+  @State platformModels: ModelItem[] = [];
+  @State conversations: Conversation[] = [];
+  @State showConversations: boolean = false;
+  @State modelOptions: SelectOption[] = [];
 
   private gateway: Gateway = new Gateway();
   private scroller: Scroller = new Scroller();
-  private modelOptions: SelectOption[] = MODELS.map((m: ModelInfo): SelectOption => {
-    const option: SelectOption = { value: m.label };
-    return option;
-  });
 
   aboutToAppear(): void {
     store.init(getContext(this) as common.UIAbilityContext);
@@ -55,9 +61,70 @@ struct Index {
     this.draftUrl = this.baseUrl;
     this.draftCloud = store.getCloudToken();
     api.setToken(this.draftCloud);
+    this.modelOptions = this.gatewayOptions();
     if (this.apiKey.length === 0) {
       this.showSettings = true;
     }
+    this.loadCloud();
+  }
+
+  private gatewayOptions(): SelectOption[] {
+    return MODELS.map((m: ModelInfo): SelectOption => {
+      const option: SelectOption = { value: m.label };
+      return option;
+    });
+  }
+
+  /** 登录后拉平台侧数据：身份、模型目录、会话列表。失败不影响网关通道可用。 */
+  private async loadCloud(): Promise<void> {
+    try {
+      const me: UserInfo = await auth.refreshUser();
+      this.userName = me.fullName !== undefined ? me.fullName : (me.userName !== undefined ? me.userName : '已登录');
+      hilog.info(0x0000, 'SCNetLite', 'user: %{public}s', this.userName);
+    } catch (e) {
+      const err = e as ApiError;
+      hilog.warn(0x0000, 'SCNetLite', 'user info failed: %{public}s %{public}s', err.code, err.message);
+    }
+    try {
+      const cfg: ChatConfig = await auth.chatConfig();
+      const list: ModelItem[] = cfg.modelList === undefined ? [] : cfg.modelList;
+      this.platformModels = list;
+      const options: SelectOption[] = list.map((m: ModelItem): SelectOption => {
+        const option: SelectOption = { value: m.name === undefined ? `模型 ${m.id}` : m.name };
+        return option;
+      });
+      if (options.length > 0) {
+        this.modelOptions = options;
+        this.platformName = list[0].name === undefined ? '' : list[0].name as string;
+        this.platformModelId = list[0].id === undefined ? 0 : list[0].id;
+      }
+      hilog.info(0x0000, 'SCNetLite', 'models: %{public}d', list.length);
+    } catch (e) {
+      const err = e as ApiError;
+      this.cloudStatus = `模型目录失败 ${err.code}`;
+      hilog.warn(0x0000, 'SCNetLite', 'config failed: %{public}s %{public}s', err.code, err.message);
+    }
+    try {
+      const page = await auth.conversationList();
+      const records: Conversation[] = page.records === undefined ? [] : page.records;
+      this.conversations = records;
+      hilog.info(0x0000, 'SCNetLite', 'conversations: %{public}d', records.length);
+    } catch (e) {
+      const err = e as ApiError;
+      hilog.warn(0x0000, 'SCNetLite', 'conversations failed: %{public}s %{public}s', err.code, err.message);
+    }
+  }
+
+  /** 平台上选中的数字 modelId（v2 stream 要的是 long）。 */
+  private selectedPlatformId(): number {
+    const name: string = this.platformName;
+    for (let i = 0; i < this.platformModels.length; i++) {
+      const item: ModelItem = this.platformModels[i];
+      if (item.name === name) {
+        return item.id === undefined ? 0 : item.id;
+      }
+    }
+    return this.platformModels.length > 0 ? 0 : 0;
   }
 
   private selectedIndex(): number {
@@ -110,6 +177,8 @@ struct Index {
       return item;
     });
 
+    const platformId: number = this.selectedPlatformId();
+
     const handlers: StreamHandlers = {
       onDelta: (content: string, reason: string) => {
         if (content.length > 0) {
@@ -129,7 +198,15 @@ struct Index {
       }
     };
 
-    this.gateway.stream(this.baseUrl, this.apiKey, this.model, history, handlers);
+    if (platformId > 0) {
+      hilog.info(0x0000, 'SCNetLite', 'send via platform modelId=%{public}d', platformId);
+      chat.stream(platformId, text, handlers);
+    } else if (this.apiKey.length > 0) {
+      this.gateway.stream(this.baseUrl, this.apiKey, this.model, history, handlers);
+    } else {
+      this.errorMsg = '没有可用的对话通道：平台模型未加载，且未填网关 key';
+      this.busy = false;
+    }
   }
 
   private async probeCloud(): Promise<void> {
@@ -231,8 +308,24 @@ struct Index {
   build() {
     Column() {
       Row({ space: 8 }) {
-        Text('SCNet Lite').fontSize(18).fontWeight(FontWeight.Medium).layoutWeight(1)
-        Text(modelLabel(this.model)).fontSize(12).fontColor('#6B7280')
+        Text('SCNet Lite').fontSize(18).fontWeight(FontWeight.Medium)
+        if (this.userName.length > 0) {
+          Text(`· ${this.userName}`).fontSize(12).fontColor('#6B7280')
+        }
+        Blank().layoutWeight(1)
+        if (this.conversations.length > 0) {
+          Text(`会话 ${this.conversations.length}`)
+            .fontSize(12)
+            .fontColor('#0A7EA4')
+            .padding({ left: 6, right: 6 })
+            .onClick(() => {
+              this.showConversations = !this.showConversations;
+            })
+        }
+        Text(this.platformName.length > 0 ? this.platformName : modelLabel(this.model))
+          .fontSize(12)
+          .fontColor('#6B7280')
+          .constraintSize({ maxWidth: 120 })
         Button('设置').fontSize(12).height(30).backgroundColor('#E9ECEF').fontColor('#111')
           .onClick(() => {
             this.showSettings = !this.showSettings;
@@ -245,6 +338,35 @@ struct Index {
 
       if (this.showSettings) {
         this.settingsPanel()
+      }
+
+      if (this.showConversations) {
+        Column({ space: 6 }) {
+          Text(`云端会话（${this.conversations.length}）`).fontSize(13).fontWeight(FontWeight.Medium).width('100%')
+          List({ space: 4 }) {
+            ForEach(this.conversations, (item: Conversation) => {
+              ListItem() {
+                Row({ space: 8 }) {
+                  Text(item.title === undefined ? '(无标题)' : item.title)
+                    .fontSize(13)
+                    .layoutWeight(1)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(item.taskStatus === undefined ? '' : item.taskStatus).fontSize(10).fontColor('#8A8F99')
+                }
+                .width('100%')
+                .padding({ top: 6, bottom: 6 })
+              }
+            }, (item: Conversation) => `${item.id}`)
+          }
+          .height(160)
+          .width('100%')
+        }
+        .width('100%')
+        .padding(12)
+        .margin({ left: 12, right: 12, bottom: 6 })
+        .backgroundColor('#FFFFFF')
+        .borderRadius(10)
       }
 
       if (this.errorMsg.length > 0) {
@@ -283,6 +405,7 @@ struct Index {
             .onClick(() => {
               if (this.busy) {
                 this.gateway.cancel();
+                chat.cancel();
                 this.finishStream();
               } else {
                 this.send();
