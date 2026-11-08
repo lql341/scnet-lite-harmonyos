@@ -12,84 +12,31 @@
 
 ---
 
-## 1. T0 先解决「服务繁忙」（阻塞 P2）
+## 1. 关于「服务繁忙」——不要在这上面花时间
 
-### 已知事实
-- 鉴权没问题：每次请求都能拿到 `conversationId`（已产生 3 个空会话 `2119454…`）。
-- 协议没问题：帧结构 43 字段全部对齐客户端实现。
-- 不是客户端并发占用：杀掉桌面客户端后重试同样报错。
-- 桌面客户端 **自己发不出去**：点了「发送消息」（按钮 enabled）主进程 0 请求 →
-  UI 里有「项目：没有项目 / 选择项目」，怀疑缺 `projectId` 之类的字段，或该产品线要求先建项目。
+直连 `v2/agent/stream` 会先回 `conversationId` 再 `type:"error" 系统繁忙`；`v1` 回 `CHAT010004`。
+每次都能建会话 → 鉴权与协议都成立，纯粹是服务端链路状态。**它不阻塞 P0/P1，也不该拿桌面客户端当前置依赖。**
+手机 APK 的对话链路以 APK 自身字符串为准（`/acx/chatbot/*`），等真机联调时再逐条验；如果届时仍繁忙，
+先用真机上的网关 key 走 `api.scnet.cn/api/gw/v1`（已验证可用的 SSE）保证功能可演示，再切平台链路。
 
-### 两个分支，先做 A 再做 B
+> 已排除的弯路（不要再走）：给 Electron 客户端开 `--inspect` 抓 body、驱动它的 tiptap 输入框、
+> 追 `--remote-debugging-port`。那条线是桌面产品（`VibeCodingChatDto` + 项目制），和手机端不是同一个入口。
 
-**A. 抓桌面客户端真实 body（最快）**
+## 2. P0 工程底座（0.5 天）— **已完成**
 
-1. 起带调试口的客户端：
-   ```bash
-   pkill -x scnet-client
-   cd /tmp && setsid nohup env SCNET_NO_SANDBOX=1 \
-     /opt/scnet-client/launcher.sh --remote-debugging-port=9222 --inspect=9229 \
-     >/tmp/sc.log 2>&1 </dev/null &
-   ```
-2. 装钩子（抓所有出站请求 + body）：
-   ```bash
-   cd /tmp && node /tmp/main_eval.mjs '(() => {
-     if (globalThis.__cap3) return "already";
-     globalThis.__cap3 = [];
-     const http = require("http"), https = require("https");
-     for (const C of [http.ClientRequest, https.ClientRequest]) {
-       const p = C.prototype; if (p.__patched) continue; p.__patched = true;
-       const _end = p.end;
-       p.end = function (c, ...r) {
-         try { const ch = []; if (c) ch.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c)));
-           globalThis.__cap3.push({ method: this.method, path: this.path,
-             headers: { ...this.getHeaders() },
-             body: Buffer.concat(ch).toString("utf8").slice(0, 3000) });
-           if (globalThis.__cap3.length > 100) globalThis.__cap3.shift(); } catch (e) {}
-         return _end.call(this, c, ...r);
-       };
-     }
-     return "patched"; })()'
-   ```
-   （`/tmp/main_eval.mjs` 不存在就从本文件下方 §6 复制，或直接重写：连 `http://127.0.0.1:9229/json/list` 的 `webSocketDebuggerUrl`，发 `Runtime.evaluate`。）
-3. **人工动作**：在客户端里点「选择项目」（新建一个也行），发一条消息。
-4. dump：
-   ```bash
-   node /tmp/main_eval.mjs 'JSON.stringify((globalThis.__cap3||[]).map(x=>({m:x.method,p:x.path,body:x.body})))'
-   ```
-5. 用 dump 出来的 body 和我们现在的 body 逐字段 diff，补上缺的字段后重试：
-   ```bash
-   python3 - <<'PY'
-   import json, subprocess
-   h = json.load(open('/tmp/auth.json'))          # 8 个必需头，见 PROTOCOL §7
-   body = json.dumps({"modelId": 520, "origin": "user",
-                      "inputs": [{"type": "text", "text": "hi"}]}, ensure_ascii=False)
-   args = ["curl","-sS","-N","-m","60","-X","POST",
-           "https://www.scnet.cn/acx/chatbot/v2/agent/stream","--data-binary",body]
-   for k,v in h.items(): args += ["-H", f"{k}: {v}"]
-   args += ["-H","Accept: text/event-stream"]
-   print(subprocess.run(args, capture_output=True, text=True).stdout[:800])
-   PY
-   ```
+已落地（提交 `feat(P0/P1)`）：
 
-**B. 用手机 App 交叉验证（判定是不是产品线问题）**
+| 文件 | 作用 |
+| --- | --- |
+| `model/Types.ets` | `ApiEnvelope / UserInfo / ModelItem / ChatConfig / Conversation / StreamFrame` |
+| `service/Http.ets` | 4 头注入（`Token`/`Cookie`/`source: HarmonyOS`/`version`）、`code!=="0"` 抛 `ApiError`、401 清凭据并回调 |
+| `service/Auth.ets` | 密码登录、短信登录、`current-user-info` 刷新、`chatConfig`、`conversationList`、`logout`、Set-Cookie 捕获 |
+| `service/Store.ets` | 新增 `cloudCookie` / `clearCloudAuth` |
+| `pages/Login.ets` | 密码/短信双 Tab + 协议勾选 + 错误文案 |
+| `entryability/EntryAbility.ets` | 启动按登录态选 `pages/Login` 或 `pages/Index` |
 
-在手机 SCNet App（Android / 别人的安卓机都行）里发一条消息：
-- **正常出答案** → 手机走的是另一条链路（大概率 v1 + 不同 `identify`/appid）。把手机抓包或反查它的 body，
-  我们照手机那条实现，桌面这条放过。APK 里 v2 端点存在，但可能只在某些场景用。
-- **也报忙** → 账号级服务问题，等平台恢复；这期间照常做 P0/P1（不依赖流内容）。
+原始设计说明（仍适用）：
 
-### 踩坑提醒
-- 别用 `pkill -f "opt/scnet-client/scnet-client"`，它会匹配到你自己的 shell 命令行把当前 bash 杀掉（踩过两次）。
-  用 `pkill -x scnet-client`。
-- 桌面客户端渲染进程 `file://` 起源，REA 的 `list_browser_targets` 会过滤掉；直接用 `/tmp/cdp.mjs`（见 §6）。
-- 抓不到流请求的原因：旧钩子挂在 `http.request` 上，axios 可能已经持有原函数引用；
-  **挂 `ClientRequest.prototype.end`** 才保证不漏。
-
----
-
-## 2. P0 工程底座（0.5 天）
 
 产出文件：
 
@@ -148,7 +95,7 @@ P5（账号/团队/计费）、P6（语音/OCR/相机/打磨）。
 
 ## 6. 本机工具脚本（不在仓库里，重写很快）
 
-- `/tmp/cdp.mjs`：最小 CDP 驱动（Node ≥22 有全局 `WebSocket`）
+- `/tmp/cdp.mjs`：最小 CDP 驱动（Node ≥22 有全局 `WebSocket`）——仅在调试 Web 端/Electron 时才用得到，"复刻 APK"本身不需要
   ```js
   export async function pageTarget(){ const l=await (await fetch("http://127.0.0.1:9222/json/list")).json();
     return l.find(x=>x.type==="page"); }
@@ -196,7 +143,7 @@ Node ≥22（用全局 `WebSocket`）、JDK 21、`gh` 已登录 `lql341`。
 ---
 
 ## 8. 未决问题（需要人）
-1. **T0 的 body diff**：需要有人在桌面客户端「选项目 → 发一条消息」，或给出手机端交叉验证结果。
+1. **手机端联调**：需要在真机上跑一次对话，确认 `/acx/chatbot/*` 链路可用（若不繁忙则直接接）。
 2. **测试账号**：登录/注销/发票联调。
 3. **范围**：P5/P6 是否进第一版（砍掉省 2.5 天）。
 4. **是否允许真实提交作业**（P4 验收会真计费）。
