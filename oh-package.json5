@@ -1,0 +1,11 @@
+{
+  "modelVersion": "6.26.9",
+  "name": "scnet-lite",
+  "version": "0.1.0",
+  "description": "Unofficial ArkTS/HarmonyOS front end for the SCNet agent gateway",
+  "main": "",
+  "author": "",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
+}
