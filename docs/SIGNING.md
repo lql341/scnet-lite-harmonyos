@@ -30,6 +30,9 @@ device-ids : 01EB73B36178DC1617F81CD8E07625C84F80DC2CC2D90103E3A01C8166DC37FB   
 
 **改 bundleName 必须重签**；**换设备必须把新 UDID 加进 profile 并重新下载 `.p7b`**。
 
+> 当前场景是**换电脑、手机不变**（PLA-AL10 继续用）→ UDID 不变，**`.p7b` 不用重签**，
+> 只要把 4 个文件拷过去 + `check-signing.sh` PASS 即可装同一台手机。
+
 ## 3. 换机迁移（3 条命令）
 
 ```bash

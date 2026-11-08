@@ -6,7 +6,14 @@
 
 ## A. 阻塞项（先解决这些，其它才有意义）
 
-- [?] **确认手机 APK 用的是哪个账号**
+- [x] **账号已确认**：手机端 APK 登录的也是 `luql`，同一台手机（PLA-AL10）、同一网络。
+  我们的 v2 探测**就是在手机上跑的本 app** 发起的，所以环境/账号/网络三者相同 → **差异只可能在请求内容**。
+
+- [?] **抓手机端 APK 的真实请求（当前唯一有效路径）**
+  需要：安卓机（APK 装在哪台就在哪台）+ mitmproxy/Charles + 系统级 CA 证书。
+  抓 `POST /acx/chatbot/v2/agent/stream` 的请求头 + body，与我们发的逐字段比对。
+
+- [x] ~~确认手机 APK 用的是哪个账号~~
   官方 App 在手机上能出字，但同一个账号从鸿蒙客户端请求：
   - `POST /acx/chatbot/v2/agent/stream` → 200 → 第二帧 `{"type":"error","errorText":"系统繁忙，请稍后再试"}`
   - `POST /api/llm/v1/chat/completions`（自动建的 key）→ `402 Insufficient Balance`
@@ -18,6 +25,8 @@
   拿到后比对，就能确定差异在字段还是账号侧权益。
 
 - [x] 平台 `v2` 帧结构、SSE 事件、连接状态机（见 `docs/PROTOCOL.md`）
+- [x] 已排除的变量：source（Android/HarmonyOS/Electron）、version（1.1.1/1.0.0/4.1.0）、
+      body 里的 `clusterId=11250`、`identify=aiagent-router`、以及是否复用 conversationId —— 全部同样报「系统繁忙」
 - [x] 登录契约（form-urlencoded `username`/`password`，错误码 `1014`）
 - [x] 自动取网关 key 的完整链路（query → 需要团队 → create → Bearer 调用）
 
