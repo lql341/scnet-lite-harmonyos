@@ -50,10 +50,12 @@ DEVECO_SDK_HOME="$CLT/sdk" "$CLT/hvigor/bin/hvigorw" assembleHap \
    再把 keystore/profile 填回 `signingConfigs`。
 
 ```bash
-cp signing/signing.env.example signing/signing.env   # 填 keystore/cer/p7b/密码
+scripts/check-signing.sh        # 先验 keystore / .cer / .p7b 是否同一把钥匙
 scripts/sign.sh                 # → entry-default-signed.hap
 scripts/sign.sh --install       # 顺便 hdc install -r
 ```
+
+签名材料放在 `~/Downloads/scnet-hmos/`（仓库里 `signing` 是指向它的软链，git-ignored）。
 
 安装：`hdc install -r entry/build/default/outputs/default/entry-default-signed.hap`。
 

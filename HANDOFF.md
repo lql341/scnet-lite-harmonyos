@@ -74,10 +74,13 @@ $CLT/sdk/default/openharmony/toolchains/hdc install \
 签名改由仓库自带脚本做，避免 DevEco 加密密码问题）：
 
 ```bash
-cp signing/signing.env.example signing/signing.env   # SIGN_KEYSTORE/KEY_ALIAS/密码/CERT/PROFILE
+scripts/check-signing.sh     # 先验：keystore / .cer / .p7b 是否同一把钥匙
 scripts/sign.sh              # hap-sign-tool sign-app → entry-default-signed.hap
 scripts/sign.sh --install    # 再 hdc install -r
 ```
+
+签名材料放在 `~/Downloads/scnet-hmos/`（仓库里 `signing` 是指向它的软链，git-ignored）。
+**私钥只有一份**（`scnet.hmos.debug.p12`），丢了就只能重新申请证书 + profile。
 
 1. **华为真机（当前目标）**：DevEco Studio → Project Structure → Signing Configs 自动生成
    （需登录华为账号），或 AGC 下载 debug 证书 + profile。需要的东西：
@@ -107,6 +110,7 @@ scripts/sign.sh --install    # 再 hdc install -r
 | `entry/src/main/module.json5` | 权限 | 已声明 `ohos.permission.INTERNET`、`ohos.permission.GET_NETWORK_INFO` |
 | `build-profile.json5` | 产品配置 | `compatibleSdkVersion`/`targetSdkVersion` 都是 `"26.0.0"`（见坑 2）；`signingConfigs` 故意留空，签名走 `scripts/sign.sh` |
 | `scripts/sign.sh` | 用 SDK 的 `hap-sign-tool.jar` 做 localSign | 读 `signing/signing.env`；`-compatibleVersion 26`、`-signCode 1`；`--install` 顺带安装 |
+| `scripts/check-signing.sh` | 签前自检：keystore ↔ .cer ↔ .p7b 公钥是否一致 | 走「从 keystore 现生成一份临时 CSR 比公钥」的路子，因为 p12 里没有证书链；用 python 从 p7b 里抽 profile JSON 与内嵌 `development-certificate` |
 
 ---
 
@@ -125,6 +129,10 @@ scripts/sign.sh --install    # 再 hdc install -r
 6. `@Builder` 方法里的对象字面量会触发 ArkTS 严格检查，尽量用已声明类型。
 7. hvigor 首次构建会自己解析 `hvigor-config.json5` 里的 `modelVersion: "6.26.9"`，无需手工 `npm i`；
    构建日志在 `.hvigor/outputs/build-logs/build.log`。
+8. **keystore 一旦拿去 AGC 换证书就不能再重新生成**：AGC 的 `.cer` 绑的是 CSR 里的公钥，
+   私钥丢了就签不出来。本项目已经踩过一次（`2026-11-08`）：先给了一份 CSR，之后又把 keystore
+   重生成了新的，导致 AGC 签出的 `.cer`/`.p7b` 对不上，只能重新签发。
+   所以：**签之前先跑 `scripts/check-signing.sh`**，它会把 p7b 内嵌证书的公钥和 keystore 比一遍。
 
 ## 7. 已验证的接口契约
 
