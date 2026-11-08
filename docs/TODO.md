@@ -32,6 +32,22 @@
 
 ---
 
+## A2. 已知缺陷登记
+
+- [x] **短信验证码登录不可用**（2026-11-09 用户实测反馈）
+  原因：我用错了端点。`/acx/user/users/verify-code-send|check` 是**登录后绑定手机**用的（未登录 401），
+  短信登录要走 DesktopClient 那套，且字段名不同：
+
+  ```
+  POST /ac/api/auth/sendDesktopClientPhoneCode.action     form: phoneNum=<手机号>
+       → 1016 发送失败（频控/通道） · 1022 手机号不存在
+  POST /ac/api/auth/loginDesktopClientByPhoneCode.action  form: phoneNum=<手机号>&messageCode=<验证码>
+       → 1006 验证码错误或过期
+  ```
+
+  代码已改（`service/Auth.ets`，`describeAuthError` 补了 1006/1016/1022 文案），
+  **待真机复验**：用真实手机号收码 → 登录。
+
 ## B. 对话功能（P2，代码主体已在，缺"能出字"的验证）
 
 - [x] 会话列表 / 打开历史（`conversation/list`、`v2/agent/conversation/{id}/history`）

@@ -270,3 +270,24 @@ GET  https://api.scnet.cn/api/llm/v1/models   Authorization: Bearer <apiKey>
   （真机表现：点抽屉就闪退）。所有可能为空的字段统一走 `safe()` 收口。
 - `JSON.stringify(new Map())` 得到 `{}`，用 Map 拼日志会误导自己。
 - `Record<string, string>` 字面量会触发 `arkts-no-untyped-obj-literals`，请求头一律显式声明接口。
+
+### 10.6 短信验证码登录（实测契约）
+
+```
+POST /ac/api/auth/sendDesktopClientPhoneCode.action
+Content-Type: application/x-www-form-urlencoded
+phoneNum=139xxxxxxxx
+
+  200 {"code":"1016","msg":"sending message code failed"}        发送失败（频控/通道）
+  200 {"code":"1022","msg":"phone number does not exist"}        号码未注册
+  200 {"code":"0"} + Set-Cookie                                  发送成功
+
+POST /ac/api/auth/loginDesktopClientByPhoneCode.action
+phoneNum=139xxxxxxxx&messageCode=123456
+
+  200 {"code":"1006","msg":"code is invalid or error"}           验证码错/过期
+  200 {"code":"0"} + Set-Cookie                                  登录成功
+```
+
+⚠️ **`/acx/user/users/verify-code-send` / `verify-code-check` 不是登录用的**（未登录直接 401
+`用户未登录!`），它们属于"已登录用户绑定/换绑手机"。这一条踩过，别再混。

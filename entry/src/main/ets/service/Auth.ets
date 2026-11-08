@@ -19,12 +19,12 @@ interface LoginBody {
 }
 
 interface SmsSendBody {
-  mobilephoneNum: string;
+  phoneNum: string;
 }
 
 interface SmsLoginBody {
-  mobilephoneNum: string;
-  verifyCode: string;
+  phoneNum: string;
+  messageCode: string;
 }
 
 class Auth {
@@ -85,17 +85,27 @@ class Auth {
     throw new ApiError('', attempts.join(' | '));
   }
 
-  /** 发送短信验证码。 */
+  /**
+   * 发送短信验证码。
+   * 实测（2026-11-09）：正确的端点是 DesktopClient 这套，字段名是 phoneNum；
+   * `/acx/user/users/verify-code-send` 是"绑定手机"用的，未登录会 401。
+   * 错误码：1016 发送失败（频控/通道） · 1022 手机号不存在。
+   */
   async sendSmsCode(phone: string): Promise<void> {
-    const body: SmsSendBody = { mobilephoneNum: phone };
-    const raw = await httpClient.postRaw('/acx/user/users/verify-code-send', JSON.stringify(body));
+    const body: SmsSendBody = { phoneNum: phone };
+    const raw = await httpClient.postForm('/ac/api/auth/sendDesktopClientPhoneCode.action',
+      `phoneNum=${encodeURIComponent(body.phoneNum)}`);
     this.expectOk(raw, '验证码发送失败');
   }
 
-  /** 短信验证码登录。 */
+  /**
+   * 短信验证码登录。字段是 phoneNum + messageCode（不是 mobilephoneNum/verifyCode）。
+   * 错误码：1006 验证码错误或过期。
+   */
   async loginBySmsCode(phone: string, code: string): Promise<void> {
-    const body: SmsLoginBody = { mobilephoneNum: phone, verifyCode: code };
-    const raw = await httpClient.postRaw('/acx/user/users/verify-code-check', JSON.stringify(body));
+    const body: SmsLoginBody = { phoneNum: phone, messageCode: code };
+    const raw = await httpClient.postForm('/ac/api/auth/loginDesktopClientByPhoneCode.action',
+      `phoneNum=${encodeURIComponent(body.phoneNum)}&messageCode=${encodeURIComponent(body.messageCode)}`);
     this.consumeResponse(raw);
   }
 
@@ -239,6 +249,15 @@ export function describeAuthError(code: string, msg: string): string {
   }
   if (code === '1014') {
     return '账号或密码错误';
+  }
+  if (code === '1006') {
+    return '验证码错误或已过期';
+  }
+  if (code === '1016') {
+    return '验证码发送失败（可能是频率限制，稍后再试）';
+  }
+  if (code === '1022') {
+    return '该手机号未注册';
   }
   return msg.length > 0 ? msg : `登录失败 (${code})`;
 }
