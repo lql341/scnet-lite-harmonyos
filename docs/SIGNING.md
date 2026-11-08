@@ -33,6 +33,28 @@ device-ids : 01EB73B36178DC1617F81CD8E07625C84F80DC2CC2D90103E3A01C8166DC37FB   
 > 当前场景是**换电脑、手机不变**（PLA-AL10 继续用）→ UDID 不变，**`.p7b` 不用重签**，
 > 只要把 4 个文件拷过去 + `check-signing.sh` PASS 即可装同一台手机。
 
+## 2.5 已经打好的迁移包（本机）
+
+```
+~/Downloads/scnet-hmos-transfer/
+├── scnet-hmos-signing.tar.gz      6666 B  sha256 见 MANIFEST（明文，方便 U 盘）
+├── scnet-hmos-signing.tar.gz.enc  6688 B  AES-256（PBKDF2 200k），口令在 .passphrase
+├── .passphrase                    600     24 位随机口令
+└── MANIFEST.txt                   文件明细 + sha256 + 恢复步骤
+```
+
+解密解包：
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+  -in scnet-hmos-signing.tar.gz.enc -out bag.tgz -pass pass:"$(cat .passphrase)"
+mkdir -p ~/Downloads/scnet-hmos && tar -xzf bag.tgz -C ~/Downloads/scnet-hmos
+chmod 600 ~/Downloads/scnet-hmos/signing.env ~/Downloads/scnet-hmos/*.p12
+```
+
+`signing.env` 里的路径用 `${SIGNING_DIR:-$HOME/Downloads/scnet-hmos}` 推导，**换机器不用改文件**；
+放别处就 `export SIGNING_DIR=/path/to/dir`。
+
 ## 3. 换机迁移（3 条命令）
 
 ```bash
