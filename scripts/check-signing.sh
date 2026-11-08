@@ -9,7 +9,20 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CLT=${CLT:-$HOME/opt/apps/harmonyos/26.0.0.865/command-line-tools}
 LIB="$CLT/sdk/default/openharmony/toolchains/lib"
-[[ -f "$ROOT/signing/signing.env" ]] && source "$ROOT/signing/signing.env"
+if [[ ! -f "$ROOT/signing/signing.env" ]]; then
+  cat >&2 <<EOF
+没有找到签名材料：$ROOT/signing/signing.env
+
+签名材料不在仓库里（git-ignored）。换机器时把旧机器的 ~/Downloads/scnet-hmos/ 拷过来：
+  scp -r oldhost:~/Downloads/scnet-hmos ~/Downloads/
+  chmod 600 ~/Downloads/scnet-hmos/signing.env ~/Downloads/scnet-hmos/*.p12
+  ln -sfn ~/Downloads/scnet-hmos $ROOT/signing
+
+清单与重新签发流程见 docs/SIGNING.md
+EOF
+  exit 2
+fi
+source "$ROOT/signing/signing.env"
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 

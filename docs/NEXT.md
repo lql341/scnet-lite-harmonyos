@@ -4,13 +4,35 @@
 
 ---
 
-## 0. 现状一句话
+## 0. 换电脑后第一天（5 分钟）
+
+```bash
+git clone git@github.com:lql341/scnet-lite-harmonyos.git
+cd scnet-lite-harmonyos
+# 1) 拷签名材料（手机不变 → .p7b 不用重签）
+scp -r oldhost:~/Downloads/scnet-hmos ~/Downloads/
+chmod 600 ~/Downloads/scnet-hmos/signing.env ~/Downloads/scnet-hmos/*.p12
+ln -sfn ~/Downloads/scnet-hmos signing
+# 2) 一条命令自检（工具链/设备/签名配对/文档）
+./scripts/dev-check.sh
+# 3) 构建 + 装机
+DEVECO_SDK_HOME=~/opt/apps/harmonyos/26.0.0.865/command-line-tools/sdk \
+  ~/opt/apps/harmonyos/26.0.0.865/command-line-tools/hvigor/bin/hvigorw \
+  assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
+./scripts/sign.sh --install
+```
+
+`dev-check.sh` 会把不该靠记忆的东西都验一遍：hvigorw/SDK/JDK/node、`hdc` 设备、
+`signing/` 软链与三者公钥是否配对、工作区是否干净、6 份文档是否齐。
+只构建不装机时可以跳过签名那步（会标 `[warn]`）。
+
+## 1. 现状一句话
 
 能登录、能拉会话列表/历史、能自动取网关 key、UI 已按官方移动端重排并装机；
 **唯独"对话出字"没通**：平台 v2 agent 回「系统繁忙」，网关 llm/v1 回「402 余额不足」。
 代码与协议都已对齐（`docs/PROTOCOL.md`），剩下是账号侧确认。待办全表见 `docs/TODO.md`。
 
-## 1. 现在卡在哪 + 下一步
+## 2. 现在卡在哪 + 下一步
 
 详见 [`docs/TODO.md`](TODO.md) 的 A 段。两条路，任选其一：
 
@@ -20,7 +42,7 @@
 不阻塞的部分（可以直接往下做）：`v2/agent/stop` 接入、断线续传（`interrupted`/`uncertain`）、
 Markdown + KaTeX 渲染、会话重命名、附件上传下载。见 `docs/TODO.md` B/C 段。
 
-## 2. P0 工程底座（0.5 天）— **已完成**
+## 3. P0 工程底座（0.5 天）— **已完成**
 
 已落地（提交 `feat(P0/P1)`）：
 
