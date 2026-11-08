@@ -148,7 +148,55 @@ com.sugon.acx.chatbot.app.entity.dto.coder.VibeCodingChatDto
 所以还差一步：**模型名 → 数字 modelId 的映射表**。`console/model` 里没有数字 id，
 候选来源：模型选择器实际调的接口（下一步继续 hook 主进程抓发送动作），或 `/acx/chatbot/agent/*` 家族。
 
-## 8. 未解决
+## 8. 已实测通的关键点（2026-11-08 23:4x，直连）
+
+### 8.1 `modelId` 数字从哪来 —— `GET /acx/chatbot/config/list`（带鉴权）
+
+```jsonc
+data.modelList = [
+  { "id": 17,  "name": "Qwen3-30B-A3B-Instruct-2507", "thinkingEnable": false, "mcpEnable": true, "onlineEnable": true },
+  { "id": 410, "name": "MiniMax-M2.5",    ... },
+  { "id": 120, "name": "Qwen3-235B-A22B", ... },
+  { "id": 520, "name": "DeepSeek-V4-Flash","thinkingEnable": true, ... }
+]
+data.defaultCluster = 11250
+data.defaultIdentify = "aiagent-router"
+data.speechInputSecretKey = { appId, apiKey, apiSecret }     // 语音走这套
+data.fileUploadEnable / relatedQuestionEnable / loginEnable / apiDocumentUrl / vibeCodingScenes[5] / scientificCategory[9]
+```
+
+匿名请求这个接口只回 `recommendQuestion + recommendAD`，**带鉴权才有 `modelList`**。
+
+### 8.2 v2 stream 的 SSE 帧 = 扁平大对象（不是 `choices[].delta` 那套）
+
+无 `event:` 行，只有 `data:` 行，每帧字段固定 43 个：
+
+```jsonc
+{"type": null, "time": null, "messageId": null, "id": null, "toolCallId": null,
+ "toolName": null, "delta": null, "inputTextDelta": null, "input": null, "output": null,
+ "finishReason": null, "errorCode": null, "errorText": null, "data": null,
+ "conversationId": "2119454680135581698", "clusterId": null, "jobId": null, "taskId": null,
+ "parentTaskId": null, "toolCallDescription": null, "agentName": null, "resource": null,
+ "filename": null, "mimeType": null, "url": null, "path": null, "enable": null,
+ "status": null, "title": null, "messages": null, "statistics": null,
+ "progressText": null, "progressPercent": null, "questions": null, "retryId": null,
+ "retryCount": 0, "maxRetries": 0, "executionContext": null, "description": null,
+ "suggestedQuestions": null, "name": null, "pathList": null}
+```
+
+首帧就带回 `conversationId`（会话是在**流开始后**才创建的），这与「`uncertain` 状态」的设计吻合：
+没拿到 conversationId 就断了 = 不知道服务端有没有创建任务。
+
+### 8.3 当前阻塞：服务端直连一律 `系统繁忙，请稍后再试`
+
+同一份凭据、同一份 body，桌面客户端里也卡在「正在思考…」。三种 body 变体
+（纯 minimal / 带 `identify` / 带 `clusterId`）全部 200 但立刻 `type:"error"`。
+说明**不是协议问题**，是账号/agent 服务侧当前不可用（或该账号未开通 agent 配额）。
+客户端里那条「正在思考…」其实就是同一个错误被吞掉了 —— 这也解释了为什么客户端 UI 一直不落地。
+
+→ 等 agent 服务恢复后再跑一次，就能把 `delta` 增量帧、`done` 结尾、`[done]` 哨兵全部确认。
+
+## 9. 未解决
 
 - 平台 `Token`/`Cookie` 的签发与刷新时机（`current-user-info?...&refresh=true` 返回的 token 才是新的）。
   桌面客户端配置里的旧 token 实测已失效（401），所以**必须自己走登录**，不能复用本地残留。
