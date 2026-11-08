@@ -1,6 +1,6 @@
 # HANDOFF — scnet-lite-harmonyos
 
-> **接手请先读 [`docs/NEXT.md`](docs/NEXT.md)**（当前卡点 + 下一步命令 + 换机器清单），
+> **先读 [`docs/TODO.md`](docs/TODO.md)（待办全表）与 [`docs/NEXT.md`](docs/NEXT.md)（现状+下一步）**（当前卡点 + 下一步命令 + 换机器清单），
 > 计划看 [`docs/PLAN.md`](docs/PLAN.md)，协议看 [`docs/PROTOCOL.md`](docs/PROTOCOL.md)。
 
 交接文档。给下一个接手的 agent：读这一份就能继续干活，不需要重新做可行性调研。

@@ -201,3 +201,72 @@ data.fileUploadEnable / relatedQuestionEnable / loginEnable / apiDocumentUrl / v
 - 平台 `Token`/`Cookie` 的签发与刷新时机（`current-user-info?...&refresh=true` 返回的 token 才是新的）。
   桌面客户端配置里的旧 token 实测已失效（401），所以**必须自己走登录**，不能复用本地残留。
 - `/sso/login` 的表单字段与验证码类型（下一步要么抓登录包，要么用 REA 的 CDP 驱动登录页）。
+
+
+---
+
+## 10. 登录与取 key 的完整链路（2026-11-09 真机验证）
+
+### 10.1 登录（`/ac/api/auth/loginDesktopClient.action`）
+
+**只接受 form-urlencoded，字段名小写**（JSON 会报 `1003 params not enough: [username] is null`）：
+
+```
+POST https://www.scnet.cn/ac/api/auth/loginDesktopClient.action
+Content-Type: application/x-www-form-urlencoded
+source: HarmonyOS      version: 1.0.0
+
+username=luql&password=xxxx
+```
+
+| 返回 | 含义 |
+| --- | --- |
+| `{"code":"1003"}` | 参数缺失（编码/字段名错） |
+| `{"code":"1014","msg":"user not exits or password is not correct"}` | 账号或密码错 |
+| `{"code":"0"}` + `Set-Cookie: jsessionid=…; Token=<uuid>` | 成功 |
+
+登录成功后要同时保存 **cookie（jsessionid + Token=uuid）** 和 **Token 头（235 字符 JWT，
+来自后续 `current-user-info?includeToken=true&refresh=true`）**，两者缺一个平台接口就 401。
+
+### 10.2 取网关 key（三步，全是 POST）
+
+```
+POST /acx/llm/api-key/query     body: {}
+  → data 是"再编码一次的 JSON 字符串"：{"total":4,"pages":1,"records":["{\"id\":…}"]}
+  → records 每一项也是字符串，要 parse 两次
+  → records[].apiKey 是打码的（sk-N****MTM=），不能直接用
+  → 但能拿到 records[].accountId(18位) 和 records[].teamName
+
+POST /acx/llm/api-key/create    body: {"apiKeyName":"…","accountId":"…","teamName":"…"}
+  缺 team → {"code":"API010010","msg":"创建ApiKey必须选择归属团队"}
+  成功   → {"code":"0","data":{"id":"…","apiKey":"sk-…（43 字符，只此一次）"}}
+
+GET  https://api.scnet.cn/api/llm/v1/models   Authorization: Bearer <apiKey>
+  → 200，33 个模型（用户可见的那份：Qwen3.5-122B-A10B / MiMo-V2.5-Pro / SCNet-Max / GLM-5.2-Base …）
+```
+
+### 10.3 三套模型目录，别混
+
+| 来源 | 数量 | 用途 | 用户可见 |
+| --- | --- | --- | --- |
+| `/api/llm/v1/models` | 33 | 手机端实际展示/使用 | ✅ |
+| `/acx/chatbot/config/list` → `modelList[]` | 4（id 17/410/120/520） | v2 agent 的 `modelId` | ❌（用户看不到，别放进 UI） |
+| `/acx/llm/api/console/model` | 40 | 控制台计费目录 | 控制台可见 |
+
+### 10.4 两条对话通道的真实状态（同一账号、真机）
+
+| 通道 | 结果 |
+| --- | --- |
+| `www.scnet.cn/acx/chatbot/v2/agent/stream` | 200，首帧给 `conversationId`，第二帧 `系统繁忙，请稍后再试`（9 种 header/body 组合均如此） |
+| `api.scnet.cn/api/llm/v1/chat/completions` + 自动 key | `402 Insufficient Balance` |
+| `api.scnet.cn/api/gw/v1/chat/completions` + 同一 key | `401 Invalid proxy server token` |
+
+结论：协议/鉴权/模型目录都已对齐，剩下是**账号侧权益或后端可用性**问题，需要用手机端 APK 的请求做最后比对（见 `docs/TODO.md` A 段）。
+
+### 10.5 已踩的 ArkTS 坑（补）
+
+- **平台字段常是 `null` 而不是 `undefined`**：`item.taskStatus.length` 会抛
+  `Cannot read property length of null`，整个 `@Component` 的 update 失败并**直接退出进程**
+  （真机表现：点抽屉就闪退）。所有可能为空的字段统一走 `safe()` 收口。
+- `JSON.stringify(new Map())` 得到 `{}`，用 Map 拼日志会误导自己。
+- `Record<string, string>` 字面量会触发 `arkts-no-untyped-obj-literals`，请求头一律显式声明接口。

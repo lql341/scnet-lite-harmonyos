@@ -6,21 +6,19 @@
 
 ## 0. 现状一句话
 
-协议已经全部摸清（`docs/PROTOCOL.md`），工程能构建、能签名、能装真机（`cn.scnet.hmos`，PLA-AL10）。
-**唯一未打通的是真正的对话内容流**：直连 `v2/agent/stream` 会先回会话 ID 再立刻 `type:"error" 系统繁忙`，
-`v1/chat/completion` 回 `CHAT010004 服务繁忙`。原因未定，见 §1。
+能登录、能拉会话列表/历史、能自动取网关 key、UI 已按官方移动端重排并装机；
+**唯独"对话出字"没通**：平台 v2 agent 回「系统繁忙」，网关 llm/v1 回「402 余额不足」。
+代码与协议都已对齐（`docs/PROTOCOL.md`），剩下是账号侧确认。待办全表见 `docs/TODO.md`。
 
----
+## 1. 现在卡在哪 + 下一步
 
-## 1. 关于「服务繁忙」——不要在这上面花时间
+详见 [`docs/TODO.md`](TODO.md) 的 A 段。两条路，任选其一：
 
-直连 `v2/agent/stream` 会先回 `conversationId` 再 `type:"error" 系统繁忙`；`v1` 回 `CHAT010004`。
-每次都能建会话 → 鉴权与协议都成立，纯粹是服务端链路状态。**它不阻塞 P0/P1，也不该拿桌面客户端当前置依赖。**
-手机 APK 的对话链路以 APK 自身字符串为准（`/acx/chatbot/*`），等真机联调时再逐条验；如果届时仍繁忙，
-先用真机上的网关 key 走 `api.scnet.cn/api/gw/v1`（已验证可用的 SSE）保证功能可演示，再切平台链路。
+1. **确认账号**：手机 APK 里登录的用户名是不是 `luql`？如果不是，把它给我，我改 `defaultCluster`/团队参数即可。
+2. **抓手机端请求**：手机装 mitmproxy 证书 → 代理到本机 → App 发一条 → 导出 HAR 给我比对。
 
-> 已排除的弯路（不要再走）：给 Electron 客户端开 `--inspect` 抓 body、驱动它的 tiptap 输入框、
-> 追 `--remote-debugging-port`。那条线是桌面产品（`VibeCodingChatDto` + 项目制），和手机端不是同一个入口。
+不阻塞的部分（可以直接往下做）：`v2/agent/stop` 接入、断线续传（`interrupted`/`uncertain`）、
+Markdown + KaTeX 渲染、会话重命名、附件上传下载。见 `docs/TODO.md` B/C 段。
 
 ## 2. P0 工程底座（0.5 天）— **已完成**
 

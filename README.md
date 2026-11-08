@@ -11,13 +11,25 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [`docs/NEXT.md`](docs/NEXT.md) | **接手先看这个**：当前卡点、下一步命令、换机器要带什么 |
+| [`docs/NEXT.md`](docs/NEXT.md) | **接手先看这个**：当前卡点、下一步、换机器要带什么 |
+| [`docs/TODO.md`](docs/TODO.md) | 待办全表（分 A~I 段，带阻塞项与已完成项） |
 | [`docs/PLAN.md`](docs/PLAN.md) | 对标手机 APK 的分阶段开发计划（P0~P6，约 11 天） |
 | [`docs/PARITY.md`](docs/PARITY.md) | 功能对齐 checklist（从 APK 提取，带证据） |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | 平台对话协议（鉴权 4 头、v2 stream、SSE 43 字段、状态机） |
 | [`HANDOFF.md`](HANDOFF.md) | 立项背景、环境、已踩的坑、逆向结论 |
 
-## 现状（v0.1.0）
+## 现状（2026-11-09 00:50）
+
+| 能力 | 状态 |
+| --- | --- |
+| 登录（账号密码，form-urlencoded） | ✅ 真机通过 |
+| 自动取网关 key（query → team → create） | ✅ 真机通过（`sk-…` 43 字符） |
+| 会话列表 / 打开历史 | ✅ 真机通过（30 条会话） |
+| 模型列表（33 个真实用户可见模型） | ✅ |
+| 流式对话出字 | ❌ 平台侧「系统繁忙」/ 网关「402 余额不足」，见 TODO A 段 |
+| UI（官方移动端布局 + 抽屉 + 底部输入） | ✅ 已装机验证 |
+
+## 旧版说明（v0.1.0 MVP）
 
 | 能力 | 状态 |
 | --- | --- |
