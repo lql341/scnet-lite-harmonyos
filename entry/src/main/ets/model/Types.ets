@@ -56,6 +56,28 @@ export interface ConversationPage {
   end?: number;
 }
 
+/** 历史消息（v2 agent conversation history）。 */
+export interface HistoryMessage {
+  role?: string;
+  type?: string;
+  text?: string;
+  reasoning?: string;
+  time?: string;
+  messageId?: string;
+  inputs?: HistoryInput[];
+}
+
+export interface HistoryInput {
+  type?: string;
+  text?: string;
+}
+
+export interface HistoryPage {
+  conversationId?: string;
+  taskStatus?: string;
+  messages?: HistoryMessage[];
+}
+
 /** v2 流式帧（43 字段的扁平结构，只声明会用到的）。 */
 export interface StreamFrame {
   type?: string;

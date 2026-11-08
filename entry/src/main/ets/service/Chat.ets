@@ -59,12 +59,20 @@ export class Chat {
     const decoder: util.TextDecoder = util.TextDecoder.create('utf-8', { ignoreBOM: true });
     let buffer: string = '';
     let finished: boolean = false;
+    let gotData: boolean = false;
+    // 20 秒内一个字节都没有 → 明确报错，而不是"转圈无响应"
+    const watchdog = setTimeout(() => {
+      if (!gotData && !finished) {
+        finish('服务端 20 秒无响应，请稍后重试');
+      }
+    }, 20000);
 
     const finish = (error: string): void => {
       if (finished) {
         return;
       }
       finished = true;
+      clearTimeout(watchdog);
       this.request = null;
       try {
         request.destroy();
@@ -79,6 +87,7 @@ export class Chat {
     };
 
     request.on('dataReceive', (chunk: ArrayBuffer) => {
+      gotData = true;
       buffer += decoder.decodeToString(new Uint8Array(chunk), { stream: true });
       let index: number = buffer.indexOf('\n');
       while (index >= 0) {

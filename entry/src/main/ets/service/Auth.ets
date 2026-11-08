@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { store } from './Store';
 import { credentials, httpClient, ApiError } from './Http';
-import { ApiEnvelope, ChatConfig, ConversationPage, UserInfo } from '../model/Types';
+import { ApiEnvelope, ChatConfig, ConversationPage, HistoryPage, UserInfo } from '../model/Types';
 
 /** 登录成功后的会话态。 */
 export interface Session {
@@ -109,6 +109,13 @@ class Auth {
   async chatConfig(): Promise<ChatConfig> {
     const data = await httpClient.getData('/acx/chatbot/config/list');
     return data as ChatConfig;
+  }
+
+  /** 某个会话的历史消息（v2）。 */
+  async loadHistory(conversationId: string): Promise<HistoryPage> {
+    const data = await httpClient.getData(
+      `/acx/chatbot/v2/agent/conversation/${conversationId}/history?page=1&size=50`);
+    return data as HistoryPage;
   }
 
   async conversationList(): Promise<ConversationPage> {

@@ -10,7 +10,7 @@ import { chat } from '../service/Chat';
 import { apiKeys, LLM_BASE } from '../service/ApiKeys';
 import { ModelSheet } from '../view/ModelSheet';
 import { MODELS, ModelInfo, modelLabel } from '../model/Models';
-import { ModelItem, Conversation, ChatConfig, UserInfo } from '../model/Types';
+import { ModelItem, Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
 
 interface RenderMsg {
   role: string;
@@ -28,6 +28,17 @@ function prettyModel(name: string): string {
     }
   }
   return out.replace(/-/g, ' ');
+}
+
+/** 平台字段经常是 null 而不是 undefined，ArkTS 里 .length 会直接抛，统一收口。 */
+function safe(value: Object | undefined | null): string {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value as string;
+  }
+  return `${value}`;
 }
 
 function msg(role: string, content: string): RenderMsg {
@@ -128,6 +139,45 @@ struct Index {
       hilog.warn(0x0000, 'SCNetLite', 'ensureKey failed');
     }
     await this.reloadConversations();
+  }
+
+  /** 点会话 → 拉历史并渲染。 */
+  private async openConversation(item: Conversation): Promise<void> {
+    const id: string = item.id ?? '';
+    if (id.length === 0) {
+      return;
+    }
+    this.drawerOpen = false;
+    this.errorMsg = '';
+    try {
+      const page: HistoryPage = await auth.loadHistory(id);
+      const list: HistoryMessage[] = page.messages ?? [];
+      const rendered: RenderMsg[] = [];
+      for (let i = 0; i < list.length; i++) {
+        const m: HistoryMessage = list[i];
+        let text: string = safe(m.text);
+        if (text.length === 0 && m.inputs !== undefined) {
+          const inputs = m.inputs;
+          for (let j = 0; j < inputs.length; j++) {
+            const t: string = safe(inputs[j].text);
+            if (t.length > 0) {
+              text = t;
+              break;
+            }
+          }
+        }
+        if (text.length === 0) {
+          continue;
+        }
+        rendered.push(msg(m.role === 'user' ? 'user' : 'assistant', text));
+      }
+      this.messages = rendered;
+      chat.conversationId = id;
+      hilog.info(0x0000, 'SCNetLite', 'history: %{public}d messages', rendered.length);
+      setTimeout(() => this.scrollToEnd(), 80);
+    } catch (e) {
+      this.errorMsg = '加载会话历史失败';
+    }
   }
 
   private async reloadConversations(): Promise<void> {
@@ -397,13 +447,25 @@ struct Index {
       List({ space: 2 }) {
         ForEach(this.conversations, (item: Conversation) => {
           ListItem() {
-            Text(item.title ?? '(无标题)')
-              .fontSize(13)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .width('100%')
-              .padding({ top: 8, bottom: 8 })
+            Row({ space: 6 }) {
+              Text(safe(item.title).length > 0 ? safe(item.title) : '(无标题)')
+                .fontSize(13)
+                .fontColor('#1F2329')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .layoutWeight(1)
+              Text(safe(item.taskStatus))
+                .fontSize(10)
+                .fontColor('#A8ADB6')
+            }
+            .width('100%')
+            .padding({ left: 10, right: 10, top: 10, bottom: 10 })
+            .borderRadius(8)
+            .backgroundColor(item.id === chat.conversationId ? '#EAF3FB' : '#FFFFFF')
           }
+          .onClick(() => {
+            this.openConversation(item);
+          })
         }, (item: Conversation) => `${item.id}`)
       }
       .layoutWeight(1)
@@ -500,7 +562,7 @@ struct Index {
             this.showModelSheet = false;
           })
           ModelSheet({
-            models: this.gatewayModels.length > 0 ? this.gatewayModels : MODELS.map((m: ModelInfo): string => m.id),
+            models: this.gatewayModels,
             current: this.gatewayModel,
             onPick: (name: string) => {
               this.gatewayModel = name;
