@@ -25,7 +25,7 @@
 
 ## 2. 当前状态
 
-- bundleName **`cn.kylinlu.scnetlite`**（v0.1.0，minAPI 26，已据此重构验过 `assembleHap`）。
+- bundleName **`cn.scnet.hmos`**（v0.1.0，minAPI 26，已据此重构验过 `assembleHap`）。
   **改包名要趁签名之前**：证书/ profile 一旦签发就绑定这个 bundleName，改了就重签。
 - 分支 `main`。
 - 构建产物：`entry/build/default/outputs/default/entry-default-unsigned.hap`（约 78 KB，**未签名**）。
@@ -83,7 +83,7 @@ scripts/sign.sh --install    # 再 hdc install -r
    （需登录华为账号），或 AGC 下载 debug 证书 + profile。需要的东西：
    - `.p12` keystore + store 密码 + key 别名 + key 密码；
    - `.cer` 应用签名证书；
-   - `.p7b` 已签名 profile，其中 `bundle-name` 必须是 `cn.kylinlu.scnetlite`，
+   - `.p7b` 已签名 profile，其中 `bundle-name` 必须是 `cn.scnet.hmos`，
      且 debug profile 的 `device-ids` 必须含上面那个 UDID（否则安装时报 `9568322`/权限校验失败）。
    - `signAlg`：ECDSA 密钥用 `SHA256withECDSA`，RSA 用 `SHA256withRSA`（AGC 下发的以证书为准）。
 2. **OpenHarmony 设备 / 模拟器**：用 SDK 自带材料自签，顺序
@@ -91,7 +91,7 @@ scripts/sign.sh --install    # 再 hdc install -r
    （`java -jar $CLT/.../lib/hap-sign-tool.jar <subcommand> --help` 查参数）。
    自签证书在华为真机上会被拒，别混用。
 
-安装后校验：`hdc shell bm dump -n cn.kylinlu.scnetlite | head -20`。
+安装后校验：`hdc shell bm dump -n cn.scnet.hmos | head -20`。
 
 ---
 
@@ -193,7 +193,7 @@ POST https://api.scnet.cn/api/gw/v1/chat/completions  -H "Authorization: Bearer 
 - ~~目标设备是 HarmonyOS 4.x 还是 NEXT？~~ → **NEXT，PLA-AL10 / 7.0.0.111 / API 26**，侧载 APK 不可行。
 - 平台是否有可登录的 Web 端入口？（决定 ArkWeb 套壳是否比原生重写更划算）
 - 是否要发布到应用市场？涉及实名/签名证书/隐私声明与合规，会改变实现要求。
-- bundleName `cn.kylinlu.scnetlite` 是否就用这个（换域名前缀要趁现在，证书绑定它）。
+- bundleName `cn.scnet.hmos` 是否就用这个（换域名前缀要趁现在，证书绑定它）。
 
 ## 11. 禁止事项
 
