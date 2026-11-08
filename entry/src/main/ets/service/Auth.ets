@@ -1,5 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { store } from './Store';
 import { credentials, httpClient, ApiError } from './Http';
 import { ApiEnvelope, ChatConfig, ConversationPage, UserInfo } from '../model/Types';
@@ -124,53 +125,91 @@ class Auth {
     store.clearCloudAuth();
   }
 
-  /** 从响应头抓 Set-Cookie（jsessionid 是用户态接口的必需品）。 */
+  /**
+   * 从响应头抓 cookie。ArkTS 的 HttpResponse.header 是 Object，直接按 key 取值
+   * 在不同版本上行为不一致（踩过 "split is undefined"），这里统一 stringify 后提取。
+   */
   private captureCookie(raw: http.HttpResponse): void {
-    const setCookie: string = raw.header === undefined ? '' : this.headerValue(raw.header, 'set-cookie');
-    if (setCookie.length === 0) {
+    let dump: string = '';
+    try {
+      dump = raw.header === undefined ? '' : JSON.stringify(raw.header);
+    } catch (e) {
+      dump = '';
+    }
+    if (dump.length === 0) {
       return;
     }
-    const parts: string[] = setCookie.split(';');
-    let cookie: string = '';
-    for (let i = 0; i < parts.length; i++) {
-      const piece: string = parts[i].trim();
-      if (piece.startsWith('jsessionid=') || piece.startsWith('Token=') ||
-        piece.startsWith('SKIP_SESSION_UPDATE=')) {
-        cookie = cookie.length === 0 ? piece : `${cookie}; ${piece}`;
+    hilog.info(0x0000, 'SCNetLite', 'resp headers: %{public}s', dump.length > 400 ? dump.substring(0, 400) : dump);
+    const picked: string[] = [];
+    const names: string[] = ['jsessionid', 'Token', 'SKIP_SESSION_UPDATE'];
+    for (let i = 0; i < names.length; i++) {
+      const name: string = names[i];
+      const idx: number = dump.indexOf(`${name}=`);
+      if (idx < 0) {
+        continue;
       }
+      let end: number = idx;
+      while (end < dump.length) {
+        const ch: string = dump.charAt(end);
+        if (ch === '"' || ch === ';' || ch === '\n') {
+          break;
+        }
+        end++;
+      }
+      picked.push(dump.substring(idx, end));
     }
-    if (cookie.length > 0) {
+    if (picked.length > 0) {
+      const cookie: string = picked.join('; ');
       credentials.cookie = cookie;
       store.setCloudCookie(cookie);
     }
   }
 
-  private headerValue(header: object, key: string): string {
-    const map = header as Record<string, string>;
-    const value = map[key];
-    return value === undefined ? '' : value;
-  }
-
   private consumeResponse(raw: http.HttpResponse): void {
     const text: string = typeof raw.result === 'string' ? raw.result as string : '';
-    const env = text.length > 0 ? JSON.parse(text) as ApiEnvelope : null;
-    const code: string = env === null || env.code === undefined ? '' : env.code;
-    if (code !== '0' && code !== '200' && code !== '') {
-      const msg: string = env === null || env.msg === undefined ? '登录失败' : env.msg;
-      throw new ApiError(code, msg);
-    }
-    // token 可能来自响应体（data.token/accessToken）或响应头
-    if (env !== null && env.data !== undefined) {
-      const data = env.data as Record<string, string>;
-      const token = data['token'] ?? data['accessToken'] ?? '';
-      if (token.length > 0) {
-        credentials.token = token;
-        store.setCloudToken(token);
+    this.captureCookie(raw);
+    const trimmed: string = text.trim();
+
+    // SSO 成功时返回 HTML 页面，不是 JSON；只有 JSON 才解析
+    if (trimmed.startsWith('{')) {
+      let env: ApiEnvelope;
+      try {
+        env = JSON.parse(trimmed) as ApiEnvelope;
+      } catch (e) {
+        throw new ApiError('', '登录响应不是合法 JSON');
+      }
+      const code: string = env.code === undefined ? '' : env.code;
+      if (code !== '0' && code !== '200' && code !== '') {
+        const msg: string = env.msg === undefined ? '登录失败' : env.msg;
+        throw new ApiError(code, msg);
+      }
+      if (env.data !== undefined) {
+        const data = env.data as Record<string, string>;
+        const token = data['token'] ?? data['accessToken'] ?? '';
+        if (token.length > 0) {
+          credentials.token = token;
+          store.setCloudToken(token);
+        }
       }
     }
-    this.captureCookie(raw);
+
+    // 响应体里没 token 时，看 cookie 里的 Token=（平台把 SSO token 放在 cookie 里）
+    if (credentials.token.length === 0 && credentials.cookie.length > 0) {
+      const idx: number = credentials.cookie.indexOf('Token=');
+      if (idx >= 0) {
+        const rest: string = credentials.cookie.substring(idx + 6);
+        const end: number = rest.indexOf(';');
+        const token: string = end >= 0 ? rest.substring(0, end) : rest;
+        if (token.length > 0) {
+          credentials.token = token;
+          store.setCloudToken(token);
+        }
+      }
+    }
+
     if (credentials.token.length === 0) {
-      throw new ApiError('', '登录响应里没有 token，接口契约待确认');
+      const tail: string = trimmed.length > 120 ? trimmed.substring(0, 120) : trimmed;
+      throw new ApiError('', `登录成功但没拿到 token（响应：${tail}）`);
     }
   }
 
