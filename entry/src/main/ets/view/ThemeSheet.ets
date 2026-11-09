@@ -18,6 +18,7 @@ export struct ThemeSheet {
     Theme.applyPalette(palette.id);
     store.setTheme(palette.id);
     this.themeVersion = this.themeVersion + 1;
+    Theme.bumpRev();
     this.onChanged(palette.id);
   }
 

@@ -14,6 +14,8 @@ const KEY_MODEL: string = 'model';
 export const DEFAULT_MODEL: string = 'SCNet-Max';
 const KEY_THEME: string = 'themePalette';
 const KEY_CLUSTER: string = 'clusterId';
+const KEY_FONT_LEVEL: string = 'fontLevel';
+const KEY_LANG: string = 'lang';
 const KEY_CHANNEL: string = 'channel';
 const KEY_AGENT: string = 'agentIdentify';
 const KEY_CLOUD_TOKEN: string = 'cloudToken';
@@ -81,6 +83,39 @@ class Store {
     } catch (e) {
       // 忽略
     }
+  }
+
+  getFontLevel(): number {
+    if (this.prefs === null) {
+      return 1;
+    }
+    try {
+      const value = this.prefs.getSync(KEY_FONT_LEVEL, 1);
+      return typeof value === 'number' ? value as number : 1;
+    } catch (e) {
+      return 1;
+    }
+  }
+
+  setFontLevel(value: number): void {
+    if (this.prefs === null) {
+      return;
+    }
+    try {
+      this.prefs.putSync(KEY_FONT_LEVEL, value);
+      this.prefs.flush();
+    } catch (e) {
+      // 忽略
+    }
+  }
+
+  /** 'zh' 或 'en' */
+  getLang(): string {
+    return this.readString(KEY_LANG, 'zh');
+  }
+
+  setLang(value: string): void {
+    this.writeString(KEY_LANG, value);
   }
 
   getTheme(): string {

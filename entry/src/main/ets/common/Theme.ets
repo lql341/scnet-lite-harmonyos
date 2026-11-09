@@ -29,6 +29,13 @@ export const PALETTES: Palette[] = [
     border: '#E6DFD7', hairline: '#EFE9E2'
   },
   {
+    id: 'scnet', name: 'SCNet 红',
+    accent: '#C4161C', accentDeep: '#9E1116', accentSoft: '#F8E3E3', accentGhost: '#FDF4F4',
+    bg: '#F7F5F3', surface: '#FFFFFF', surfaceAlt: '#F1EDEA',
+    text: '#1F1B1A', textSub: '#5D5553', textFaint: '#8F8785',
+    border: '#E7DFDC', hairline: '#F0EAE7'
+  },
+  {
     id: 'ocean', name: '深海蓝',
     accent: '#0B4F8A', accentDeep: '#083A66', accentSoft: '#E7F0F8', accentGhost: '#F3F8FC',
     bg: '#F4F6F9', surface: '#FFFFFF', surfaceAlt: '#F1F3F7',
@@ -117,6 +124,11 @@ export class Theme {
     Theme.hairline = chosen.hairline;
   }
 
+  static bumpRev(): void {
+    const cur: number = AppStorage.get<number>('themeRev') ?? 0;
+    AppStorage.setOrCreate('themeRev', cur + 1);
+  }
+
   static findPalette(id: string): Palette {
     for (let i = 0; i < PALETTES.length; i++) {
       if (PALETTES[i].id === id) {
@@ -139,6 +151,26 @@ export class Theme {
   /** 标题字体：Claude 那种衬线感。设备没有 serif 时会自动回落到系统字体。 */
   static readonly fontDisplay: string = 'serif';
   static readonly fontBody: string = 'HarmonyOS Sans';
+
+  /** 正文字号档位：0 小 / 1 标准 / 2 大（0.9 / 1.0 / 1.15） */
+  static fontLevel: number = 1;
+  /** Markdown 正文与行高（跟着档位走） */
+  static mdBody: number = 15.5;
+  static mdLine: number = 26;
+
+  static applyFontLevel(level: number): void {
+    const lv: number = level < 0 ? 0 : (level > 2 ? 2 : level);
+    const k: number = lv === 0 ? 0.9 : (lv === 2 ? 1.15 : 1.0);
+    Theme.fontLevel = lv;
+    Theme.fTiny = Math.round(11 * k);
+    Theme.fSmall = Math.round(12 * k);
+    Theme.fBody = Math.round(15 * k);
+    Theme.fTitle = Math.round(16 * k);
+    Theme.fH2 = Math.round(17 * k);
+    Theme.fH1 = Math.round(20 * k);
+    Theme.mdBody = Math.round(15.5 * k * 10) / 10;
+    Theme.mdLine = Math.round(26 * k);
+  }
 
   // 状态
   static readonly danger: string = '#B42318';
@@ -168,12 +200,12 @@ export class Theme {
   static readonly s6: number = 24;
 
   // 字号
-  static readonly fTiny: number = 11;
-  static readonly fSmall: number = 12;
-  static readonly fBody: number = 15;
-  static readonly fTitle: number = 16;
-  static readonly fH2: number = 17;
-  static readonly fH1: number = 20;
+  static fTiny: number = 11;
+  static fSmall: number = 12;
+  static fBody: number = 15;
+  static fTitle: number = 16;
+  static fH2: number = 17;
+  static fH1: number = 20;
 
   // 阴影
   static readonly shadowSoft: ShadowOptions = {

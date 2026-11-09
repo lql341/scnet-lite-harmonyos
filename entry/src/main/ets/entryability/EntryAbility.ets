@@ -4,6 +4,7 @@ import { window, KeyboardAvoidMode } from '@kit.ArkUI';
 import { auth } from '../service/Auth';
 import { store } from '../service/Store';
 import { Theme } from '../common/Theme';
+import { L } from '../common/I18n';
 
 const TAG: string = 'SCNetLite';
 
@@ -16,6 +17,8 @@ export default class EntryAbility extends UIAbility {
     const loggedIn: boolean = auth.restore(this.context);
     // 主题必须在首帧之前应用，否则会先闪一下默认色
     Theme.applyPalette(store.getTheme());
+    Theme.applyFontLevel(store.getFontLevel());
+    L.zh = store.getLang() !== 'en';
     AppStorage.setOrCreate('themeVersion', 0);
     const entryPage: string = loggedIn ? 'pages/Index' : 'pages/Login';
     windowStage.loadContent(entryPage, (err) => {

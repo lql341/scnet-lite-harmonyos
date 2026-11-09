@@ -7,9 +7,12 @@ import { auth } from '../service/Auth';
 import { apiKeys, GatewayAccess } from '../service/ApiKeys';
 import { sessions, SessionData, SessionMeta, StoredMessage, titleFrom } from '../service/Sessions';
 import { agentChat } from '../service/AgentChat';
+import { uploader, UploadedFile } from '../service/Upload';
+import { picker } from '@kit.CoreFileKit';
 import { AgentService, KIND_AGENT, PickItem, agentItems, llmItems } from '../model/Pick';
 import { Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
 import { Theme, prettyModel, safe } from '../common/Theme';
+import { L } from '../common/I18n';
 import { MarkdownView } from '../view/MarkdownView';
 import { ModelSheet } from '../view/ModelSheet';
 import { ScenarioSheet } from '../view/ScenarioSheet';
@@ -71,6 +74,9 @@ struct Index {
   @State agentModelId: number = 0;
   @State agentName: string = '';
   @State sessionTitle: string = '';
+  /** 待发送的附件（已上传到 OSS，拿到平台 fileName） */
+  @State attachments: UploadedFile[] = [];
+  @State uploading: boolean = false;
   /** 智能体通道的平台会话 id（新对话时清空） */
   @State agentConversationId: string = '';
   /** 本次请求用的通道名，流结束时写进消息 */
@@ -90,6 +96,8 @@ struct Index {
   @State showScenarioSheet: boolean = false;
   /** 订阅主题版本：换主题后本页重建，读到新的 Theme 颜色 */
   @StorageLink('themeVersion') themeVersion: number = 0;
+  /** 外观（主题/字号/语言）版本：变化时整棵子树重建，静态色值与字号才会重算 */
+  @StorageProp('themeRev') themeRev: number = 0;
 
   private gateway: Gateway = new Gateway();
   private scroller: Scroller = new Scroller();
@@ -265,6 +273,61 @@ struct Index {
       }
     }
     return list.length > 0 ? list[0] : preferred;
+  }
+
+  /** 选附件：系统文件选择器 → 上传到 OSS → 变成待发送的 chip。 */
+  private async pickAttachment(): Promise<void> {
+    if (this.uploading) {
+      return;
+    }
+    let uris: string[] = [];
+    try {
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = 3;
+      const documentPicker = new picker.DocumentViewPicker();
+      uris = await documentPicker.select(options);
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'picker failed');
+      return;
+    }
+    if (uris.length === 0) {
+      return;
+    }
+    this.uploading = true;
+    for (let i = 0; i < uris.length; i++) {
+      const uri: string = uris[i];
+      const slash: number = uri.lastIndexOf('/');
+      let name: string = slash >= 0 ? uri.substring(slash + 1) : `file-${i}`;
+      if (name.indexOf('?') >= 0) {
+        name = name.substring(0, name.indexOf('?'));
+      }
+      const uploaded: UploadedFile | null = await uploader.uploadFile(uri, name);
+      if (uploaded !== null) {
+        this.attachments = this.attachments.concat([uploaded]);
+      } else {
+        this.errorMsg = `附件上传失败：${name}`;
+      }
+    }
+    this.uploading = false;
+  }
+
+  private removeAttachment(name: string): void {
+    this.attachments = this.attachments.filter((item: UploadedFile) => item.name !== name);
+  }
+
+  /** 长按 ＋ 走一次上传自检（诊断用）。 */
+  private async runUploadSelfTest(): Promise<void> {
+    this.errorMsg = '正在自检附件链路…';
+    const result: UploadedFile | null = await uploader.selfTest();
+    if (result === null) {
+      hilog.warn(0x0000, TAG, 'upload selftest failed');
+      this.errorMsg = '附件自检失败（看 hilog）';
+      return;
+    }
+    // 顺手挂成待发送附件，这样能直接验证「附件 → 智能体读到」的完整路径
+    this.attachments = this.attachments.concat([result]);
+    hilog.info(0x0000, TAG, 'upload selftest ok: %{public}s', result.name);
+    this.errorMsg = `附件已就绪：${result.localName}`;
   }
 
   /** 选场景：把预置 prompt 填进输入框并直接发送（与桌面端行为一致）。 */
@@ -477,7 +540,8 @@ struct Index {
 
     if (this.channel === 'agent' && this.agentModelId > 0) {
       agentChat.conversationId = this.agentConversationId;
-      agentChat.stream(this.agentModelId, text, handlers);
+      agentChat.stream(this.agentModelId, text, this.attachments, handlers);
+      this.attachments = [];
     } else if (this.apiKey.length > 0) {
       this.gateway.stream(this.baseUrl, this.apiKey, this.gatewayModel, history, handlers);
     } else {
@@ -550,7 +614,7 @@ struct Index {
       })
 
       Column({ space: 1 }) {
-        Text('智能体')
+        Text(L.t('超级计算智能体', 'SCNet Supercomputing'))
           .fontSize(Theme.fTitle)
           .fontWeight(FontWeight.Medium)
           .fontFamily(Theme.fontDisplay)
@@ -561,7 +625,7 @@ struct Index {
             .height(5)
             .borderRadius(3)
             .backgroundColor(this.apiKey.length > 0 ? Theme.ok : Theme.textFaint)
-          Text(this.apiKey.length > 0 ? '网关已就绪' : '未就绪')
+          Text(this.apiKey.length > 0 ? L.t('网关已就绪', 'Gateway ready') : L.t('未就绪', 'Not ready'))
             .fontSize(10)
             .fontColor(Theme.textFaint)
         }
@@ -685,25 +749,20 @@ struct Index {
   emptyState() {
     Column() {
       Column({ space: 10 }) {
-        Stack() {
-          Column()
-            .width(66)
-            .height(66)
-            .borderRadius(19)
-            .linearGradient({ angle: 145, colors: [['#1470B8', 0.0], ['#0B4F8A', 0.55], ['#06304F', 1.0]] })
-            .shadow({ radius: 20, color: '#0B4F8A40', offsetY: 8 })
-          Text('S')
-            .fontSize(30)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#FFFFFF')
-        }
-        Text('你好，我是 SCNet 智能体')
+        Image($r('app.media.app_icon'))
+          .width(68)
+          .height(68)
+          .borderRadius(19)
+          .objectFit(ImageFit.Cover)
+          .shadow({ radius: 18, color: '#0B1F3322', offsetY: 6 })
+        Text(L.t('你好，我是超级计算智能体', 'Hi, I am your SCNet agent'))
           .fontSize(24)
           .fontWeight(FontWeight.Normal)
           .fontFamily(Theme.fontDisplay)
           .fontColor(Theme.text)
           .margin({ top: 6 })
-        Text('面向科研计算的助手：作业调度、模型训练、数据分析')
+        Text(L.t('作业调度、模型训练、数据分析，说一声就开始',
+          'Job scheduling, training, data analysis — just ask'))
           .fontSize(Theme.fSmall)
           .fontColor(Theme.textFaint)
           .textAlign(TextAlign.Center)
@@ -769,13 +828,13 @@ struct Index {
         .width('100%')
 
         Row({ space: 8 }) {
-          Text('换一批')
+          Text(L.t('换一批', 'Shuffle'))
             .fontSize(Theme.fTiny)
             .fontColor(Theme.accent)
             .onClick(() => {
               this.rotateScenarios();
             })
-          Text('更多场景')
+          Text(L.t('更多场景', 'More scenes'))
             .fontSize(Theme.fTiny)
             .fontColor(Theme.textFaint)
             .onClick(() => {
@@ -830,7 +889,7 @@ struct Index {
   composer() {
     Column() {
       Column() {
-        TextArea({ text: this.input, placeholder: '发消息…' })
+        TextArea({ text: this.input, placeholder: L.t('发消息…', 'Message…') })
           .width('100%')
           .constraintSize({ minHeight: 42, maxHeight: 132 })
           .backgroundColor(Color.Transparent)
@@ -844,8 +903,23 @@ struct Index {
           })
 
         Row({ space: 8 }) {
+          Text(this.uploading ? '…' : '＋')
+            .fontSize(17)
+            .fontColor(Theme.textSub)
+            .width(28)
+            .height(28)
+            .textAlign(TextAlign.Center)
+            .borderRadius(14)
+            .backgroundColor(Theme.surfaceAlt)
+            .onClick(() => {
+              this.pickAttachment();
+            })
+            .gesture(LongPressGesture({ repeat: false }).onAction(() => {
+              this.runUploadSelfTest();
+            }))
+
           Row({ space: 4 }) {
-            Text('场景')
+            Text(L.t('场景', 'Scenes'))
               .fontSize(Theme.fTiny)
               .fontColor(Theme.textSub)
             Text('▸').fontSize(9).fontColor(Theme.textFaint)
@@ -923,7 +997,7 @@ struct Index {
       .border({ width: 1, color: Theme.border })
       .shadow(Theme.shadowSoft)
 
-      Text('内容由 AI 生成，请自行核对')
+      Text(L.t('内容由 AI 生成，请自行核对', 'AI-generated · please verify'))
         .fontSize(10)
         .fontColor(Theme.textFaint)
         .width('100%')
@@ -1050,7 +1124,7 @@ struct Index {
         Text('＋')
           .fontSize(15)
           .fontColor(Theme.textOnAccent)
-        Text('新对话')
+        Text(L.t('新对话', 'New chat'))
           .fontSize(Theme.fBody)
           .fontColor(Theme.textOnAccent)
           .fontWeight(FontWeight.Medium)
@@ -1075,10 +1149,10 @@ struct Index {
           .borderRadius(7)
           .backgroundColor(Theme.accentGhost)
         Column({ space: 1 }) {
-          Text('AI 社区')
+          Text(L.t('AI 社区', 'AI Community'))
             .fontSize(Theme.fSmall)
             .fontColor(Theme.text)
-          Text('领域智能体 / 应用市场')
+          Text(L.t('领域智能体 / 应用市场', 'Domain agents & apps'))
             .fontSize(10)
             .fontColor(Theme.textFaint)
         }
@@ -1097,7 +1171,7 @@ struct Index {
       })
 
       Row({ space: 6 }) {
-        Text('本机会话')
+        Text(L.t('本机会话', 'Local chats'))
           .fontSize(Theme.fTiny)
           .fontColor(Theme.textFaint)
           .layoutWeight(1)
@@ -1131,7 +1205,7 @@ struct Index {
       }
 
       Row({ space: 6 }) {
-        Text('平台历史')
+        Text(L.t('平台历史', 'Platform history'))
           .fontSize(Theme.fTiny)
           .fontColor(Theme.textFaint)
           .layoutWeight(1)
@@ -1165,14 +1239,14 @@ struct Index {
       Divider().color(Theme.hairline).margin({ top: 6, bottom: 6 })
 
       Row({ space: 10 }) {
-        Text('设置')
+        Text(L.t('设置', 'Settings'))
           .fontSize(Theme.fSmall)
           .fontColor(Theme.textSub)
           .layoutWeight(1)
           .onClick(() => {
             this.showSettings = !this.showSettings;
           })
-        Text(this.showSettings ? '收起' : '网关参数')
+        Text(this.showSettings ? L.t('收起', 'Hide') : L.t('网关参数', 'Gateway'))
           .fontSize(Theme.fTiny)
           .fontColor(Theme.textFaint)
           .onClick(() => {
@@ -1238,7 +1312,7 @@ struct Index {
         .padding({ bottom: 8 })
       }
 
-      Text('退出登录')
+      Text(L.t('退出登录', 'Sign out'))
         .fontSize(Theme.fSmall)
         .fontColor(Theme.danger)
         .width('100%')
@@ -1383,5 +1457,6 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor(Theme.bg)
+    .key(`root-${this.themeRev}`)
   }
 }

@@ -5,6 +5,7 @@
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Theme, prettyModel, safe } from '../common/Theme';
+import { L } from '../common/I18n';
 import { store, DEFAULT_MODEL } from '../service/Store';
 import { auth, ClusterIdentity, ClusterInfo } from '../service/Auth';
 import { credentials } from '../service/Http';
@@ -33,11 +34,26 @@ struct Profile {
   @State clusters: ClusterInfo[] = [];
   @State clusterId: number = 0;
   @State showClusterSheet: boolean = false;
+  @State fontLevel: number = 1;
+  @State lang: string = 'zh';
   /** 本次进来换过主题 → 返回时要用 replaceUrl 重建对话页，否则还是旧配色 */
   private themeChanged: boolean = false;
 
+  /** 系统返回手势也走同一套重建逻辑，否则对话页还是旧配色/旧字号 */
+  onBackPress(): boolean {
+    if (this.themeChanged) {
+      router.replaceUrl({ url: 'pages/Index' });
+      return true;
+    }
+    return false;
+  }
+
   aboutToAppear(): void {
     Theme.applyPalette(store.getTheme());
+    Theme.applyFontLevel(store.getFontLevel());
+    L.zh = store.getLang() !== 'en';
+    this.fontLevel = store.getFontLevel();
+    this.lang = store.getLang();
     this.load();
   }
 
@@ -83,12 +99,16 @@ struct Profile {
 
   private rebuildRows(): void {
     const rows: InfoRow[] = [
-      { label: '账号', value: this.userId },
-      { label: '集群账号', value: this.clusterAccount },
-      { label: '集群', value: this.clusterName.length > 0
-          ? `${this.clusterName}（${this.clusters.length} 个可选）` : '' },
-      { label: '当前通道', value: this.channelLabel() },
-      { label: '网关 key', value: this.maskedKey() }
+      { label: L.t('账号', 'Account'), value: this.userId },
+      { label: L.t('集群账号', 'Cluster acct'), value: this.clusterAccount },
+      {
+        label: L.t('集群', 'Cluster'),
+        value: this.clusterName.length > 0
+          ? L.t(`${this.clusterName}（${this.clusters.length} 个可选）`,
+            `${this.clusterName} (${this.clusters.length})`) : ''
+      },
+      { label: L.t('当前通道', 'Channel'), value: this.channelLabel() },
+      { label: L.t('网关 key', 'Gateway key'), value: this.maskedKey() }
     ];
     this.rows = rows;
   }
@@ -129,7 +149,7 @@ struct Profile {
                 router.replaceUrl({ url: 'pages/Index' });
               }
             })
-          Text('账号')
+          Text(L.t('设置', 'Settings'))
             .fontSize(Theme.fTitle)
             .fontFamily(Theme.fontDisplay)
             .fontWeight(FontWeight.Medium)
@@ -153,12 +173,12 @@ struct Profile {
                 .borderRadius(36)
                 .backgroundColor(Theme.accent)
                 .shadow({ radius: 18, color: '#0B1F3320', offsetY: 6 })
-              Text(this.userName.length > 0 ? this.userName : '未命名用户')
+              Text(this.userName.length > 0 ? this.userName : L.t('未命名用户', 'Unnamed'))
                 .fontSize(20)
                 .fontWeight(FontWeight.Normal)
                 .fontFamily(Theme.fontDisplay)
                 .fontColor(Theme.text)
-              Text('已登录 · 超算互联网')
+              Text(L.t('已登录 · 超算互联网', 'Signed in · SCNet'))
                 .fontSize(Theme.fTiny)
                 .fontColor(Theme.textFaint)
             }
@@ -197,7 +217,7 @@ struct Profile {
 
             // 外观
             Row({ space: 10 }) {
-              Text('主题色').fontSize(Theme.fSmall).fontColor(Theme.text).layoutWeight(1)
+              Text(L.t('主题色', 'Theme')).fontSize(Theme.fSmall).fontColor(Theme.text).layoutWeight(1)
               Row({ space: 6 }) {
                 Circle().width(16).height(16).fill(Theme.accent)
                 Text(Theme.findPalette(store.getTheme()).name)
@@ -215,7 +235,61 @@ struct Profile {
               this.showThemeSheet = true;
             })
 
-            Text('退出登录')
+            // 字号三档
+            Row({ space: 10 }) {
+              Text(L.t('字体大小', 'Text size')).fontSize(Theme.fSmall).fontColor(Theme.text).layoutWeight(1)
+              Row({ space: 6 }) {
+                ForEach([0, 1, 2], (level: number) => {
+                  Text(level === 0 ? L.t('小', 'S') : (level === 1 ? L.t('标准', 'M') : L.t('大', 'L')))
+                    .fontSize(Theme.fTiny)
+                    .fontColor(this.fontLevel === level ? Theme.textOnAccent : Theme.textSub)
+                    .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+                    .backgroundColor(this.fontLevel === level ? Theme.accent : Theme.surfaceAlt)
+                    .borderRadius(Theme.rSm)
+                    .onClick(() => {
+                      this.fontLevel = level;
+                      store.setFontLevel(level);
+                      Theme.applyFontLevel(level);
+                      Theme.bumpRev();
+                      router.replaceUrl({ url: 'pages/Profile' });
+                    })
+                }, (level: number) => `${level}`)
+              }
+            }
+            .width('100%')
+            .padding({ left: 14, right: 12, top: 12, bottom: 12 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+
+            // 语言
+            Row({ space: 10 }) {
+              Text(L.t('语言', 'Language')).fontSize(Theme.fSmall).fontColor(Theme.text).layoutWeight(1)
+              Row({ space: 6 }) {
+                ForEach(['zh', 'en'], (code: string) => {
+                  Text(code === 'zh' ? '中文' : 'English')
+                    .fontSize(Theme.fTiny)
+                    .fontColor(this.lang === code ? Theme.textOnAccent : Theme.textSub)
+                    .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+                    .backgroundColor(this.lang === code ? Theme.accent : Theme.surfaceAlt)
+                    .borderRadius(Theme.rSm)
+                    .onClick(() => {
+                      this.lang = code;
+                      store.setLang(code);
+                      L.zh = code !== 'en';
+                      Theme.bumpRev();
+                      router.replaceUrl({ url: 'pages/Profile' });
+                    })
+                }, (code: string) => code)
+              }
+            }
+            .width('100%')
+            .padding({ left: 14, right: 12, top: 12, bottom: 12 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+
+            Text(L.t('退出登录', 'Sign out'))
               .fontSize(Theme.fSmall)
               .fontColor(Theme.danger)
               .width('100%')

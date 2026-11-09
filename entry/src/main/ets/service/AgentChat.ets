@@ -20,6 +20,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { credentials } from './Http';
 import { StreamHandlers } from './Gateway';
+import { UploadedFile } from './Upload';
 
 const TAG: string = 'SCNetLite';
 const BASE: string = 'https://www.scnet.cn';
@@ -35,9 +36,17 @@ interface AgentHeader {
   version: string;
 }
 
+interface AgentResource {
+  name: string;
+  mimeType: string;
+  /** KB（平台按 1024 字节折算） */
+  size: number;
+}
+
 interface AgentInput {
   type: string;
-  text: string;
+  text?: string;
+  resource?: AgentResource;
 }
 
 interface AgentBody {
@@ -127,7 +136,7 @@ export class AgentChat {
     });
   }
 
-  stream(modelId: number, text: string, handlers: StreamHandlers): void {
+  stream(modelId: number, text: string, files: UploadedFile[], handlers: StreamHandlers): void {
     this.cancel();
     if (credentials.token.length === 0) {
       handlers.onError('未登录，无法使用智能体服务');
@@ -239,8 +248,16 @@ export class AgentChat {
       finish('');
     });
 
-    const input: AgentInput = { type: 'text', text: text };
-    const inputs: AgentInput[] = [input];
+    const inputs: AgentInput[] = [{ type: 'text', text: text }];
+    for (let i = 0; i < files.length; i++) {
+      const resource: AgentResource = {
+        name: files[i].name,
+        mimeType: files[i].mimeType,
+        size: files[i].sizeKb
+      };
+      const isImage: boolean = files[i].mimeType.indexOf('image/') === 0;
+      inputs.push({ type: isImage ? 'image' : 'file', resource: resource });
+    }
     const body: AgentBody = { modelId: modelId, origin: 'user', inputs: inputs };
     if (this.conversationId.length > 0) {
       body.conversationId = this.conversationId;
