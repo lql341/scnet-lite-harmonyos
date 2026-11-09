@@ -104,6 +104,64 @@ struct Jobs {
     this.loading = false;
   }
 
+  /**
+   * SLURM 状态码 → 可读文案。
+   * 平台返回的是 `statR/statC/statE…` 这种缩写（stat + 首字母大写）。
+   */
+  private statusLabel(code: string): string {
+    const map: string[] = [];
+    if (code === 'statR') {
+      return L.t('运行中', 'Running');
+    }
+    if (code === 'statPD' || code === 'statP') {
+      return L.t('排队中', 'Pending');
+    }
+    if (code === 'statC') {
+      return L.t('已完成', 'Completed');
+    }
+    if (code === 'statE') {
+      return L.t('异常退出', 'Failed');
+    }
+    if (code === 'statS' || code === 'statST') {
+      return L.t('已停止', 'Stopped');
+    }
+    if (code === 'statCA') {
+      return L.t('已取消', 'Cancelled');
+    }
+    if (code === 'statTO') {
+      return L.t('超时', 'Timeout');
+    }
+    if (code === 'statQ') {
+      return L.t('排队中', 'Queued');
+    }
+    if (code === 'statCG') {
+      return L.t('正在退出', 'Completing');
+    }
+    if (code === 'statNF') {
+      return L.t('节点失效', 'Node failure');
+    }
+    if (code === 'statOOM') {
+      return L.t('内存超限', 'Out of memory');
+    }
+    return code;
+  }
+
+  private statusColor(code: string): string {
+    if (code === 'statR') {
+      return Theme.ok;
+    }
+    if (code === 'statE' || code === 'statTO') {
+      return Theme.danger;
+    }
+    if (code === 'statPD' || code === 'statP' || code === 'statQ' || code === 'statCG') {
+      return Theme.warn;
+    }
+    if (code === 'statNF' || code === 'statOOM') {
+      return Theme.danger;
+    }
+    return Theme.textFaint;
+  }
+
   private mapJobs(raw: Record<string, Object>[]): JobRow[] {
     const out: JobRow[] = [];
     for (let i = 0; i < raw.length; i++) {
@@ -500,7 +558,9 @@ struct Jobs {
                       }
                       .alignItems(HorizontalAlign.Start)
                       .layoutWeight(1)
-                      Text(job.status).fontSize(10).fontColor(Theme.accent)
+                      Text(this.statusLabel(job.status))
+                        .fontSize(10)
+                        .fontColor(this.statusColor(job.status))
                     }
                     .width('100%')
                     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
