@@ -17,6 +17,7 @@ import { MarkdownView } from '../view/MarkdownView';
 import { ModelSheet } from '../view/ModelSheet';
 import { ScenarioSheet } from '../view/ScenarioSheet';
 import { scenarios, ScenarioCategory, ScenarioItem } from '../service/Scenarios';
+import { scenes, SceneBoard, SceneTab } from '../service/Scenes';
 
 const TAG: string = 'SCNetLite';
 
@@ -96,6 +97,11 @@ struct Index {
   @State scenarioCategory: string = 'science';
   @State scenarioItems: ScenarioItem[] = [];
   @State showScenarioSheet: boolean = false;
+  /** 服务端场景分类（桌面端算法：featured + vibeCodingScenes 按 question.scene 过滤） */
+  @State sceneTabs: SceneTab[] = [];
+  @State sceneTabId: string = 'featured';
+  @State sceneQuestions: string[] = [];
+  @State sceneOffset: number = 0;
   /** 订阅主题版本：换主题后本页重建，读到新的 Theme 颜色 */
   @StorageLink('themeVersion') themeVersion: number = 0;
   /** 外观（主题/字号/语言）版本：变化时整棵子树重建，静态色值与字号才会重算 */
@@ -194,6 +200,7 @@ struct Index {
     }
     this.rebuildPickItems();
     this.applySelection();
+    await this.loadScenes();
     await this.reloadConversations();
   }
 
@@ -468,6 +475,48 @@ struct Index {
     } catch (e) {
       this.errorMsg = '加载会话历史失败';
     }
+  }
+
+  /** 拉服务端场景分类；拿不到就回落到本地场景目录。 */
+  private async loadScenes(): Promise<void> {
+    const board: SceneBoard = await scenes.load();
+    this.sceneTabs = board.tabs;
+    if (board.tabs.length > 0) {
+      this.sceneTabId = board.tabs[0].id;
+      this.sceneQuestions = board.tabs[0].questions;
+      this.sceneOffset = 0;
+    }
+  }
+
+  private pickSceneTab(id: string): void {
+    this.sceneTabId = id;
+    for (let i = 0; i < this.sceneTabs.length; i++) {
+      if (this.sceneTabs[i].id === id) {
+        this.sceneQuestions = this.sceneTabs[i].questions;
+        break;
+      }
+    }
+    this.sceneOffset = 0;
+  }
+
+  private shuffleScenes(): void {
+    if (this.sceneQuestions.length <= 3) {
+      return;
+    }
+    this.sceneOffset = (this.sceneOffset + 3) % this.sceneQuestions.length;
+  }
+
+  /** 当前展示的 3 条问题（循环轮转）。 */
+  private visibleQuestions(): string[] {
+    const out: string[] = [];
+    const total: number = this.sceneQuestions.length;
+    if (total === 0) {
+      return out;
+    }
+    for (let i = 0; i < 3 && i < total; i++) {
+      out.push(this.sceneQuestions[(this.sceneOffset + i) % total]);
+    }
+    return out;
   }
 
   private async reloadConversations(): Promise<void> {
@@ -786,9 +835,75 @@ struct Index {
           .fontColor(Theme.textFaint)
           .textAlign(TextAlign.Center)
       }
-      .padding({ top: 8, bottom: 22 })
+      .padding({ top: 4, bottom: 16 })
 
-      if (this.scenarioCategories.length > 0) {
+      if (this.sceneTabs.length > 0) {
+        Scroll() {
+          Row({ space: 8 }) {
+            ForEach(this.sceneTabs, (tab: SceneTab) => {
+              Text(tab.title)
+                .fontSize(Theme.fSmall)
+                .fontColor(tab.id === this.sceneTabId ? Theme.textOnAccent : Theme.textSub)
+                .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+                .backgroundColor(tab.id === this.sceneTabId ? Theme.accent : Theme.surface)
+                .borderRadius(Theme.rPill)
+                .border({ width: 1, color: tab.id === this.sceneTabId ? Theme.accent : Theme.hairline })
+                .onClick(() => {
+                  this.pickSceneTab(tab.id);
+                })
+            }, (tab: SceneTab) => tab.id)
+          }
+          .padding({ left: 2, right: 2 })
+        }
+        .scrollable(ScrollDirection.Horizontal)
+        .scrollBar(BarState.Off)
+        .width('100%')
+        .margin({ top: 4, bottom: 10 })
+
+        Column({ space: 8 }) {
+          ForEach(this.visibleQuestions(), (question: string) => {
+            Row({ space: 10 }) {
+              Text(question)
+                .fontSize(Theme.fSmall)
+                .lineHeight(19)
+                .fontColor(Theme.textSub)
+                .maxLines(2)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .layoutWeight(1)
+              Text('›').fontSize(16).fontColor(Theme.textFaint)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+            .padding({ left: 14, right: 12, top: 10, bottom: 10 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+            .onClick(() => {
+              this.input = question;
+              this.send();
+            })
+          }, (question: string) => question)
+        }
+        .width('100%')
+
+        Row({ space: 8 }) {
+          Text(L.t('换一批', 'Shuffle'))
+            .fontSize(Theme.fTiny)
+            .fontColor(Theme.accent)
+            .onClick(() => {
+              this.shuffleScenes();
+            })
+          Text(L.t('更多场景', 'More scenes'))
+            .fontSize(Theme.fTiny)
+            .fontColor(Theme.textFaint)
+            .onClick(() => {
+              this.showScenarioSheet = true;
+            })
+          Blank().layoutWeight(1)
+        }
+        .width('100%')
+        .padding({ top: 10, left: 4 })
+      } else if (this.scenarioCategories.length > 0) {
         // 领域场景：分类 + 场景卡（数据来自桌面端 home-scenarios 目录）
         Scroll() {
           Row({ space: 8 }) {

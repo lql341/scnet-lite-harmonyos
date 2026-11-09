@@ -206,7 +206,32 @@ POST /acx/search/dolphin/skills/full-text   ← 技能
 （连接器/技能 Tab、最热/最新/最多下载排序、搜索、分页加载，点卡片用内嵌 Web 打开 AIHub 详情），
 抽屉「插件」入口。
 
-### 待办：连接器安装/接入 & 首页云端分类
+### 首页分类 — ✅ 已按桌面端算法实现（2026-11-09）
+
+桌面端 4.1.1 `dist-electron/main` 的 `tp()` 是这么算 tab 的：
+
+```
+并发取 /config/list + /v1/agent/permission/check + /recommend/list?enable=true
+scenes = config.vibeCodingScenes  （滤掉 value === "featured"）
+qs     = recommend[identify === "aiagent-router"].question
+         .filter(q => q.enable === true && (!q.route || q.route === "aiAssistant"))
+tabs   = [{id:"featured", questions: 全部 qs}] +
+         scenes.map(s => ({id: s.value, title: s.label,
+                           questions: qs.filter(q => q.scene == null || q.scene === s.value)}))
+         .filter(t => t.questions.length > 0)     ← 没有问题的分类直接不显示
+```
+
+本账号实测：`vibeCodingScenes` = 材料计算/生物信息/仿真优化/办公提效/平台助手；
+router 的 94 条问题里 `scene` 分布 general 83 / industry 4 / bioinformatics 4 / simulation 3；
+**office 没有专属问题 → 「办公提效」按规则被过滤掉**，最终 5 个 tab。
+
+> 桌面端截图里的 7 个 tab（含文献阅读/学术写作）说明那份 config 与我们账号不同，
+> 我们的实现是数据驱动的，不硬编码 tab 名。
+
+实现：`service/Scenes.ets`（完全照上面的算法）+ `pages/Index.ets` 空状态
+（分类 chips + 3 条推荐问题 + 换一批；本地场景目录作为兜底）。
+
+### 待办：连接器安装/接入
 
 - 连接器**安装**（把 MCP 接入当前会话）需要 MCP 客户端 + 传输，桌面端走 host op
   `mcp.*` / `aihub/mcp/user/server/reconnect`；手机端要做的是「浏览+跳转社区」，
