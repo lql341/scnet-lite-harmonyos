@@ -6,9 +6,8 @@ import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Theme, prettyModel, safe } from '../common/Theme';
 import { L } from '../common/I18n';
-import { store, DEFAULT_MODEL } from '../service/Store';
+import { store } from '../service/Store';
 import { auth, ClusterIdentity, ClusterInfo } from '../service/Auth';
-import { credentials } from '../service/Http';
 import { UserInfo } from '../model/Types';
 import { ThemeSheet } from '../view/ThemeSheet';
 
