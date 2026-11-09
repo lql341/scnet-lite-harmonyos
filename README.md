@@ -19,16 +19,21 @@
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | 平台对话协议（鉴权 4 头、v2 stream、SSE 43 字段、状态机） |
 | [`HANDOFF.md`](HANDOFF.md) | 立项背景、环境、已踩的坑、逆向结论 |
 
-## 现状（2026-11-09 00:50）
+## 现状（2026-11-09 12:10）
 
 | 能力 | 状态 |
 | --- | --- |
 | 登录（账号密码，form-urlencoded） | ✅ 真机通过 |
-| 自动取网关 key（query → team → create） | ✅ 真机通过（`sk-…` 43 字符） |
-| 会话列表 / 打开历史 | ✅ 真机通过（30 条会话） |
-| 模型列表（33 个真实用户可见模型） | ✅ |
-| 流式对话出字 | ❌ 平台侧「系统繁忙」/ 网关「402 余额不足」，见 TODO A 段 |
+| 会话列表 / 打开历史 | ✅ 真机通过 |
+| 智能体服务目录（`recommend/list`） | ✅ 本机实测（含 `aiagent-router` = modelId 600） |
+| 流式对话出字 | ✅ **已修根因**（`modelId` 要走 `recommend/list`，不是 `config/list`），待真机复验 |
+| 流式帧解析（`text-delta` / `finish` / `title_gen`） | ✅ 按真实流量校准，拼接与 `history` 逐字一致 |
 | UI（官方移动端布局 + 抽屉 + 底部输入） | ✅ 已装机验证 |
+| 网关 LLM 通道（`api.scnet.cn/api/gw/v1`） | ❌ 当前账号 `402 Insufficient Balance`，与 v2 无关，已从默认路径移除 |
+
+> 调试提示：协议问题不必装机。桌面客户端配置里有活体 `accessToken`，
+> 用 `loginDesktopClientByToken.action`（form 字段 `desktopToken`）换 cookie 后直接 curl 平台接口即可。
+> 详见 [`docs/NEXT.md`](docs/NEXT.md) §2 与 [`docs/PROTOCOL.md`](docs/PROTOCOL.md) §8.3。
 
 ## 旧版说明（v0.1.0 MVP）
 

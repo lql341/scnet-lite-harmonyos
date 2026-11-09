@@ -116,9 +116,37 @@ export class Chat {
           this.conversationId = frame.conversationId;
         }
         const type: string = frame.type === undefined || frame.type === null ? '' : frame.type;
+        // 真实帧词表（2026-11-09 实测，`/tmp/scdbg/run1.sse`）：
+        //   start · todolist · title_gen · tool-input-start · tool-input-delta ·
+        //   tool-input-available · tool-output-available · tool-exec-progress ·
+        //   text-start · text-delta · text-end · finish · history
+        // 没有 `data: [done]` 哨兵，流靠 `finish` 帧 + TCP 关闭结束。
         if (type === 'error') {
           finish(frame.errorText === undefined ? '服务端返回错误' : frame.errorText);
           return;
+        }
+        if (type === 'finish') {
+          finish('');
+          return;
+        }
+        if (type === 'title_gen') {
+          const t: string = frame.title === undefined || frame.title === null ? '' : frame.title;
+          if (t.length > 0 && handlers.onTitle !== undefined) {
+            handlers.onTitle(t);
+          }
+          continue;
+        }
+        if (type === 'tool-exec-progress' || type === 'todolist') {
+          const p: string = frame.progressText === undefined || frame.progressText === null ? '' : frame.progressText;
+          if (p.length > 0 && handlers.onProgress !== undefined) {
+            handlers.onProgress(p);
+          }
+          continue;
+        }
+        // 只有 `text-delta` 的 `delta` 是正文；`tool-input-delta` 走的是 `inputTextDelta`，
+        // 千万别当正文渲染（否则会把工具入参 JSON 吐进气泡）。
+        if (type !== 'text-delta' && type.length > 0) {
+          continue;
         }
         const delta: string = frame.delta === undefined || frame.delta === null ? '' : frame.delta;
         if (delta.length > 0) {

@@ -14,6 +14,10 @@ export interface StreamHandlers {
   onDelta: (content: string, reasoning: string) => void;
   onDone: () => void;
   onError: (message: string) => void;
+  /** 会话标题（服务端 `title_gen` 帧，v2 才有）。 */
+  onTitle?: (title: string) => void;
+  /** 进度文案（`tool-exec-progress` / `todolist`），用于“正在处理…”那行。 */
+  onProgress?: (text: string) => void;
 }
 
 interface DeltaBody {

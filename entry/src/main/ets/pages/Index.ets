@@ -7,10 +7,14 @@ import { store, DEFAULT_BASE_URL } from '../service/Store';
 import { auth } from '../service/Auth';
 import { credentials } from '../service/Http';
 import { chat } from '../service/Chat';
-import { apiKeys, LLM_BASE } from '../service/ApiKeys';
 import { ModelSheet } from '../view/ModelSheet';
 import { MODELS, ModelInfo, modelLabel } from '../model/Models';
-import { ModelItem, Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
+import { ModelItem, AgentService, Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
+
+/** v2 对话唯一可用的服务标识（智能体路由器）。 */
+const ROUTER_IDENTIFY: string = 'aiagent-router';
+/** 服务表拉不到时的最后已知可用 modelId（2026-11-09 直连实测）。 */
+const FALLBACK_ROUTER_MODEL_ID: number = 600;
 
 interface RenderMsg {
   role: string;
@@ -56,11 +60,13 @@ struct Index {
   @State messages: RenderMsg[] = [];
   @State input: string = '';
   @State streaming: string = '';
+  @State progressText: string = '';
   @State busy: boolean = false;
   @State errorMsg: string = '';
   @State userName: string = '';
   @State platformName: string = '';
   @State modelId: number = 0;
+  @State agentServices: AgentService[] = [];
   @State platformModels: ModelItem[] = [];
   @State gatewayModels: string[] = [];
   @State conversations: Conversation[] = [];
@@ -100,43 +106,38 @@ struct Index {
     }
     try {
       const cfg: ChatConfig = await auth.chatConfig();
-      const list: ModelItem[] = cfg.modelList ?? [];
-      this.platformModels = list;
-      if (list.length > 0) {
-        this.platformName = list[0].name ?? '';
-        this.modelId = list[0].id ?? 0;
-      }
-      hilog.info(0x0000, 'SCNetLite', 'models %{public}d', list.length);
+      this.platformModels = cfg.modelList ?? [];
+      hilog.info(0x0000, 'SCNetLite', 'llm models %{public}d', this.platformModels.length);
     } catch (e) {
       hilog.warn(0x0000, 'SCNetLite', 'config failed');
     }
-    // 手机端真正走的是网关：平台会自动下发一个 key，拿到就用它（v2 agent 接口实测回「系统繁忙」）
+    // ⚠️ v2 对话的 modelId 只能来自 recommend/list 的 aiagent-router（实测 600）。
+    // 用 config/list.modelList 的 id（17/120/410/520）服务端会秒回「系统繁忙，请稍后再试」。
     try {
-      const key: string = await apiKeys.ensureKey();
-      hilog.info(0x0000, 'SCNetLite', 'gateway key len=%{public}d', key.length);
-      if (key.length > 0) {
-        const probe = await apiKeys.probeGateway(key);
-        hilog.info(0x0000, 'SCNetLite', 'gateway probe ok=%{public}s status=%{public}d model=%{public}s',
-          String(probe.ok), probe.status, probe.models);
-        if (probe.ok) {
-          this.apiKey = key;
-          // 手机 APK 走的是 /api/llm/v1（实测 models 200，33 个模型）
-          this.baseUrl = LLM_BASE;
-          this.gatewayModel = probe.models;
-          store.setApiKey(key);
-          store.setBaseUrl(this.baseUrl);
-          store.setModel(this.gatewayModel);
-          const models: string[] = await apiKeys.listGatewayModels(key);
-          this.gatewayModels = models;
-          if (models.length > 0) {
-            this.gatewayModel = models[0];
-            store.setModel(models[0]);
-          }
-          hilog.info(0x0000, 'SCNetLite', 'gatewayModels %{public}d', models.length);
+      const services: AgentService[] = await auth.agentServices();
+      this.agentServices = services;
+      let chosen: AgentService | null = null;
+      for (let i = 0; i < services.length; i++) {
+        if (services[i].identify === ROUTER_IDENTIFY) {
+          chosen = services[i];
+          break;
         }
       }
+      if (chosen !== null) {
+        this.modelId = parseInt(chosen.modelId ?? '', 10);
+        this.platformName = chosen.aiAssistantName ?? '智能体服务';
+      } else {
+        this.modelId = FALLBACK_ROUTER_MODEL_ID;
+        this.platformName = '智能体服务';
+      }
+      hilog.info(0x0000, 'SCNetLite', 'services %{public}d, v2 modelId=%{public}d',
+        services.length, this.modelId);
     } catch (e) {
-      hilog.warn(0x0000, 'SCNetLite', 'ensureKey failed');
+      if (this.modelId === 0) {
+        this.modelId = FALLBACK_ROUTER_MODEL_ID;
+        this.platformName = '智能体服务';
+      }
+      hilog.warn(0x0000, 'SCNetLite', 'agent services failed');
     }
     await this.reloadConversations();
   }
@@ -203,6 +204,7 @@ struct Index {
       this.messages = this.messages.concat([msg('assistant', this.streaming)]);
     }
     this.streaming = '';
+    this.progressText = '';
     this.busy = false;
     setTimeout(() => this.scrollToEnd(), 50);
   }
@@ -215,6 +217,7 @@ struct Index {
     this.errorMsg = '';
     this.input = '';
     this.streaming = '';
+    this.progressText = '';
     this.busy = true;
     this.messages = this.messages.concat([msg('user', text)]);
     this.scrollToEnd();
@@ -223,8 +226,16 @@ struct Index {
       onDelta: (content: string, reasoning: string) => {
         if (content.length > 0) {
           this.streaming = this.streaming + content;
+          this.progressText = '';
         }
         this.scrollToEnd();
+      },
+      onProgress: (text: string) => {
+        this.progressText = text;
+        this.scrollToEnd();
+      },
+      onTitle: (title: string) => {
+        hilog.info(0x0000, 'SCNetLite', 'title_gen: %{public}d chars', title.length);
       },
       onDone: () => {
         this.finishStream();
@@ -241,7 +252,7 @@ struct Index {
       return item;
     });
     if (this.modelId > 0) {
-      // APK 的路径：平台 v2 智能体（modelId 是 config/list 里的数字 id）
+      // 平台 v2 智能体（modelId 来自 recommend/list 的 aiagent-router）
       chat.stream(this.modelId, text, handlers);
     } else if (this.apiKey.length > 0) {
       this.gateway.stream(this.baseUrl, this.apiKey, this.gatewayModel, history, handlers);
@@ -541,7 +552,8 @@ struct Index {
 
             if (this.busy) {
               ListItem() {
-                this.bubble(msg('assistant', this.streaming.length > 0 ? this.streaming : '…'))
+                this.bubble(msg('assistant', this.streaming.length > 0 ? this.streaming :
+                  (this.progressText.length > 0 ? this.progressText : '…')))
               }
             }
           }
@@ -562,11 +574,11 @@ struct Index {
             this.showModelSheet = false;
           })
           ModelSheet({
-            models: this.gatewayModels,
-            current: this.gatewayModel,
-            onPick: (name: string) => {
-              this.gatewayModel = name;
-              store.setModel(name);
+            services: this.agentServices,
+            currentModelId: this.modelId,
+            onPick: (service: AgentService) => {
+              this.modelId = parseInt(service.modelId ?? '', 10);
+              this.platformName = service.aiAssistantName ?? '智能体服务';
               this.showModelSheet = false;
             },
             onClose: () => {

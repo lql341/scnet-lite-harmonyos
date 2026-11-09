@@ -1,10 +1,60 @@
 # NEXT — 下一步要做的事（可直接照做）
 
-> 更新时间：2026-11-08 23:55。机器状态、卡点、命令都在这里；跨机器接手看 §7。
+> 更新时间：2026-11-09 12:10。**卡点已解除**：`系统繁忙` 是 `modelId` 取错了目录
+> （v2 要走 `recommend/list` 的 `aiagent-router` → `600`，不是 `config/list.modelList` 的 LLM id）。
+> 协议细节以 `docs/PROTOCOL.md` §8.3/§8.4 为准。
 
 ---
 
-## 0. 换电脑后第一天（5 分钟）
+## 0. 当下第一步：把设备接回来，装上验证出字
+
+```bash
+. ~/opt/module-init.sh && module load harmonyos jdk
+hvigorw assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
+hdc tconn 192.168.1.63:36333      # 无线调试；IP/端口变了就在手机上重新看
+hdc list targets                  # 必须不是 [Empty]
+./scripts/sign.sh --install       # 需要 signing/ 软链到 ~/Downloads/scnet-hmos（当前不在本机）
+```
+
+当前机器状态（2026-11-09 12:05）：工具链 ✅、构建 ✅（3 s）、**设备 ❌（`hdc list targets` = `[Empty]`）**、签名材料 ❌（`signing/` 与 `~/Downloads/scnet-hmos` 都不存在）。
+无设备时可以纯后端调试，见 §2。
+
+## 1. 现状一句话
+
+登录/会话列表/历史/智能体服务目录都通；`v2/agent/stream` 已在本机用真实凭据跑通（`modelId=600`），
+代码按真实帧词表改完并构建通过；**只剩真机装机复验**。
+
+## 2. 本机脱机调试 v2（不需要手机，强烈推荐）
+
+协议实验全是纯 HTTP，没必要上机循环。仓库自带探针：
+
+```bash
+./scripts/probe-v2.sh services                     # 列服务表，标出 aiagent-router 的 modelId
+./scripts/probe-v2.sh stream "用一句话说明 SLURM"   # 只要正文，工具帧/标题走 stderr
+./scripts/probe-v2.sh stream "继续" --cid <id>     # 多轮
+./scripts/probe-v2.sh raw GET '/acx/chatbot/config/list'
+./scripts/probe-v2.sh raw POST '/acx/chatbot/v2/agent/stop' '{"conversationId":"…","modelId":600}'
+```
+
+凭据自动从桌面客户端配置 `~/.config/scnet-client/config.json` 的 `accessToken`（235 字符 JWT）取，
+再换一份 `jsessionid`（参数名就是 `desktopToken`）。也可 `SC_TOKEN`/`SC_COOKIE` 覆盖；
+`SC_MODEL_ID=600` 可跳过服务表。
+
+手工等价命令（探针坏了时对照用）：
+
+```bash
+curl -s -X POST https://www.scnet.cn/ac/api/auth/loginDesktopClientByToken.action \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d "desktopToken=$AT" -D - -o /dev/null | grep -i set-cookie
+
+curl -s 'https://www.scnet.cn/acx/chatbot/recommend/list?enable=true' \
+  -H "Token: $AT" -H "Cookie: $CK" | jq -r '.data[]? | select(.identify=="aiagent-router") | .modelId'
+# → 600
+```
+
+调试纪律：**先在本机 curl 复现 → 改协议 → 再上机**，不要用装机循环试协议。
+
+## 3. 换电脑后第一天（5 分钟）
 
 ```bash
 git clone git@github.com:lql341/scnet-lite-harmonyos.git
@@ -26,23 +76,16 @@ DEVECO_SDK_HOME=~/opt/apps/harmonyos/26.0.0.865/command-line-tools/sdk \
 `signing/` 软链与三者公钥是否配对、工作区是否干净、6 份文档是否齐。
 只构建不装机时可以跳过签名那步（会标 `[warn]`）。
 
-## 1. 现状一句话
+## 4. 历史记录：当时卡在哪（已解决，留档）
 
-能登录、能拉会话列表/历史、能自动取网关 key、UI 已按官方移动端重排并装机；
-**唯独"对话出字"没通**：平台 v2 agent 回「系统繁忙」，网关 llm/v1 回「402 余额不足」。
-代码与协议都已对齐（`docs/PROTOCOL.md`），剩下是账号侧确认。待办全表见 `docs/TODO.md`。
-
-## 2. 现在卡在哪 + 下一步
-
-详见 [`docs/TODO.md`](TODO.md) 的 A 段。两条路，任选其一：
-
-1. **确认账号**：手机 APK 里登录的用户名是不是 `luql`？如果不是，把它给我，我改 `defaultCluster`/团队参数即可。
-2. **抓手机端请求**：手机装 mitmproxy 证书 → 代理到本机 → App 发一条 → 导出 HAR 给我比对。
+之前以为是「账号侧权益 / 服务端不可用」，实际是 `modelId` 用错了目录。
+错判过程与纠正见 `docs/PROTOCOL.md` §8.3；不要再为「系统繁忙」去抓手机端的 mitmproxy HAR，
+本机 curl 几秒就能复现并定位。
 
 不阻塞的部分（可以直接往下做）：`v2/agent/stop` 接入、断线续传（`interrupted`/`uncertain`）、
 Markdown + KaTeX 渲染、会话重命名、附件上传下载。见 `docs/TODO.md` B/C 段。
 
-## 3. P0 工程底座（0.5 天）— **已完成**
+## 5. P0 工程底座（0.5 天）— **已完成**
 
 已落地（提交 `feat(P0/P1)`）：
 
@@ -72,7 +115,7 @@ Markdown + KaTeX 渲染、会话重命名、附件上传下载。见 `docs/TODO.
 
 ---
 
-## 3. P1 登录（2 天）
+## 6. P1 登录（2 天）
 
 接口（`docs/PROTOCOL.md §6`，已确认存在）：
 
@@ -93,7 +136,7 @@ POST /acx/user/users/logout
 
 ---
 
-## 4. P2 对话（3 天，依赖 T0）
+## 7. P2 对话（3 天，依赖 T0）
 
 顺序：
 1. `GET /acx/chatbot/config/list` → 取 `modelList[].id`（数字 modelId）、`defaultCluster`、`defaultIdentify`
@@ -106,14 +149,14 @@ POST /acx/user/users/logout
 
 ---
 
-## 5. P3~P6
+## 8. P3~P6
 
 见 `docs/PLAN.md`。P3（富交互：`interaction`/`resource_card`/`job-monitor`）、P4（作业/产物/SLURM）、
 P5（账号/团队/计费）、P6（语音/OCR/相机/打磨）。
 
 ---
 
-## 6. 本机工具脚本（不在仓库里，重写很快）
+## 9. 本机工具脚本（不在仓库里，重写很快）
 
 - `/tmp/cdp.mjs`：最小 CDP 驱动（Node ≥22 有全局 `WebSocket`）——仅在调试 Web 端/Electron 时才用得到，"复刻 APK"本身不需要
   ```js
@@ -128,7 +171,7 @@ P5（账号/团队/计费）、P6（语音/OCR/相机/打磨）。
 
 ---
 
-## 7. 换一台机器怎么无缝接手
+## 10. 换一台机器怎么无缝接手
 
 ### 必须带的（不在仓库里，详见 [`SIGNING.md`](SIGNING.md)）
 | 东西 | 位置（本机） | 说明 |
@@ -162,7 +205,7 @@ Node ≥22（用全局 `WebSocket`）、JDK 21、`gh` 已登录 `lql341`。
 
 ---
 
-## 8. 未决问题（需要人）
+## 11. 未决问题（需要人）
 1. **手机端联调**：需要在真机上跑一次对话，确认 `/acx/chatbot/*` 链路可用（若不繁忙则直接接）。
 2. **测试账号**：登录/注销/发票联调。
 3. **范围**：P5/P6 是否进第一版（砍掉省 2.5 天）。

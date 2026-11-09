@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { store } from './Store';
 import { credentials, httpClient, ApiError } from './Http';
-import { ApiEnvelope, ChatConfig, ConversationPage, HistoryPage, UserInfo } from '../model/Types';
+import { AgentService, ApiEnvelope, ChatConfig, ConversationPage, HistoryPage, UserInfo } from '../model/Types';
 
 /** 登录成功后的会话态。 */
 export interface Session {
@@ -119,6 +119,16 @@ class Auth {
   async chatConfig(): Promise<ChatConfig> {
     const data = await httpClient.getData('/acx/chatbot/config/list');
     return data as ChatConfig;
+  }
+
+  /**
+   * 智能体服务表。**v2 对话的 modelId 只能从这里拿**（`aiagent-router` → "600"）。
+   * client/lib 侧对应桌面端 `GET /recommend/list?enable=true`。
+   */
+  async agentServices(): Promise<AgentService[]> {
+    const data = await httpClient.getData('/acx/chatbot/recommend/list?enable=true');
+    // 信封里的 data 直接就是数组
+    return data as AgentService[];
   }
 
   /** 某个会话的历史消息（v2）。 */

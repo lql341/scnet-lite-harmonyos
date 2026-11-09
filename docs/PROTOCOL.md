@@ -11,7 +11,8 @@
 | 鉴权头 | `Token: <token>` **和** `Cookie: <cookie>`（不是 `Authorization: Bearer`；两者都带） |
 | 流式请求 | `POST /acx/chatbot/v2/agent/stream` |
 | 流头 | `Content-Type: application/json`、`Accept: text/event-stream`、`timeout: 0`、`maxRedirects: 0` |
-| 分隔 | 标准 SSE：`event:` / `data:`，`data` 为 JSON，**流结束哨兵是 `data: [done]`** |
+| 分隔 | 标准 SSE：**只有 `data:` 行，没有 `event:` 行**，`data` 为 JSON；
+| 结尾 | **没有 `[done]` 哨兵**（早期文档写错了）：流以 `finish` 帧 + 连接关闭结束，见 §8.4 |
 | 缓冲 | 客户端按 4 MiB 上限做行缓冲，UTF-8 `StringDecoder`（跨块多字节安全） |
 
 ## 2. 发消息
@@ -21,7 +22,7 @@ v2（当前）：
 ```json
 POST /acx/chatbot/v2/agent/stream
 {
-  "modelId": "SCNet-Max",
+  "modelId": 600,                    // ← 来自 recommend/list 的 aiagent-router，不是 LLM id！
   "conversationId": "…",            // 新会话时省略
   "origin": "user",                  // 续跑任务时为 "system"
   "inputs": [{ "type": "text", "text": "用户输入" }]   // 附件/交互结果追加进 inputs
@@ -43,19 +44,28 @@ POST /acx/chatbot/v2/agent/stop   { "conversationId": "…", "modelId": "…" }
 ```
 （若会话里有未终态的 `job-monitor` 组件，客户端**再额外发一次** `/v2/agent/stop`）
 
-## 3. SSE 事件词表（`event` 名）
+## 3. SSE 帧类型词表（**没有 `event:` 行，看 `data.type`**）
 
-| event | 处理 |
+⚠️ 早期版本误写成「SSE `event:` 名」，实测（§8.4）流里根本没有 `event:` 行，
+全是 `data:` JSON，靠 `type` 字段区分：
+
+| `type` | 处理 |
 | --- | --- |
-| `title_gen` | `data.title` → 回写会话标题 |
-| `conversation-status` | `data.status` → 任务状态（`taskStatus`） |
-| `data` / `metadata` | `data.data.status` 命中 `prepar\|wait\|init\|starting` → 阶段 = `preparing`；`data.data.description` → 提示语 |
+| `null`（首帧） | 只带 `conversationId`，记下来 |
+| `start` | 一次运行开始（`messageId`、`agentName`） |
+| `title_gen` | `title` → 回写会话标题 |
+| `todolist` | 服务端待办步骤（`resource.steps`），可选渲染 |
+| `tool-input-start/delta/available` | 工具调用（**`inputTextDelta` 不是正文**） |
+| `tool-output-available` | 工具结果 |
+| `tool-exec-progress` | `progressText` / `progressPercent` → 状态行 |
 | `heartbeat` | 忽略（保活） |
-| `job-terminal-notice` | `{jobId, clusterId}` → 把对应 `job-monitor` 组件置 `enable=false, terminalNotice=true`，或补一条 |
-| `*-end`（后缀） | 忽略 |
-| `[done]`（data 值） | 整条流结束 |
+| `text-start` / `text-delta` / `text-end` | **正文**，`delta` 才是要拼接的 |
+| `finish` | 本次运行结束（`finishReason: stop`），应视为流终态 |
+| `history` | 服务端权威消息列表（`messages[]`），可做自校验 |
+| `error` | `errorText` → 错误文案，终止 |
+| `job-terminal-notice` | `{jobId, clusterId}` → `job-monitor` 组件置终态 |
 
-其余带 `data.id` 的事件 = 一条消息记录，按 `type` 归类（见下）。
+基本规则：只有 `text-delta` 的 `delta` 是给用户看的字；其余 `*-delta` 一律忽略。
 
 ## 4. 记录（record）类型
 
@@ -150,7 +160,12 @@ com.sugon.acx.chatbot.app.entity.dto.coder.VibeCodingChatDto
 
 ## 8. 已实测通的关键点（2026-11-08 23:4x，直连）
 
-### 8.1 `modelId` 数字从哪来 —— `GET /acx/chatbot/config/list`（带鉴权）
+### 8.1 `modelId` 从哪来 —— ⚠️ 早期结论已纠正，见 §8.3
+
+~~来自 `GET /acx/chatbot/config/list` 的 `modelList[].id`~~ —— **不对**。
+`config/list.modelList[]` 是**网关 LLM 目录**（v1 `/api/llm/v1` 用）；v2 stream 要的是
+`/acx/chatbot/recommend/list?enable=true` 里的 `services[identify='aiagent-router'].modelId`（= `"600"`，字符串）。
+下面这段 `config/list` 记录只作为 LLM 目录参考保留：
 
 ```jsonc
 data.modelList = [
@@ -187,14 +202,56 @@ data.fileUploadEnable / relatedQuestionEnable / loginEnable / apiDocumentUrl / v
 首帧就带回 `conversationId`（会话是在**流开始后**才创建的），这与「`uncertain` 状态」的设计吻合：
 没拿到 conversationId 就断了 = 不知道服务端有没有创建任务。
 
-### 8.3 当前阻塞：服务端直连一律 `系统繁忙，请稍后再试`
+### 8.3 ✅ 已解除（2026-11-09 12:00）：`系统繁忙` 的根因是 `modelId` 取错了目录
 
-同一份凭据、同一份 body，桌面客户端里也卡在「正在思考…」。三种 body 变体
-（纯 minimal / 带 `identify` / 带 `clusterId`）全部 200 但立刻 `type:"error"`。
-说明**不是协议问题**，是账号/agent 服务侧当前不可用（或该账号未开通 agent 配额）。
-客户端里那条「正在思考…」其实就是同一个错误被吞掉了 —— 这也解释了为什么客户端 UI 一直不落地。
+之前 8.3 的结论（「服务端不可用」）**是错的**。真实原因是 `modelId` 用错了来源：
 
-→ 等 agent 服务恢复后再跑一次，就能把 `delta` 增量帧、`done` 结尾、`[done]` 哨兵全部确认。
+| 目录 | 用途 | id 形态 | 拿去打 v2 stream |
+| --- | --- | --- | --- |
+| `GET /acx/chatbot/config/list` → `modelList[]` | 网关 `/api/llm/v1` 的 LLM 目录 | `17 / 120 / 410 / 520` | ❌ 秒回 `{"type":"error","errorText":"系统繁忙，请稍后再试"}` |
+| `GET /acx/chatbot/recommend/list?enable=true` → 服务项 | **v2 智能体服务** | `aiagent-router` → `modelId: "600"` | ✅ 正常出字 |
+
+v2 的 `modelId` 是**服务 id**（`aiagent-router` = 智能体路由器），不是 LLM id；
+Qwen/DeepSeek 的选择在**服务端由 subagent 路由完成**（`toolName: resolve_subtask_agents`），
+客户端根本选不了。桌面端 main 包里的判据写死得很清楚：
+
+```js
+if ("v2"===e.protocol && ("aiagent-router"!==e.service || a.modelId!==e.modelId))
+  throw Error("此服务暂不可用，请稍后重试。")   // a = recommend/list.services.find(identify===e.service)
+```
+
+另一条经验：**`Cookie` 头（`jsessionid` + `Token=<uuid>`）对 stream 是必需的**。
+只带 `Token` 打 stream → `500`，空 body，但会下发 `Set-Cookie: SKIP_SESSION_UPDATE=…`（说明已进到应用层）。
+补上 cookie 立刻 200。cookie 可以这样现取：
+
+```bash
+POST /ac/api/auth/loginDesktopClientByToken.action   form: desktopToken=<accessToken>
+  → 200 Set-Cookie: jsessionid=…; Token=<uuid>
+```
+
+（参数名是 `desktopToken`，不是 `token`/`accessToken`；差一个就回 `1003 params not enough`。）
+
+### 8.4 实测帧词表（2026-11-09，`data:` 行全量统计）
+
+**没有 `data: [done]` 哨兵**，也没有 `event:` 行；流靠 `finish` 帧 + 连接关闭结束。
+真实出现的 `type`：
+
+```
+null(首帧，只带 conversationId) · start · todolist · title_gen ·
+tool-input-start · tool-input-delta · tool-input-available · tool-output-available ·
+tool-exec-progress · heartbeat · text-start · text-delta · text-end · finish · history
+```
+
+- **正文只认 `text-delta` 的 `delta`**；`tool-input-delta` 走的是 `inputTextDelta`
+  （工具入参 JSON 分片，一次对话能有 72 片），当成正文渲染会把 spew 吐进气泡。
+- `title_gen.title` = 会话标题；`tool-exec-progress.progressText` = 「正在处理…」；
+- `history.messages[]` 是**服务端权威结果**（`role/type/text/reasoning/resource`），
+  可作为「流式拼接是否漏字」的自校验基准；
+- 同一条流里可能有多个 `agentName`（`SCNet`/`AI助理`），靠 `messageId` + `executionContext.role`
+  （`supervisor`/`subagent`）区分。
+
+已验证：20 个 `text-delta` 拼接结果与 `history` 里 `type==='text'` 的 `text` **逐字相等**；
+带 `conversationId` 续聊同样正常（第 2 轮）。
 
 ## 9. 未解决
 

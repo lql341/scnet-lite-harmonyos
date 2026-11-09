@@ -4,31 +4,24 @@
 
 ---
 
-## A. 阻塞项（先解决这些，其它才有意义）
+## A. 阻塞项（已解除）
 
-- [x] **账号已确认**：手机端 APK 登录的也是 `luql`，同一台手机（PLA-AL10）、同一网络。
-  我们的 v2 探测**就是在手机上跑的本 app** 发起的，所以环境/账号/网络三者相同 → **差异只可能在请求内容**。
-
-- [?] **抓手机端 APK 的真实请求（当前唯一有效路径）**
-  需要：安卓机（APK 装在哪台就在哪台）+ mitmproxy/Charles + 系统级 CA 证书。
-  抓 `POST /acx/chatbot/v2/agent/stream` 的请求头 + body，与我们发的逐字段比对。
-
-- [x] ~~确认手机 APK 用的是哪个账号~~
-  官方 App 在手机上能出字，但同一个账号从鸿蒙客户端请求：
-  - `POST /acx/chatbot/v2/agent/stream` → 200 → 第二帧 `{"type":"error","errorText":"系统繁忙，请稍后再试"}`
-  - `POST /api/llm/v1/chat/completions`（自动建的 key）→ `402 Insufficient Balance`
-  9 种 header/body 组合（`source=Android|HarmonyOS|Electron`、`clusterId=11250`、`identify=aiagent-router`）全部一样。
-  → **需要一个能正常对话的账号**，或者确认手机端登录的是不是 `luql`。
-
-- [?] **如果账号没问题，就抓手机端真实请求**
-  手机装 mitmproxy 证书 → 代理到本机 → App 里发一条 → 导出 HAR。
-  拿到后比对，就能确定差异在字段还是账号侧权益。
-
-- [x] 平台 `v2` 帧结构、SSE 事件、连接状态机（见 `docs/PROTOCOL.md`）
-- [x] 已排除的变量：source（Android/HarmonyOS/Electron）、version（1.1.1/1.0.0/4.1.0）、
-      body 里的 `clusterId=11250`、`identify=aiagent-router`、以及是否复用 conversationId —— 全部同样报「系统繁忙」
+- [x] **`系统繁忙，请稍后再试` 根因已找到并修复（2026-11-09 12:00）**
+  `modelId` 取错了目录：v2 走的是 **服务**（`/acx/chatbot/recommend/list?enable=true` →
+  `identify='aiagent-router'` → `modelId: "600"`），不是 `config/list.modelList[].id`
+  （17/120/410/520，那些是网关 `/api/llm/v1` 的 LLM 目录）。
+  直连实测 `modelId:600` 正常出字（20 个 `text-delta`，与 `history` 逐字一致）。
+  代码已改：`Auth.agentServices()` + `Index` 按服务取 modelId + `Chat` 帧解析按 `type` 分派。
+  详见 `docs/PROTOCOL.md` §8.3 / §8.4。
+- [x] **另一条实测经验**：v2 stream **必须带 `Cookie`**（`jsessionid` + `Token=<uuid>`），
+  只带 `Token` 会 500 空 body。cookie 可用 `loginDesktopClientByToken.action`（form: `desktopToken=`）现取。
+- [x] ~~抓手机端 APK 的请求~~ —— 不再需要：已在本机用真实凭据完整复现并修通。
+  离线复现脚本思路：`/tmp/scdbg/{probe,cap,st}.mjs`（凭据 600 权限，不进仓库）。
+- [x] 平台 `v2` 帧结构、SSE 词表、连接状态机（见 `docs/PROTOCOL.md` §3 / §8.4）
+- [x] 已排除的变量：source / version / clusterId / identify / conversationId 复用（全部无关）
 - [x] 登录契约（form-urlencoded `username`/`password`，错误码 `1014`）
 - [x] 自动取网关 key 的完整链路（query → 需要团队 → create → Bearer 调用）
+      注：网关 LLM 通道对当前账号回 **402 Insufficient Balance**，v2 通道与它无关，不要再用它判活。
 
 ---
 
@@ -51,7 +44,11 @@
 ## B. 对话功能（P2，代码主体已在，缺"能出字"的验证）
 
 - [x] 会话列表 / 打开历史（`conversation/list`、`v2/agent/conversation/{id}/history`）
-- [x] 流式渲染骨架（`service/Chat.ets`，43 字段帧 + `[done]` 哨兵）
+- [x] 流式渲染骨架（`service/Chat.ets`）—— **2026-11-09 已按真实帧词表重写**：
+      只认 `text-delta` 的 `delta`；`finish` 作终态；`title_gen`/`tool-exec-progress` 接上回调；
+      不再依赖不存在的 `data: [done]` 哨兵
+- [x] 智能体服务选择器（`recommend/list` 的 services，取代原来的 33 个网关模型面板）
+- [ ] **真机复验出字**（当前无设备连接，见 `docs/NEXT.md` §0）
 - [x] 停止生成（`chat.cancel()` + `v2/agent/stop` 接口未接）
 - [ ] **`v2/agent/stop` 接入**（现在只是断开本地请求，服务端任务不会停）
 - [ ] 断线续传：`interrupted` → 重连 + 拉历史；`uncertain` → `check-stream` / 任务列表，禁止重发
@@ -119,6 +116,9 @@
 
 ## I. 待补的协议细节
 
+- [x] ~~v2 stream 的 `modelId` 从哪来~~ → `recommend/list` → `aiagent-router` → `600`（字符串）
+- [x] ~~流结束哨兵~~ → 没有 `[done]`，靠 `finish` 帧 + 连接关闭
+- [x] ~~stream 是否必须带 Cookie~~ → 必须，缺了 500
 - [ ] `v2/agent/stop` 请求体（已知 `{conversationId, modelId}`，未验证）
 - [ ] `v2/agent/resume` / `check-stream` 的入参与返回
 - [ ] `agent/task/list` 必填参数
