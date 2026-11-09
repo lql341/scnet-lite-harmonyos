@@ -1263,6 +1263,37 @@ struct Index {
       })
 
       Row({ space: 8 }) {
+        Text('＋')
+          .fontSize(13)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.accent)
+          .width(24)
+          .height(24)
+          .textAlign(TextAlign.Center)
+          .borderRadius(7)
+          .backgroundColor(Theme.accentGhost)
+        Column({ space: 1 }) {
+          Text(L.t('插件', 'Plugins'))
+            .fontSize(Theme.fSmall)
+            .fontColor(Theme.text)
+          Text(L.t('连接器 / 技能市场', 'Connectors & skills'))
+            .fontSize(10)
+            .fontColor(Theme.textFaint)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Text('›').fontSize(14).fontColor(Theme.textFaint)
+      }
+      .width('100%')
+      .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+      .backgroundColor(Theme.surfaceAlt)
+      .borderRadius(Theme.rSm)
+      .onClick(() => {
+        this.drawerOpen = false;
+        router.pushUrl({ url: 'pages/MarketPage' });
+      })
+
+      Row({ space: 8 }) {
         Text('OCR')
           .fontSize(9)
           .fontWeight(FontWeight.Bold)

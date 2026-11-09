@@ -6,6 +6,7 @@
     "pages/WebPage",
     "pages/Profile",
     "pages/Jobs",
-    "pages/OcrPage"
+    "pages/OcrPage",
+    "pages/MarketPage"
   ]
 }

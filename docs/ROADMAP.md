@@ -177,7 +177,55 @@ AK/SK 录入：一次粘贴 `AccessKey:SecretKey`（自动按 `:`/`,`/空白/64 
 - UI：底部 Tab「作业」= 列表 / 详情 / 日志；提交前二次确认显示队列与资源
 - 验收：提交一个 `sleep 5` 作业 → 看状态流转 → 收日志
 
-### P4 插件市场（AIHub）
+### P4 插件市场 — ✅ 已接（2026-11-09）
+
+接口（桌面端 4.1.1 的 `dist-electron/main` 里挖到，本机实测通）：
+
+```
+POST /acx/search/dolphin/mcp/full-text      ← 连接器（MCP）
+POST /acx/search/dolphin/skills/full-text   ← 技能
+  {"query": {"keyWords":"", "pageSize":20, "pageNum":1},
+   "sort":  {"browseCount":"desc"}}
+→ data{ total, pages, records[{id,nameCn,nameEn,desc,imageUrl,avatarUrl,
+                              createUser,authenticatedName,browseCount,
+                              downloadCount,updateTime,tags[]}]}
+```
+
+实测规模：**连接器 13617 个 / 技能 17792 个**。
+
+**踩坑**：
+- `sort` 必须是**对象（Map）**。传数组 `[{"field":…,"order":…}]` 直接 400：
+  `Cannot deserialize value of type LinkedHashMap`。
+- 字段名**驼峰**：`updateTime` / `browseCount` / `downloadCount`；写 `update_time` 会**静默返回 0 条**
+  （不是报错，最容易误判成"没有数据"）。
+- 不带 `sort` → 400「字段sort不能为空」。
+- `criterion` 过滤（tag / suggestType）传了不生效，暂用关键词搜索替代。
+- `/acx/aihub/skills/list` 存在但对 GET/POST 都回 405，不是列表接口，别在那儿耗时间。
+
+实现：`service/Market.ets` + `pages/MarketPage.ets`
+（连接器/技能 Tab、最热/最新/最多下载排序、搜索、分页加载，点卡片用内嵌 Web 打开 AIHub 详情），
+抽屉「插件」入口。
+
+### 待办：连接器安装/接入 & 首页云端分类
+
+- 连接器**安装**（把 MCP 接入当前会话）需要 MCP 客户端 + 传输，桌面端走 host op
+  `mcp.*` / `aihub/mcp/user/server/reconnect`；手机端要做的是「浏览+跳转社区」，
+  真正执行 MCP 需要额外运行时（后续评估）。
+- 桌面端 4.1.1 首页出现 7 个分类（文献阅读/材料科学/工业仿真/生物信息/学术写作/
+  平台助手/办公创作）与「本地 | 云端」切换；我们打包的 `home-scenarios` 仍是 4 类
+  （`~/.config/scnet-client/home-scenarios/catalog.json`，schemaVersion 2，2026-11-04）。
+  云端分类的服务端接口尚未找到（`/acx/chatbot/scenario/list` 等多条路径均 404），
+  下一步在 Web 端 `/ui/chatbot` 抓一次 Network 即可定位。
+
+### 平台作业接口（新发现，暂不可用）
+
+桌面端 4.1.1 新增 `/acx/jobsched/*`（走登录态，不需要 AK/SK）：
+`job/history/list`、`job/history/detail`、`job/history/queue/list`、
+`user/quotas/activejob/num?strJobManagerId=`、`job/file/afterN`、
+`apptemplates/BASIC/VNC/job`。**本机实测全部 503 Service Unavailable**
+（服务未上线/不可用），所以作业面继续用 HPC OpenAPI。
+
+### 原 P4 计划（保留背景）
 - 已确认存在的路径：`/acx/aihub/skills/…`、`/acx/aihub/mcp/user/server/reconnect`
 - `POST /acx/aihub/skills/list` 与 `GET` 都返回 405 → 需要继续逆向（下一步：在 asar 里定位调用点，
   或给桌面端主进程挂 CDP 看真实请求）
