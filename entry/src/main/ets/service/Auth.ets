@@ -4,6 +4,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { store } from './Store';
 import { credentials, httpClient, ApiError } from './Http';
 import { ApiEnvelope, ChatConfig, ConversationPage, HistoryPage, UserInfo } from '../model/Types';
+import { AgentService } from '../model/Pick';
 
 /** 登录成功后的会话态。 */
 export interface Session {
@@ -179,6 +180,15 @@ class Auth {
       hilog.warn(0x0000, 'SCNetLite', 'cluster-user-detail failed');
       return empty;
     }
+  }
+
+  /**
+   * 平台智能体服务表。智能体通道的 modelId 只能从这里拿
+   * （`aiagent-router` = 600，见 docs/PROTOCOL.md §0）。
+   */
+  async agentServices(): Promise<AgentService[]> {
+    const data = await httpClient.getData('/acx/chatbot/recommend/list?enable=true');
+    return data as AgentService[];
   }
 
   /** 某个会话的历史消息（v2）。 */

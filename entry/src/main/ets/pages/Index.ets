@@ -6,6 +6,8 @@ import { store, DEFAULT_BASE_URL, DEFAULT_MODEL } from '../service/Store';
 import { auth } from '../service/Auth';
 import { apiKeys, GatewayAccess } from '../service/ApiKeys';
 import { sessions, SessionData, SessionMeta, StoredMessage, titleFrom } from '../service/Sessions';
+import { agentChat } from '../service/AgentChat';
+import { AgentService, KIND_AGENT, PickItem, agentItems, llmItems } from '../model/Pick';
 import { Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
 import { Theme, prettyModel, safe } from '../common/Theme';
 import { MarkdownView } from '../view/MarkdownView';
@@ -16,10 +18,17 @@ const TAG: string = 'SCNetLite';
 interface RenderMsg {
   role: string;
   content: string;
+  /** 该条回答实际走的通道（多通道并存后必须逐条记） */
+  via?: string;
 }
 
 function msg(role: string, content: string): RenderMsg {
-  const item: RenderMsg = { role: role, content: content };
+  const item: RenderMsg = { role: role, content: content, via: '' };
+  return item;
+}
+
+function msgVia(role: string, content: string, via: string): RenderMsg {
+  const item: RenderMsg = { role: role, content: content, via: via };
   return item;
 }
 
@@ -52,6 +61,18 @@ struct Index {
   @State localSessions: SessionMeta[] = [];
   @State currentSessionId: string = '';
   @State gatewayModels: string[] = [];
+  @State agentServices: AgentService[] = [];
+  @State pickItems: PickItem[] = [];
+  /** 'agent' = 平台智能体服务，'llm' = 网关模型 */
+  @State channel: string = 'agent';
+  @State agentKey: string = 'aiagent-router';
+  @State agentModelId: number = 0;
+  @State agentName: string = '';
+  @State sessionTitle: string = '';
+  /** 智能体通道的平台会话 id（新对话时清空） */
+  @State agentConversationId: string = '';
+  /** 本次请求用的通道名，流结束时写进消息 */
+  private pendingVia: string = '';
   @State conversations: Conversation[] = [];
   @State drawerOpen: boolean = false;
   @State showSettings: boolean = false;
@@ -74,6 +95,8 @@ struct Index {
     this.apiKey = store.getApiKey();
     this.baseUrl = store.getBaseUrl();
     this.gatewayModel = store.getModel();
+    this.channel = store.getChannel();
+    this.agentKey = store.getAgent();
     this.draftKey = this.apiKey;
     this.draftUrl = this.baseUrl;
     sessions.init(getContext(this) as common.UIAbilityContext);
@@ -109,6 +132,13 @@ struct Index {
       hilog.warn(0x0000, TAG, 'config failed');
     }
     try {
+      const services: AgentService[] = await auth.agentServices();
+      this.agentServices = services;
+      hilog.info(0x0000, TAG, 'agent services: %{public}d', services.length);
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'agent services failed');
+    }
+    try {
       this.gatewayAccess = await apiKeys.ensureAccess(await auth.clusterIdentity());
       if (this.gatewayAccess.key.length > 0) {
         this.apiKey = this.gatewayAccess.key;
@@ -125,7 +155,83 @@ struct Index {
     } catch (e) {
       hilog.warn(0x0000, TAG, 'gateway access failed');
     }
+    this.rebuildPickItems();
+    this.applySelection();
     await this.reloadConversations();
+  }
+
+  /** 把服务表与网关模型合成一张选择表（智能体在前）。 */
+  private rebuildPickItems(): void {
+    const merged: PickItem[] = agentItems(this.agentServices);
+    const models: PickItem[] = llmItems(this.gatewayModels, prettyModel);
+    for (let i = 0; i < models.length; i++) {
+      merged.push(models[i]);
+    }
+    this.pickItems = merged;
+    hilog.info(0x0000, TAG, 'pick items: agents=%{public}d llm=%{public}d',
+      agentItems(this.agentServices).length, models.length);
+  }
+
+  /** 依据 channel/agentKey 找到当前选中项；找不到就退回两端各自默认。 */
+  private applySelection(): void {
+    let current: PickItem | null = null;
+    for (let i = 0; i < this.pickItems.length; i++) {
+      const item: PickItem = this.pickItems[i];
+      if (item.kind === KIND_AGENT && item.key === this.agentKey && this.channel === 'agent') {
+        current = item;
+        break;
+      }
+      if (item.kind !== KIND_AGENT && item.key === this.gatewayModel && this.channel === 'llm') {
+        current = item;
+        break;
+      }
+    }
+    if (current === null) {
+      // 没选过：智能体优先（平台助手就是产品默认），否则回落到免费模型
+      let agentDefault: PickItem | null = null;
+      for (let i = 0; i < this.pickItems.length; i++) {
+        if (this.pickItems[i].kind === KIND_AGENT) {
+          agentDefault = this.pickItems[i];
+          break;
+        }
+      }
+      if (agentDefault !== null) {
+        current = agentDefault;
+        this.channel = 'agent';
+      } else if (this.gatewayModels.length > 0) {
+        this.channel = 'llm';
+        this.gatewayModel = this.pickModel(this.gatewayModels, this.gatewayModel);
+      }
+    }
+    if (current !== null) {
+      this.applyPick(current);
+    }
+  }
+
+  private applyPick(item: PickItem): void {
+    if (item.kind === KIND_AGENT) {
+      this.channel = 'agent';
+      this.agentKey = item.key;
+      this.agentModelId = item.modelId;
+      this.agentName = item.label;
+      store.setChannel('agent');
+      store.setAgent(item.key);
+    } else {
+      this.channel = 'llm';
+      this.gatewayModel = item.key;
+      store.setChannel('llm');
+      store.setModel(item.key);
+    }
+    hilog.info(0x0000, TAG, 'channel=%{public}s key=%{public}s modelId=%{public}d',
+      this.channel, item.key, item.modelId);
+  }
+
+  /** 当前选中项的展示名（输入框左侧 chip）。 */
+  private currentLabel(): string {
+    if (this.channel === 'agent') {
+      return this.agentName.length > 0 ? this.agentName : '智能体服务';
+    }
+    return prettyModel(this.gatewayModel);
   }
 
   /** 上次选择 → SCNet-Max（免费） → 列表首个。 */
@@ -153,10 +259,12 @@ struct Index {
     }
     const restored: RenderMsg[] = [];
     for (let i = 0; i < data.messages.length; i++) {
-      restored.push(msg(data.messages[i].role, data.messages[i].content));
+      const item: StoredMessage = data.messages[i];
+      restored.push(msgVia(item.role, item.content, item.via ?? ''));
     }
     this.messages = restored;
     this.currentSessionId = data.id;
+    this.sessionTitle = data.title;
     this.currentCloudId = '';
     this.errorMsg = '';
     this.drawerOpen = false;
@@ -169,7 +277,7 @@ struct Index {
       return;
     }
     const stored: StoredMessage[] = this.messages.map((m: RenderMsg): StoredMessage => {
-      const item: StoredMessage = { role: m.role, content: m.content };
+      const item: StoredMessage = { role: m.role, content: m.content, via: m.via ?? '' };
       return item;
     });
     if (this.currentSessionId.length === 0) {
@@ -177,7 +285,7 @@ struct Index {
     }
     const data: SessionData = {
       id: this.currentSessionId,
-      title: titleFrom(stored),
+      title: this.sessionTitle.length > 0 ? this.sessionTitle : titleFrom(stored),
       model: this.gatewayModel,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -263,11 +371,12 @@ struct Index {
 
   private finishStream(): void {
     if (this.streaming.length > 0) {
-      this.messages = this.messages.concat([msg('assistant', this.streaming)]);
+      this.messages = this.messages.concat([msgVia('assistant', this.streaming, this.pendingVia)]);
     }
     this.streaming = '';
     this.progressText = '';
     this.busy = false;
+    this.agentConversationId = agentChat.conversationId;
     this.persistSession();
     setTimeout(() => this.scrollToEnd(), 50);
   }
@@ -283,10 +392,12 @@ struct Index {
     this.progressText = '';
     this.busy = true;
     this.currentCloudId = '';
+    this.pendingVia = this.currentLabel();
     this.messages = this.messages.concat([msg('user', text)]);
     this.persistSession();
     this.scrollToEnd();
 
+    this.sessionTitle = '';
     const handlers: StreamHandlers = {
       onDelta: (content: string, reasoning: string) => {
         if (content.length > 0) {
@@ -299,7 +410,9 @@ struct Index {
         this.progressText = value;
       },
       onTitle: (title: string) => {
-        hilog.info(0x0000, TAG, 'title_gen: %{public}d', title.length);
+        // 智能体通道会用服务端生成的标题，本地会话跟着改
+        this.sessionTitle = title;
+        this.persistSession();
       },
       onDone: () => {
         this.finishStream();
@@ -316,10 +429,13 @@ struct Index {
       return item;
     });
 
-    if (this.apiKey.length > 0) {
+    if (this.channel === 'agent' && this.agentModelId > 0) {
+      agentChat.conversationId = this.agentConversationId;
+      agentChat.stream(this.agentModelId, text, handlers);
+    } else if (this.apiKey.length > 0) {
       this.gateway.stream(this.baseUrl, this.apiKey, this.gatewayModel, history, handlers);
     } else {
-      this.errorMsg = this.gatewayNotice.length > 0 ? this.gatewayNotice : '没有可用的网关 key，请重新登录';
+      this.errorMsg = this.gatewayNotice.length > 0 ? this.gatewayNotice : '没有可用通道，请重新登录';
       this.busy = false;
     }
   }
@@ -336,6 +452,10 @@ struct Index {
     this.errorMsg = '';
     this.currentCloudId = '';
     this.currentSessionId = '';
+    this.agentConversationId = '';
+    this.sessionTitle = '';
+    agentChat.conversationId = '';
+    agentChat.lastTitle = '';
     this.drawerOpen = false;
   }
 
@@ -402,19 +522,19 @@ struct Index {
 
   // ---------------------------------------------------------------- 消息
   @Builder
-  assistantBubble(content: string, isStreaming: boolean) {
+  assistantBubble(content: string, isStreaming: boolean, via: string) {
     Column({ space: 5 }) {
       // 元信息行：模型名 · AI，比一个看不清的小圆标更实用
       Row({ space: 5 }) {
-        Text(prettyModel(this.gatewayModel))
+        Text(via.length > 0 ? via : this.currentLabel())
           .fontSize(10)
           .fontColor(Theme.textFaint)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Column().width(2).height(2).borderRadius(1).backgroundColor(Theme.textFaint)
-        Text(isStreaming ? '生成中' : 'AI')
-          .fontSize(10)
-          .fontColor(isStreaming ? Theme.accent : Theme.textFaint)
+        if (isStreaming) {
+          Column().width(4).height(4).borderRadius(2).backgroundColor(Theme.ok)
+          Text('生成中').fontSize(10).fontColor(Theme.ok)
+        }
       }
       .padding({ left: 4 })
 
@@ -599,7 +719,7 @@ struct Index {
 
         Row({ space: 8 }) {
           Row({ space: 5 }) {
-            Text(prettyModel(this.gatewayModel))
+            Text(this.currentLabel())
               .fontSize(Theme.fTiny)
               .fontColor(Theme.accent)
               .maxLines(1)
@@ -630,7 +750,13 @@ struct Index {
             .backgroundColor(Theme.danger)
             .borderRadius(Theme.rPill)
             .onClick(() => {
-              this.gateway.cancel();
+              // 智能体通道必须显式 stop，否则服务端任务还在跑
+              if (this.channel === 'agent') {
+                agentChat.stop(this.agentModelId);
+                agentChat.cancel();
+              } else {
+                this.gateway.cancel();
+              }
               this.finishStream();
             })
           } else {
@@ -984,7 +1110,7 @@ struct Index {
                 if (item.role === 'user') {
                   this.userBubble(item.content)
                 } else {
-                  this.assistantBubble(item.content, false)
+                  this.assistantBubble(item.content, false, item.via ?? '')
                 }
               }
             }, (item: RenderMsg, index: number) => `${index}-${item.role}-${item.content.length}`)
@@ -992,7 +1118,7 @@ struct Index {
             if (this.busy) {
               ListItem() {
                 if (this.streaming.length > 0) {
-                  this.assistantBubble(this.streaming, true)
+                  this.assistantBubble(this.streaming, true, this.pendingVia)
                 } else {
                   this.thinking()
                 }
@@ -1040,11 +1166,10 @@ struct Index {
             this.showModelSheet = false;
           })
           ModelSheet({
-            models: this.gatewayModels,
-            current: this.gatewayModel,
-            onPick: (name: string) => {
-              this.gatewayModel = name;
-              store.setModel(name);
+            items: this.pickItems,
+            currentKey: this.channel === 'agent' ? this.agentKey : this.gatewayModel,
+            onPick: (item: PickItem) => {
+              this.applyPick(item);
               this.showModelSheet = false;
             },
             onClose: () => {

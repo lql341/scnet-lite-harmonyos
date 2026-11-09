@@ -1,75 +1,95 @@
 /**
- * 模型选择底部面板：搜索 + 列表 + 免费标识。
- * 33 个模型不搜索要划三屏，所以搜索框是必需的。
+ * 统一选择面板：智能体服务（平台）+ 模型（网关）两组，带搜索。
+ * 两组共用同一个数据结构 PickItem，选中后由 Index 决定走哪条通道。
  */
-import { Theme, prettyModel } from '../common/Theme';
-
-/** 平台自营、不扣余额的模型（详情见 docs/PROTOCOL.md §10.2.2） */
-const FREE_MODEL: string = 'SCNet-Max';
+import { Theme } from '../common/Theme';
+import { KIND_AGENT, PickItem } from '../model/Pick';
 
 @Component
 export struct ModelSheet {
-  @Prop models: string[] = [];
-  @Prop current: string = '';
+  @Prop items: PickItem[] = [];
+  @Prop currentKey: string = '';
   @State query: string = '';
-  onPick: (name: string) => void = () => {
+  onPick: (item: PickItem) => void = () => {
   };
   onClose: () => void = () => {
   };
 
-  /** 列表高度跟着结果数走，搜到 1 条时不该留一大片空白。 */
-  private listHeight(): number {
-    const count: number = this.filtered().length;
-    const wanted: number = count * 46 + 10;
-    return wanted > 330 ? 330 : wanted;
-  }
-
-  private filtered(): string[] {
+  private filtered(kind: string): PickItem[] {
     const q: string = this.query.trim().toLowerCase();
-    if (q.length === 0) {
-      return this.models;
-    }
-    const out: string[] = [];
-    for (let i = 0; i < this.models.length; i++) {
-      if (this.models[i].toLowerCase().indexOf(q) >= 0) {
-        out.push(this.models[i]);
+    const out: PickItem[] = [];
+    for (let i = 0; i < this.items.length; i++) {
+      const item: PickItem = this.items[i];
+      if (item.kind !== kind) {
+        continue;
+      }
+      if (q.length === 0 || item.label.toLowerCase().indexOf(q) >= 0 ||
+        item.sub.toLowerCase().indexOf(q) >= 0) {
+        out.push(item);
       }
     }
     return out;
   }
 
+  private total(): number {
+    return this.filtered(KIND_AGENT).length + this.filtered('llm').length;
+  }
+
+  private listHeight(): number {
+    const count: number = this.total();
+    const wanted: number = count * 44 + 56;
+    return wanted > 330 ? 330 : wanted;
+  }
+
   @Builder
-  row(name: string) {
+  sectionTitle(text: string, hint: string) {
+    Row({ space: 6 }) {
+      Text(text).fontSize(Theme.fTiny).fontColor(Theme.textFaint)
+      Text(hint).fontSize(10).fontColor(Theme.textFaint).opacity(0.8)
+    }
+    .width('100%')
+    .padding({ left: 4, top: 10, bottom: 2 })
+  }
+
+  @Builder
+  row(item: PickItem) {
     Row({ space: 8 }) {
-      Text(prettyModel(name))
-        .fontSize(Theme.fBody)
-        .fontColor(name === this.current ? Theme.accent : Theme.text)
-        .fontWeight(name === this.current ? FontWeight.Medium : FontWeight.Normal)
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .layoutWeight(1)
-      if (name === FREE_MODEL) {
-        Text('免费')
+      Column({ space: 2 }) {
+        Row({ space: 6 }) {
+          Text(item.label)
+            .fontSize(Theme.fBody)
+            .fontColor(item.key === this.currentKey ? Theme.accent : Theme.text)
+            .fontWeight(item.key === this.currentKey ? FontWeight.Medium : FontWeight.Normal)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          if (item.free) {
+            Text('免费')
+              .fontSize(10)
+              .fontColor(Theme.ok)
+              .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+              .backgroundColor('#E8F8F0')
+              .borderRadius(5)
+          }
+        }
+        Text(item.sub)
           .fontSize(10)
-          .fontColor(Theme.ok)
-          .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-          .backgroundColor('#E8F8F0')
-          .borderRadius(5)
+          .fontColor(Theme.textFaint)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
-      if (name === this.current) {
-        Text('✓')
-          .fontSize(14)
-          .fontColor(Theme.accent)
-          .fontWeight(FontWeight.Bold)
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      if (item.key === this.currentKey) {
+        Text('✓').fontSize(14).fontColor(Theme.accent).fontWeight(FontWeight.Bold)
       }
     }
     .width('100%')
-    .padding({ left: 4, right: 4, top: 12, bottom: 12 })
+    .padding({ left: 4, right: 4, top: 9, bottom: 9 })
   }
 
   build() {
     Column() {
-      // 拖拽指示条
       Row()
         .width(36)
         .height(4)
@@ -79,8 +99,8 @@ export struct ModelSheet {
 
       Row() {
         Column({ space: 2 }) {
-          Text('选择模型').fontSize(Theme.fTitle).fontWeight(FontWeight.Medium).fontColor(Theme.text)
-          Text(`共 ${this.models.length} 个 · SCNet Max 免费，其余需余额`)
+          Text('选择通道').fontSize(Theme.fTitle).fontWeight(FontWeight.Medium).fontColor(Theme.text)
+          Text('智能体走平台服务，模型走网关（SCNet Max 免费）')
             .fontSize(Theme.fTiny)
             .fontColor(Theme.textFaint)
         }
@@ -102,7 +122,7 @@ export struct ModelSheet {
       .padding({ left: 4, right: 4, bottom: 10 })
 
       Row({ space: 8 }) {
-        TextInput({ text: this.query, placeholder: '搜索模型' })
+        TextInput({ text: this.query, placeholder: '搜索智能体或模型' })
           .height(36)
           .padding(0)
           .fontSize(Theme.fSmall)
@@ -117,27 +137,45 @@ export struct ModelSheet {
       .padding({ left: 14, right: 10 })
       .backgroundColor(Theme.surfaceAlt)
       .borderRadius(Theme.rPill)
-      .margin({ bottom: 6 })
+      .margin({ bottom: 2 })
 
-      if (this.filtered().length === 0) {
+      if (this.total() === 0) {
         Column() {
-          Text('没有匹配的模型').fontSize(Theme.fSmall).fontColor(Theme.textFaint)
+          Text('没有匹配项').fontSize(Theme.fSmall).fontColor(Theme.textFaint)
         }
         .width('100%')
         .height(120)
         .justifyContent(FlexAlign.Center)
       } else {
         List() {
-          ForEach(this.filtered(), (name: string) => {
+          if (this.filtered(KIND_AGENT).length > 0) {
             ListItem() {
-              this.row(name)
+              this.sectionTitle('智能体服务', '平台运行时，领域任务由服务端路由')
+            }
+          }
+          ForEach(this.filtered(KIND_AGENT), (item: PickItem) => {
+            ListItem() {
+              this.row(item)
             }
             .onClick(() => {
-              this.onPick(name);
+              this.onPick(item);
             })
-          }, (name: string) => name)
+          }, (item: PickItem) => `a-${item.key}`)
+
+          if (this.filtered('llm').length > 0) {
+            ListItem() {
+              this.sectionTitle('模型', '网关 OpenAI 兼容')
+            }
+          }
+          ForEach(this.filtered('llm'), (item: PickItem) => {
+            ListItem() {
+              this.row(item)
+            }
+            .onClick(() => {
+              this.onPick(item);
+            })
+          }, (item: PickItem) => `m-${item.key}`)
         }
-        .divider({ strokeWidth: 1, color: Theme.hairline, startMargin: 4, endMargin: 4 })
         .width('100%')
         .height(this.listHeight())
         .scrollBar(BarState.Off)

@@ -12,6 +12,8 @@ const KEY_MODEL: string = 'model';
  * （隔壁 scnet-cli 的 `pickDefaultModel()` 也是优先 SCNet-Max，所以它“不需要余额”。）
  */
 export const DEFAULT_MODEL: string = 'SCNet-Max';
+const KEY_CHANNEL: string = 'channel';
+const KEY_AGENT: string = 'agentIdentify';
 const KEY_CLOUD_TOKEN: string = 'cloudToken';
 const KEY_CLOUD_COOKIE: string = 'cloudCookie';
 const KEY_AUTO_KEY: string = 'autoGatewayKey';
@@ -52,6 +54,23 @@ class Store {
 
   setModel(value: string): void {
     this.writeString(KEY_MODEL, value);
+  }
+
+  /** 'agent'（平台服务）或 'llm'（网关模型）。 */
+  getChannel(): string {
+    return this.readString(KEY_CHANNEL, 'agent');
+  }
+
+  setChannel(value: string): void {
+    this.writeString(KEY_CHANNEL, value);
+  }
+
+  getAgent(): string {
+    return this.readString(KEY_AGENT, 'aiagent-router');
+  }
+
+  setAgent(value: string): void {
+    this.writeString(KEY_AGENT, value);
   }
 
   getCloudToken(): string {

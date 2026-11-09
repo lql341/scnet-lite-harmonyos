@@ -19,6 +19,8 @@ const DIR: string = 'sessions';
 export interface StoredMessage {
   role: string;
   content: string;
+  /** 这条回答来自哪条通道（'智能体服务' / 'SCNet Max'），用户消息为空 */
+  via?: string;
 }
 
 /** 抽屉列表用的摘要（不含正文，避免扫目录时读大文件）。 */

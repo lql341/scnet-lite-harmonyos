@@ -29,7 +29,34 @@ UI 上就是模型选择器里的两个分组，不是两套页面。
 - 抽屉：本地会话（可删） + 平台历史（只读）
 - 验收：发两轮 → 杀进程 → 重进 → 会话还在、能续聊
 
-### P1 智能体通道（v2 回归，带真实帧词表）
+### P1 智能体通道（v2 回归）— ✅ 已完成（2026-11-09）
+
+**实测结论（先看这个，别再做假功能）**：v2 stream 只接受 `aiagent-router`（600）。
+其余 9 个服务全部 200 但立刻回 `系统繁忙，请稍后再试`：
+
+```
+600 aiagent-router      ✅ 正常流式（15 个 text-delta）
+103 aiagent-industry    ❌ 系统繁忙
+104 aiagent-general     ❌
+107 researchaisearch    ❌
+109 interpretation      ❌
+300/105/106（有白名单） ❌
+```
+
+桌面端 main 包里的断言也是这个：
+`if ("v2"===protocol && ("aiagent-router"!==service || modelId!==service.modelId)) throw 此服务暂不可用`。
+
+→ **领域智能体不是独立通道**，而是 router 在服务端把任务路由给子智能体
+（响应里可见 `toolName: resolve_subtask_agents`、`agentName: AI助理` 的 subagent 帧）。
+所以选择器里只有「智能体服务」一项，用户用自然语言说需求即可。
+
+已实现：
+- `service/AgentChat.ets`：v2 流 + 帧按 `type` 分派 + `stop` 真停服务端任务 + `title_gen` 回写会话标题
+- `model/Pick.ets`：智能体/模型统一成 `PickItem`，只保留可用的 router
+- `view/ModelSheet.ets`：两组（智能体服务 / 模型）+ 搜索
+- `pages/Index.ets`：`channel` 路由、每条消息记它自己走的通道（`via`）、停止时按通道分别处理
+
+原计划（保留作为背景）：
 - `GET /acx/chatbot/recommend/list?enable=true` → 服务表（identify / 名字 / modelId）
 - `POST /acx/chatbot/v2/agent/stream`，帧按 `type` 分派：
   `text-delta` 才是正文；`tool-input-delta` 是 `inputTextDelta`（不要当正文）；
