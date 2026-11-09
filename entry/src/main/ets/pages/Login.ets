@@ -1,18 +1,19 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { router } from '@kit.ArkUI';
 import { auth, describeAuthError } from '../service/Auth';
 import { ApiError } from '../service/Http';
 import { store } from '../service/Store';
-import { router } from '@kit.ArkUI';
+import { Theme } from '../common/Theme';
 
 /**
- * 登录页。两种方式对齐 APK：账号密码、手机验证码。
- * 首屏协议同意（用户协议 + 隐私政策）未同意不允许进入。
+ * 登录页：账号密码 / 手机验证码两个 Tab，首屏必须勾选协议。
+ * 视觉与对话页共用 Theme，输入框做成大圆角浅底，主按钮满宽。
  */
 @Entry
 @Component
 struct Login {
-  @State mode: number = 0; // 0=密码, 1=短信
+  @State mode: number = 0;
   @State userName: string = '';
   @State password: string = '';
   @State phone: string = '';
@@ -26,17 +27,25 @@ struct Login {
     store.init(getContext(this) as common.UIAbilityContext);
   }
 
-  private async doPasswordLogin(): Promise<void> {
+  private guard(): boolean {
     if (!this.agreed) {
       this.errorMsg = '请先阅读并同意《用户协议》和《隐私政策》';
+      return false;
+    }
+    return true;
+  }
+
+  private async doPasswordLogin(): Promise<void> {
+    if (!this.guard()) {
       return;
     }
-    if (this.userName.length === 0 || this.password.length === 0) {
+    if (this.userName.trim().length === 0 || this.password.length === 0) {
       this.errorMsg = '请输入账号和密码';
       return;
     }
     this.busy = true;
     this.errorMsg = '';
+    this.tip = '';
     try {
       await auth.loginByPassword(this.userName.trim(), this.password);
       this.enterApp();
@@ -57,7 +66,7 @@ struct Login {
     this.busy = true;
     try {
       await auth.sendSmsCode(this.phone.trim());
-      this.tip = '验证码已发送';
+      this.tip = '验证码已发送，请查看短信';
     } catch (e) {
       const err = e as ApiError;
       this.errorMsg = err.message.length > 0 ? err.message : '验证码发送失败';
@@ -67,8 +76,7 @@ struct Login {
   }
 
   private async doSmsLogin(): Promise<void> {
-    if (!this.agreed) {
-      this.errorMsg = '请先阅读并同意《用户协议》和《隐私政策》';
+    if (!this.guard()) {
       return;
     }
     if (this.phone.length === 0 || this.smsCode.length === 0) {
@@ -95,143 +103,236 @@ struct Login {
   }
 
   @Builder
+  field(label: string, value: string, placeholder: string, isSecret: boolean, numeric: boolean,
+    onInput: (v: string) => void) {
+    Column({ space: 6 }) {
+      Text(label)
+        .fontSize(Theme.fTiny)
+        .fontColor(Theme.textFaint)
+        .padding({ left: 2 })
+      TextInput({ text: value, placeholder: placeholder })
+        .type(isSecret ? InputType.Password : (numeric ? InputType.Number : InputType.Normal))
+        .height(46)
+        .fontSize(Theme.fBody)
+        .fontColor(Theme.text)
+        .placeholderColor(Theme.textFaint)
+        .backgroundColor(Theme.surfaceAlt)
+        .borderRadius(Theme.rMd)
+        .padding({ left: 14, right: 14 })
+        .onChange(onInput)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  primaryButton(text: string, onTap: () => void) {
+    Row() {
+      if (this.busy) {
+        LoadingProgress().width(18).height(18).color(Theme.textOnAccent)
+      } else {
+        Text(text)
+          .fontSize(Theme.fBody)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Theme.textOnAccent)
+      }
+    }
+    .width('100%')
+    .height(46)
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor(this.busy ? '#7FA6C6' : Theme.accent)
+    .borderRadius(Theme.rMd)
+    .onClick(() => {
+      if (!this.busy) {
+        onTap();
+      }
+    })
+  }
+
+  @Builder
   passwordForm() {
-    Column({ space: 12 }) {
-      TextInput({ text: this.userName, placeholder: '账号（手机号 / 用户名）' })
-        .onChange((value: string) => {
-          this.userName = value;
-        })
-      TextInput({ text: this.password, placeholder: '密码（6~30 位，至少 3 类字符）' })
-        .type(InputType.Password)
-        .onChange((value: string) => {
-          this.password = value;
-        })
-      Button(this.busy ? '登录中…' : '登录')
-        .width('100%')
-        .height(44)
-        .backgroundColor('#0E2A47')
-        .enabled(!this.busy)
-        .onClick(() => {
-          this.doPasswordLogin();
-        })
+    Column({ space: 14 }) {
+      this.field('账号', this.userName, '用户名 / 手机号', false, false, (v: string) => {
+        this.userName = v;
+      })
+      this.field('密码', this.password, '登录密码', true, false, (v: string) => {
+        this.password = v;
+      })
+      this.primaryButton('登录', () => {
+        this.doPasswordLogin();
+      })
     }
     .width('100%')
   }
 
   @Builder
   smsForm() {
-    Column({ space: 12 }) {
-      TextInput({ text: this.phone, placeholder: '手机号' })
-        .type(InputType.PhoneNumber)
-        .onChange((value: string) => {
-          this.phone = value;
-        })
-      Row({ space: 8 }) {
-        TextInput({ text: this.smsCode, placeholder: '短信验证码' })
-          .type(InputType.Number)
-          .layoutWeight(1)
-          .onChange((value: string) => {
-            this.smsCode = value;
-          })
-        Button('获取验证码')
-          .height(40)
-          .enabled(!this.busy)
-          .backgroundColor('#E9ECEF')
-          .fontColor('#111')
-          .onClick(() => {
-            this.sendCode();
-          })
+    Column({ space: 14 }) {
+      this.field('手机号', this.phone, '11 位手机号', false, true, (v: string) => {
+        this.phone = v;
+      })
+      Column({ space: 6 }) {
+        Text('验证码').fontSize(Theme.fTiny).fontColor(Theme.textFaint).padding({ left: 2 })
+        Row({ space: 8 }) {
+          TextInput({ text: this.smsCode, placeholder: '短信验证码' })
+            .type(InputType.Number)
+            .height(46)
+            .fontSize(Theme.fBody)
+            .backgroundColor(Theme.surfaceAlt)
+            .borderRadius(Theme.rMd)
+            .padding({ left: 14, right: 14 })
+            .layoutWeight(1)
+            .onChange((value: string) => {
+              this.smsCode = value;
+            })
+          Text('获取验证码')
+            .fontSize(Theme.fSmall)
+            .fontColor(Theme.accent)
+            .textAlign(TextAlign.Center)
+            .height(46)
+            .padding({ left: 12, right: 12 })
+            .backgroundColor(Theme.accentGhost)
+            .borderRadius(Theme.rMd)
+            .onClick(() => {
+              if (!this.busy) {
+                this.sendCode();
+              }
+            })
+        }
+        .width('100%')
       }
       .width('100%')
-      Button(this.busy ? '登录中…' : '登录 / 注册')
-        .width('100%')
-        .height(44)
-        .backgroundColor('#0E2A47')
-        .enabled(!this.busy)
-        .onClick(() => {
-          this.doSmsLogin();
-        })
+      .alignItems(HorizontalAlign.Start)
+      this.primaryButton('登录 / 注册', () => {
+        this.doSmsLogin();
+      })
     }
     .width('100%')
   }
 
   build() {
-    Column({ space: 14 }) {
+    Column() {
       Blank().layoutWeight(1)
-      Column({ space: 6 }) {
-        Image($r('app.media.app_icon')).width(64).height(64).borderRadius(16)
-        Text('SCNet').fontSize(24).fontWeight(FontWeight.Bold).fontColor('#0E2A47')
-        Text('超算互联网 · 非官方客户端').fontSize(12).fontColor('#8A8F99')
+
+      // 品牌区
+      Column({ space: 12 }) {
+        Image($r('app.media.app_icon'))
+          .width(68)
+          .height(68)
+          .borderRadius(20)
+          .shadow({ radius: 22, color: '#0B1F3326', offsetY: 8 })
+        Text('SCNet 智能体')
+          .fontSize(24)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Theme.text)
+        Text('国家超算互联网 · 科研计算助手')
+          .fontSize(Theme.fSmall)
+          .fontColor(Theme.textFaint)
       }
       .width('100%')
-      Blank().height(24)
+      .padding({ top: 24, bottom: 28 })
 
-      Column({ space: 14 }) {
-      Row({ space: 0 }) {
-        Text('账号密码')
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-          .padding(10)
-          .fontColor(this.mode === 0 ? '#111' : '#8A8F99')
-          .backgroundColor(this.mode === 0 ? '#FFFFFF' : '#F1F3F5')
-          .borderRadius(8)
-          .onClick(() => {
-            this.mode = 0;
-          })
-        Text('短信验证')
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-          .padding(10)
-          .fontColor(this.mode === 1 ? '#111' : '#8A8F99')
-          .backgroundColor(this.mode === 1 ? '#FFFFFF' : '#F1F3F5')
-          .borderRadius(8)
-          .onClick(() => {
-            this.mode = 1;
-          })
+      // 卡片
+      Column({ space: 16 }) {
+        Row() {
+          Text('账号密码')
+            .fontSize(Theme.fSmall)
+            .fontColor(this.mode === 0 ? Theme.text : Theme.textFaint)
+            .fontWeight(this.mode === 0 ? FontWeight.Medium : FontWeight.Normal)
+            .textAlign(TextAlign.Center)
+            .layoutWeight(1)
+            .padding({ top: 8, bottom: 8 })
+            .backgroundColor(this.mode === 0 ? Theme.surface : Color.Transparent)
+            .borderRadius(Theme.rSm)
+            .shadow(this.mode === 0 ? { radius: 6, color: '#0B1F3312', offsetY: 1 } : { radius: 0, color: '#00000000' })
+            .onClick(() => {
+              this.mode = 0;
+              this.errorMsg = '';
+            })
+          Text('短信验证')
+            .fontSize(Theme.fSmall)
+            .fontColor(this.mode === 1 ? Theme.text : Theme.textFaint)
+            .fontWeight(this.mode === 1 ? FontWeight.Medium : FontWeight.Normal)
+            .textAlign(TextAlign.Center)
+            .layoutWeight(1)
+            .padding({ top: 8, bottom: 8 })
+            .backgroundColor(this.mode === 1 ? Theme.surface : Color.Transparent)
+            .borderRadius(Theme.rSm)
+            .shadow(this.mode === 1 ? { radius: 6, color: '#0B1F3312', offsetY: 1 } : { radius: 0, color: '#00000000' })
+            .onClick(() => {
+              this.mode = 1;
+              this.errorMsg = '';
+            })
+        }
+        .width('100%')
+        .padding(4)
+        .backgroundColor(Theme.surfaceAlt)
+        .borderRadius(Theme.rMd)
+
+        if (this.mode === 0) {
+          this.passwordForm()
+        } else {
+          this.smsForm()
+        }
+
+        if (this.errorMsg.length > 0) {
+          Row({ space: 8 }) {
+            Text('!')
+              .fontSize(11)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(Theme.danger)
+              .width(18)
+              .height(18)
+              .textAlign(TextAlign.Center)
+              .borderRadius(9)
+              .backgroundColor(Theme.dangerSoft)
+            Text(this.errorMsg)
+              .fontSize(Theme.fSmall)
+              .lineHeight(18)
+              .fontColor(Theme.danger)
+              .layoutWeight(1)
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Top)
+        } else if (this.tip.length > 0) {
+          Text(this.tip).fontSize(Theme.fSmall).fontColor(Theme.textSub).width('100%')
+        }
+
+        Row({ space: 6 }) {
+          Checkbox()
+            .select(this.agreed)
+            .selectedColor(Theme.accent)
+            .width(18)
+            .height(18)
+            .onChange((value: boolean) => {
+              this.agreed = value;
+            })
+          Text('我已阅读并同意《用户协议》和《隐私政策》')
+            .fontSize(Theme.fTiny)
+            .fontColor(Theme.textFaint)
+            .layoutWeight(1)
+        }
+        .width('100%')
       }
       .width('100%')
-      .padding(4)
-      .backgroundColor('#F1F3F5')
-      .borderRadius(10)
+      .padding({ left: 18, right: 18, top: 16, bottom: 18 })
+      .backgroundColor(Theme.surface)
+      .borderRadius(Theme.rXl)
+      .border({ width: 1, color: Theme.hairline })
+      .shadow(Theme.shadowSoft)
 
-      if (this.mode === 0) {
-        this.passwordForm()
-      } else {
-        this.smsForm()
-      }
-
-      }
-      .width('100%')
-      .padding(16)
-      .backgroundColor('#FFFFFF')
-      .borderRadius(16)
-      .shadow({ radius: 14, color: '#0000000F', offsetY: 3 })
-
-      Row({ space: 6 }) {
-        Checkbox()
-          .select(this.agreed)
-          .onChange((value: boolean) => {
-            this.agreed = value;
-          })
-        Text('我已阅读并同意《用户协议》和《隐私政策》')
-          .fontSize(12)
-          .fontColor('#6B7280')
-          .layoutWeight(1)
-      }
-      .width('100%')
-      .padding({ left: 4 })
-
-      if (this.errorMsg.length > 0) {
-        Text(this.errorMsg).fontSize(12).fontColor('#C0392B').width('100%')
-      }
-      if (this.tip.length > 0) {
-        Text(this.tip).fontSize(12).fontColor('#0A7EA4').width('100%')
-      }
       Blank().layoutWeight(2)
+
+      Text('非官方客户端 · 仅调用公开接口')
+        .fontSize(10)
+        .fontColor(Theme.textFaint)
+        .width('100%')
+        .textAlign(TextAlign.Center)
+        .padding({ bottom: 8 })
     }
     .width('100%')
     .height('100%')
-    .padding({ left: 24, right: 24, top: 40, bottom: 24 })
-    .backgroundColor('#F7F8FA')
+    .padding({ left: 22, right: 22, top: 32, bottom: 16 })
+    .backgroundColor(Theme.bg)
   }
 }

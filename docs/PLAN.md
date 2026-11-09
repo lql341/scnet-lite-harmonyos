@@ -47,15 +47,14 @@ POST /acx/user/users/logout
 | 功能 | 接口 / 要点 |
 | --- | --- |
 | 会话列表、新建、重命名 | `GET /acx/chatbot/conversation/list?page&size`、`POST /acx/chatbot/conversation/rename` |
-| 历史加载 | `GET /acx/chatbot/v2/agent/conversation/{id}/history?page&size` |
-| 流式对话 | `POST /acx/chatbot/v2/agent/stream`，SSE，`data: [done]` 结束 |
-| 请求体 | `{modelId:<long>, conversationId?, origin:"user", inputs:[{type:"text",text}]}` |
-| **模型下拉** | 需要「模型名 → 数字 modelId」映射（当前唯一硬缺口，见 §待解决） |
-| 停止 | `POST /acx/chatbot/v2/agent/stop {conversationId, modelId}`；失败要回滚 `stopRequested` |
-| 断线语义 | `interrupted` → 重连 + 拉历史；`uncertain` → 查任务列表，**禁止重发** |
-| 事件处理 | `title_gen` 改标题、`conversation-status` 改状态、`data/metadata` 出提示语、`heartbeat` 忽略、`*-end` 忽略 |
-| 渲染 | Markdown + 代码块高亮 + KaTeX 公式（APK 用 flutter_math_fork），流式增量不高频重排 |
-| 验收 | 同一问题切模型得到不同答案；拔网线中断后能接上；停止不崩 |
+| 历史加载（只读浏览） | `GET /acx/chatbot/v2/agent/conversation/{id}/history?page&size` |
+| 流式对话 | `POST {baseUrl}/chat/completions`（网关，OpenAI 兼容 SSE，`data: [DONE]` 结束） |
+| 请求体 | `{model, stream:true, messages:[{role,content}]}` |
+| 模型下拉 | `GET {baseUrl}/models`（33 个；默认 `SCNet-Max` 免费，其余需余额） |
+| 停止 | 本地 `request.destroy()` 即中断（网关无服务端 stop 语义） |
+| 错误路径 | 401/402 是**无换行单行 JSON**，必须冲刷 buffer |
+| 渲染 | Markdown（标题/列表/引用/代码块/行内），代码块可复制；长会话用 `LazyForEach` |
+| 验收 | 切模型得到不同答案；402 文案可读；停止不崩 |
 
 ## P3 富交互（2.5 天）
 

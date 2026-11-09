@@ -97,8 +97,7 @@ DEVECO_SDK_HOME=~/opt/apps/harmonyos/26.0.0.865/command-line-tools/sdk \
 错判过程与纠正见 `docs/PROTOCOL.md` §8.3；不要再为「系统繁忙」去抓手机端的 mitmproxy HAR，
 本机 curl 几秒就能复现并定位。
 
-不阻塞的部分（可以直接往下做）：`v2/agent/stop` 接入、断线续传（`interrupted`/`uncertain`）、
-Markdown + KaTeX 渲染、会话重命名、附件上传下载。见 `docs/TODO.md` B/C 段。
+当前可直接推进：UI 精修（`docs/TODO.md` B 段）、本地多会话、作业面（E 段）。
 
 ## 5. P0 工程底座（0.5 天）— **已完成**
 
@@ -122,7 +121,6 @@ Markdown + KaTeX 渲染、会话重命名、附件上传下载。见 `docs/TODO.
 | --- | --- |
 | `service/Http.ets` | 统一客户端：4 头注入（`Token`/`Cookie`/`source: HarmonyOS`/`version`）、`code!=="0"` 抛 `ApiError`、401/`code=401` → 清凭据回调、超时与重试策略 |
 | `service/Auth.ets` | 登录态：`accessToken`/`cookie` 存取（`preferences` 起步，后续换 HUKS）、刷新（`current-user-info?includeToken=true&refresh=true`）、登出 |
-| `service/Chat.ets` | v2 stream：`requestInStream` + 逐行 SSE 解析（复用 `Gateway.ets` 的 UTF-8 跨块处理思路）、43 字段帧解析、状态机（`sending/streaming/interrupted/uncertain/stopped/error`） |
 | `pages/Tabs.ets` | 底部 4 Tab：对话 / 作业 / 文件 / 我的 |
 | `model/Types.ets` | 所有 DTO（`ApiResult`、`Conversation`、`Frame`、`Record*`、`Config`、`ModelItem`…），ArkTS 不允许裸字面量，全部显式声明 |
 
@@ -155,8 +153,8 @@ POST /acx/user/users/logout
 
 顺序：
 1. `GET /acx/chatbot/config/list` → 取 `modelList[].id`（数字 modelId）、`defaultCluster`、`defaultIdentify`
-2. 会话列表/新建/重命名/历史（`conversation/list|rename`、`v2/agent/conversation/{id}/history`）
-3. v2 stream + 状态机 + 停止（`v2/agent/stop`）
+2. 会话列表/重命名/历史（`conversation/list|rename`、`/v2/agent/conversation/{id}/history`，只读浏览）
+3. 网关 SSE + 停止（`Gateway.cancel()`）+ 错误路径
 4. Markdown + 代码块 + KaTeX；`LazyForEach`
 5. 模型下拉按 `modelList` 渲染（4 个：17/410/120/520）
 
@@ -222,9 +220,8 @@ Node ≥22（用全局 `WebSocket`）、JDK 21、`gh` 已登录 `lql341`。
 
 ## 11. 未决问题（需要人）
 
-1. **网关 402 需要人处理**：账号 `luql` 实测 `modelServiceEnabled: 0` + `unpaidStatus: 1`
-   （`./scripts/probe-v2.sh account` 可复现）。要通网关得先在控制台清账 / 开通模型服务。
-   v2 智能体通道**不受影响**，已在可用状态。
+1. **付费模型需余额**：`SCNet-Max` 免费可用；其余模型要充值（`unpaidStatus: 1`）。
+   `./scripts/probe.sh account` 可查；默认模型已是 `SCNet-Max`，不阻塞开发。
 2. **图形验证码**：平台平时 `isNeedCpatcha` 返 false，真要求时需要 UI，目前只给错误文案。
 3. **范围**：P5/P6 是否进第一版（砍掉省 2.5 天）。
 4. **是否允许真实提交作业**（P4 验收会真计费）。参考 `../scnet-cli` 的 `sci/` 实现。

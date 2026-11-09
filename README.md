@@ -16,7 +16,7 @@
 | [`docs/SIGNING.md`](docs/SIGNING.md) | 签名材料清单、换机迁移、重新签发、失败对照 |
 | [`docs/PLAN.md`](docs/PLAN.md) | 对标手机 APK 的分阶段开发计划（P0~P6，约 11 天） |
 | [`docs/PARITY.md`](docs/PARITY.md) | 功能对齐 checklist（从 APK 提取，带证据） |
-| [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | 平台对话协议（鉴权 4 头、v2 stream、SSE 43 字段、状态机） |
+| [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | 账户与网关协议（鉴权双头、集群身份、模型服务授权、取 key、SSE） |
 | [`HANDOFF.md`](HANDOFF.md) | 立项背景、环境、已踩的坑、逆向结论 |
 
 ## 现状（2026-11-09 12:25）

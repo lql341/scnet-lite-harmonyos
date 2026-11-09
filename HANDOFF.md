@@ -223,7 +223,7 @@ POST https://api.scnet.cn/api/gw/v1/chat/completions  -H "Authorization: Bearer 
 - 真正有效的一手材料是 **Electron 桌面客户端 4.1.0**：`/opt/scnet-client/resources/app.asar`
   （`npx @electron/asar extract` 解开 391 MB），`dist-electron/main/index.js` 里有完整对话协议。
   **网络请求在主进程**，所以页面 CDP 的 Network 面板抓不到 —— 必须读代码或挂主进程。
-- 协议规格已整理进 `docs/PROTOCOL.md`（v2 stream body、SSE 事件词表、记录类型、连接状态机）。
+- 协议规格已整理进 `docs/PROTOCOL.md`（账户/授权/取 key/网关 SSE；v2 智能体通道已移除）。
 - 鉴权是 `Token:` + `Cookie:` 双头，不是 Bearer；桌面端配置里残留的 token 已失效（401）。
 
 ## 13. APK 功能面测绘（2026-11-08，从 `libapp.so` 提取）

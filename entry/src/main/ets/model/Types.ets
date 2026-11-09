@@ -21,20 +21,8 @@ export interface UserInfo {
   acctRole?: string;
 }
 
-/** /acx/chatbot/config/list 的模型项：id 是数字，正好是 v2 stream 的 modelId。 */
-export interface ModelItem {
-  id?: number;
-  name?: string;
-  logo?: string;
-  description?: string;
-  thinkingEnable?: boolean;
-  onlineEnable?: boolean;
-  mcpEnable?: boolean;
-}
-
 export interface ChatConfig {
   recommendQuestion?: string[];
-  modelList?: ModelItem[];
   defaultCluster?: number;
   defaultIdentify?: string;
   fileUploadEnable?: boolean;
@@ -76,31 +64,4 @@ export interface HistoryPage {
   conversationId?: string;
   taskStatus?: string;
   messages?: HistoryMessage[];
-}
-
-/** v2 流式帧（43 字段的扁平结构，只声明会用到的）。 */
-export interface StreamFrame {
-  type?: string;
-  delta?: string;
-  inputTextDelta?: string;
-  finishReason?: string;
-  errorCode?: string;
-  errorText?: string;
-  conversationId?: string;
-  clusterId?: string;
-  jobId?: string;
-  taskId?: string;
-  parentTaskId?: string;
-  agentName?: string;
-  status?: string;
-  title?: string;
-  progressText?: string;
-  progressPercent?: number;
-  description?: string;
-  toolCallId?: string;
-  toolName?: string;
-  path?: string;
-  url?: string;
-  mimeType?: string;
-  name?: string;
 }

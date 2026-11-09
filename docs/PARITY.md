@@ -83,8 +83,8 @@ SSO      /sso/login  /sso/register[.action]  /sso/sendRegisterMessageCode.action
 ## 3. 施工顺序（每步都可上机验收）
 
 1. **壳 + 登录**：Tabs（对话/作业/我的）、SSO 登录、accessToken 持久化（HUKS 或加密 preferences）、401 统一拦截。
-2. **对话 v1.5**：会话列表 + 新建/重命名 + 云端 conversationId 回填；v2 stream 接入；stop/resume/check-stream。
-3. **对话 v2**：阻塞式交互组件协议、附件上传下载、Markdown+KaTeX、点赞、文献列表。
+2. **对话**：网关 `/chat/completions` 流式 + 停止 + 错误路径；会话列表与历史只读浏览。
+3. **富交互**：附件上传下载、Markdown+LaTeX、点赞、文献列表（平台 chatbot 能力，暂缓）。
 4. **技能/作业**：task/list、作业历史、产物预览（CSV/PDF）、SLURM 脚本生成。
 5. **账号/团队/计费**：资料、绑定、注销、团队授权、发票。
 6. **打磨**：LaTeX 性能（LazyForEach）、语音、OCR、升级检查、深链。
