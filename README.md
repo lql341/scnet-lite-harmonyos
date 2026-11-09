@@ -19,21 +19,33 @@
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | 平台对话协议（鉴权 4 头、v2 stream、SSE 43 字段、状态机） |
 | [`HANDOFF.md`](HANDOFF.md) | 立项背景、环境、已踩的坑、逆向结论 |
 
-## 现状（2026-11-09 12:10）
+## 现状（2026-11-09 12:25）
+
+对话走**网关模型链路**，与官方客户端、隔壁 `scnet-cli` 同一套：
+
+```
+账号登录 → cluster-user-detail（集群 accountId）
+→ llm/account/config/status →（必要时）authorize
+→ llm/api-key/createActivityApiKey（key + baseUrl + 默认模型）
+→ {baseUrl}/models → {baseUrl}/chat/completions（SSE）
+```
 
 | 能力 | 状态 |
 | --- | --- |
-| 登录（账号密码，form-urlencoded） | ✅ 真机通过 |
-| 会话列表 / 打开历史 | ✅ 真机通过 |
-| 智能体服务目录（`recommend/list`） | ✅ 本机实测（含 `aiagent-router` = modelId 600） |
-| 流式对话出字 | ✅ **已修根因**（`modelId` 要走 `recommend/list`，不是 `config/list`），待真机复验 |
-| 流式帧解析（`text-delta` / `finish` / `title_gen`） | ✅ 按真实流量校准，拼接与 `history` 逐字一致 |
-| UI（官方移动端布局 + 抽屉 + 底部输入） | ✅ 已装机验证 |
-| 网关 LLM 通道（`api.scnet.cn/api/gw/v1`） | ❌ 当前账号 `402 Insufficient Balance`，与 v2 无关，已从默认路径移除 |
+| 登录（账号密码 + 短信） | ✅ 真机通过 |
+| 集群身份 / 模型服务授权状态 | ✅ 本机实测（`scripts/probe.sh account`） |
+| 自动取 key（activity → 兜底 query） | ✅ 本机实测（43 字符 `sk-`，33 个模型） |
+| 模型列表 / 选择 | ✅（`/models` 33 个） |
+| 流式对话出字 | ⚠️ 代码就绪，**当前账号 402 余额不足**（见下） |
+| 会话列表 / 历史浏览（只读） | ✅ 真机通过 |
+| UI（移动端布局 + 抽屉 + 底部输入） | ✅ 已装机验证 |
 
-> 调试提示：协议问题不必装机。桌面客户端配置里有活体 `accessToken`，
-> 用 `loginDesktopClientByToken.action`（form 字段 `desktopToken`）换 cookie 后直接 curl 平台接口即可。
-> 详见 [`docs/NEXT.md`](docs/NEXT.md) §2 与 [`docs/PROTOCOL.md`](docs/PROTOCOL.md) §8.3。
+> **402 是账号侧**：`scripts/probe.sh account` 显示 `modelServiceEnabled: 1`（已自动授权）、
+> `unpaidStatus: 1`（有未结清账单）。key 能拿、`/models` 能列，chat 一律
+> `Insufficient Balance`。需要去控制台清账/充值，代码侧无解。
+>
+> 调试提示：协议问题不必装机。`scripts/probe.sh` 用桌面客户端里的活体 `accessToken`
+> 直接打平台与网关接口，几秒一轮。
 
 ## 旧版说明（v0.1.0 MVP）
 

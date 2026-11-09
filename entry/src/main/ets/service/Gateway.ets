@@ -33,6 +33,34 @@ interface StreamChunk {
   choices?: StreamChoice[];
 }
 
+/** 网关报错是普通 JSON（不是 SSE）：402 余额不足 / 401 key 无效 */
+interface GatewayErrorBody {
+  error?: GatewayError;
+  message?: string;
+  code?: string;
+}
+
+interface GatewayError {
+  message?: string;
+  type?: string;
+  code?: string;
+}
+
+/** 把网关错误翻译成能读的文案（402 是最常见的：账号没余额/没开通模型服务）。 */
+function describeGatewayError(body: GatewayErrorBody, httpCode: number): string {
+  const err: GatewayError | undefined = body.error;
+  const raw: string = err !== undefined && err.message !== undefined ? err.message :
+    (body.message !== undefined ? body.message : '');
+  const code: string = err !== undefined && err.code !== undefined ? err.code : String(httpCode);
+  if (code === '402' || raw.indexOf('Insufficient Balance') >= 0) {
+    return '网关返回「余额不足」(402)：账号未开通模型服务或余额为 0，请到控制台处理';
+  }
+  if (code === '401' || raw.indexOf('Authentication') >= 0 || raw.indexOf('token_not_found') >= 0) {
+    return '网关 key 无效 (401)：请重新登录以重新获取 key';
+  }
+  return raw.length > 0 ? `网关报错 (${code})：${raw}` : `网关报错 (HTTP ${httpCode})`;
+}
+
 interface ChatRequestBody {
   model: string;
   stream: boolean;
@@ -109,6 +137,9 @@ export class Gateway {
       }
     };
 
+    let serverError: string = '';
+    let gotDelta: boolean = false;
+
     request.on('dataReceive', (chunk: ArrayBuffer) => {
       buffer += decoder.decodeToString(new Uint8Array(chunk), { stream: true });
       let index: number = buffer.indexOf('\n');
@@ -117,6 +148,15 @@ export class Gateway {
         buffer = buffer.substring(index + 1);
         index = buffer.indexOf('\n');
         if (!line.startsWith('data:')) {
+          // 非 SSE：网关的错误体（402/401）是普通 JSON，必须捞出来，否则前端只会看到空回答
+          if (line.startsWith('{') && line.indexOf('"error"') >= 0) {
+            try {
+              const errBody: GatewayErrorBody = JSON.parse(line) as GatewayErrorBody;
+              serverError = describeGatewayError(errBody, 0);
+            } catch (e) {
+              hilog.warn(0x0000, TAG, 'unparsable gateway error body');
+            }
+          }
           continue;
         }
         const payload: string = line.substring(5).trim();
@@ -131,6 +171,7 @@ export class Gateway {
             const content: string = delta.content === undefined ? '' : delta.content;
             const reasoning: string = delta.reasoning_content === undefined ? '' : delta.reasoning_content;
             if (content.length > 0 || reasoning.length > 0) {
+              gotDelta = true;
               handlers.onDelta(content, reasoning);
             }
           }
@@ -141,6 +182,14 @@ export class Gateway {
     });
 
     request.on('dataEnd', () => {
+      if (serverError.length > 0) {
+        finish(serverError);
+        return;
+      }
+      if (!gotDelta) {
+        finish('网关没有返回任何内容（检查模型是否可用 / 是否欠费）');
+        return;
+      }
       finish('');
     });
 

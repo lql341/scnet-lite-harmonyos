@@ -204,6 +204,9 @@ data.fileUploadEnable / relatedQuestionEnable / loginEnable / apiDocumentUrl / v
 
 ### 8.3 ✅ 已解除（2026-11-09 12:00）：`系统繁忙` 的根因是 `modelId` 取错了目录
 
+> ⚠️ 本节与 §8.4 描述的是 **v2 智能体通道**。本仓库已改为网关模型链路（见 §10），
+> 这两节作为实测记录保留（v2 是免费通道，将来若要再启用可直接照抄）。
+
 之前 8.3 的结论（「服务端不可用」）**是错的**。真实原因是 `modelId` 用错了来源：
 
 | 目录 | 用途 | id 形态 | 拿去打 v2 stream |
@@ -291,6 +294,17 @@ POST /ac/api/auth/logoutDesktopClient.action                 → 登出
 | 身份维度 | `cluster-user-detail` 里的 `accountId`（如 `427416191724683264`）是**集群账号**，与 `userInfo.id`（`11224910962`）不同；建团队 key 用前者 + `groupId` + `userId` |
 | key 命名约定 | 客户端建的叫 `scnet-client-member-<createUser>`，`keyStatus: "100"` |
 
+### 10.2.1 实测：`authorize` 必须用**集群** accountId
+
+| accountId | 来源 | `POST llm/account/config/authorize` |
+| --- | --- | --- |
+| `427416191724683264` | `cluster-user-detail[].accountId` | ✅ `{"code":"0","msg":"success"}`，`modelServiceEnabled` 0→1 |
+| `11224910962` | `current-user-info.id` | ❌ `{"code":"API010006","msg":"无权限访问"}` |
+
+`cluster-user-detail` 按集群返回多行（本账号 13 行，一台集群一行），
+但 `accountId` / `groupId` / `userId` 三者在所有 active 行里相同，取第一行即可。
+`groupId=99450319708108649`，`userId=11224910962`（= 用户 id，`createUser` 用它）。
+
 ### 10.3 `402 Insufficient Balance` 的诊断顺序
 
 **402 与 API key 无关，先看账号状态**：
@@ -300,21 +314,30 @@ scripts/probe-v2.sh account     # modelServiceEnabled / unpaidStatus
 scripts/probe-v2.sh gateway     # 拿 activity key → /models → 试一次 chat
 ```
 
-本机实测（账号 `luql`）：`modelServiceEnabled: 0`、`unpaidStatus: 1`、`accessibleModelScope: CUSTOM`。
-→ key 能拿到、`/models` 能列 33 个，但 chat 一律 402。需先去控制台处理账单 / 开通模型服务。
+本机实测（账号 `luql`，2026-11-09 12:2x）：
 
-处理顺序：查 `status` →（欠费先清账）→ `authorize` → 重新取 key → `/models` → chat。
-**欠费状态下不要替用户自动 `authorize`**（它是计费相关开关）；本仓库 `ApiKeys.ensureAccess()`
-在 `unpaidStatus === 1` 时只上报、不调用。
+| 步骤 | 结果 |
+| --- | --- |
+| `authorize`（集群 accountId） | ✅ `modelServiceEnabled: 0 → 1` |
+| `createActivityApiKey` | ✅ `sk-…`（43 字符）、`baseUrl=https://api.scnet.cn/api/llm/v1`、`model=MiniMax-M2.5` |
+| `GET {baseUrl}/models` | ✅ 33 个 |
+| `POST {baseUrl}/chat/completions` | ❌ `402 Insufficient Balance` |
 
-### 10.4 两条对话通道的分工
+→ **授权 ≠ 有余额**。`unpaidStatus: 1` + `modelAllowOverdraft: 0` 时，即使
+`modelServiceEnabled: 1`，网关也一律 402。需要在控制台结清账单/充值，代码侧无解。
 
-| 通道 | 依赖 | 现状 |
-| --- | --- | --- |
-| v2 智能体 `POST /acx/chatbot/v2/agent/stream` | 登录 cookie + `modelId=600` | ✅ 可用（本仓库主路径） |
-| 网关 `{baseUrl}/chat/completions` | `sk-` key + 模型服务授权 | ❌ 当前账号 402（账号侧，非代码） |
+⚠️ 两条 base 不是一套 key 空间：同一把 `sk-` 打 `/api/gw/v1` 会
+`401 token_not_found_in_db`（LiteLLM 的 key 表里没有它），只有 `/api/llm/v1` 认。
+
+### 10.4 两条对话通道的分工（本仓库只用网关）
+
+| 通道 | 依赖 | 本账号现状 | 本仓库 |
+| --- | --- | --- | --- |
+| 网关 `{baseUrl}/chat/completions` | `sk-` key + 余额 | ❌ 402 余额不足 | ✅ **唯一实现**（与官方客户端 / scnet-cli 一致） |
+| v2 智能体 `POST /acx/chatbot/v2/agent/stream` | 登录 cookie + `modelId=600` | ✅ 免费可用 | ❌ 已移除（代码在 `b60d149`） |
 
 两条通道**不是一套模型目录**：v2 是服务 id（600），网关是 LLM id（`GLM-5.3` / `MiniMax-M2.5` …）。
+§8.3/§8.4 保留的是 v2 的实测结论，作为历史知识（免费通道，将来若要再启用可直接照抄）。
 
 
 ---

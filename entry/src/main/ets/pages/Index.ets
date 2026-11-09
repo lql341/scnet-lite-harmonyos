@@ -6,16 +6,10 @@ import { Gateway, ChatMessage, StreamHandlers } from '../service/Gateway';
 import { store, DEFAULT_BASE_URL } from '../service/Store';
 import { auth } from '../service/Auth';
 import { credentials } from '../service/Http';
-import { chat } from '../service/Chat';
 import { apiKeys, GatewayAccess } from '../service/ApiKeys';
 import { ModelSheet } from '../view/ModelSheet';
 import { MODELS, ModelInfo, modelLabel } from '../model/Models';
-import { ModelItem, AgentService, Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
-
-/** v2 对话唯一可用的服务标识（智能体路由器）。 */
-const ROUTER_IDENTIFY: string = 'aiagent-router';
-/** 服务表拉不到时的最后已知可用 modelId（2026-11-09 直连实测）。 */
-const FALLBACK_ROUTER_MODEL_ID: number = 600;
+import { Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
 
 interface RenderMsg {
   role: string;
@@ -65,12 +59,10 @@ struct Index {
   @State busy: boolean = false;
   @State errorMsg: string = '';
   @State userName: string = '';
-  @State platformName: string = '';
-  @State modelId: number = 0;
-  @State agentServices: AgentService[] = [];
   @State gatewayAccess: GatewayAccess = { key: '', baseUrl: '', model: '', source: 'none' };
   @State gatewayNotice: string = '';
-  @State platformModels: ModelItem[] = [];
+  /** 抽屉里正在看的历史会话（只读，网关通道不复用它的上下文） */
+  @State currentCloudId: string = '';
   @State gatewayModels: string[] = [];
   @State conversations: Conversation[] = [];
   @State drawerOpen: boolean = false;
@@ -100,27 +92,24 @@ struct Index {
   }
 
   private async loadCloud(): Promise<void> {
-    let accountId: string = '';
     try {
       const me: UserInfo = await auth.refreshUser();
       this.userName = me.fullName ?? (me.userName ?? '');
-      accountId = me.id ?? '';
-      hilog.info(0x0000, 'SCNetLite', 'user %{public}s account=%{public}s', this.userName, accountId);
+      hilog.info(0x0000, 'SCNetLite', 'user %{public}s', this.userName);
     } catch (e) {
       hilog.warn(0x0000, 'SCNetLite', 'user info failed');
     }
     try {
       const cfg: ChatConfig = await auth.chatConfig();
-      this.platformModels = cfg.modelList ?? [];
-      hilog.info(0x0000, 'SCNetLite', 'llm models %{public}d', this.platformModels.length);
+      hilog.info(0x0000, 'SCNetLite', 'config ok, defaultCluster=%{public}d',
+        cfg.defaultCluster ?? 0);
     } catch (e) {
       hilog.warn(0x0000, 'SCNetLite', 'config failed');
     }
-    // 网关（LLM）通道：status → 必要时 authorize → createActivityApiKey。
-    // 对齐官方客户端 / scnet-cli 的登录后链路（见 service/ApiKeys.ets 头注释）。
-    // v2 智能体通道不依赖它，所以这里失败不影响主流程。
+    // 网关模型链路：cluster-user-detail → config/status →（必要时 authorize）
+    // → api-key/createActivityApiKey → /models。与官方客户端 / scnet-cli 同一条链路。
     try {
-      this.gatewayAccess = await apiKeys.ensureAccess(accountId);
+      this.gatewayAccess = await apiKeys.ensureAccess(await auth.clusterIdentity());
       if (this.gatewayAccess.key.length > 0) {
         this.apiKey = this.gatewayAccess.key;
         this.baseUrl = this.gatewayAccess.baseUrl;
@@ -137,34 +126,6 @@ struct Index {
       }
     } catch (e) {
       hilog.warn(0x0000, 'SCNetLite', 'gateway access failed');
-    }
-    // ⚠️ v2 对话的 modelId 只能来自 recommend/list 的 aiagent-router（实测 600）。
-    // 用 config/list.modelList 的 id（17/120/410/520）服务端会秒回「系统繁忙，请稍后再试」。
-    try {
-      const services: AgentService[] = await auth.agentServices();
-      this.agentServices = services;
-      let chosen: AgentService | null = null;
-      for (let i = 0; i < services.length; i++) {
-        if (services[i].identify === ROUTER_IDENTIFY) {
-          chosen = services[i];
-          break;
-        }
-      }
-      if (chosen !== null) {
-        this.modelId = parseInt(chosen.modelId ?? '', 10);
-        this.platformName = chosen.aiAssistantName ?? '智能体服务';
-      } else {
-        this.modelId = FALLBACK_ROUTER_MODEL_ID;
-        this.platformName = '智能体服务';
-      }
-      hilog.info(0x0000, 'SCNetLite', 'services %{public}d, v2 modelId=%{public}d',
-        services.length, this.modelId);
-    } catch (e) {
-      if (this.modelId === 0) {
-        this.modelId = FALLBACK_ROUTER_MODEL_ID;
-        this.platformName = '智能体服务';
-      }
-      hilog.warn(0x0000, 'SCNetLite', 'agent services failed');
     }
     await this.reloadConversations();
   }
@@ -200,7 +161,7 @@ struct Index {
         rendered.push(msg(m.role === 'user' ? 'user' : 'assistant', text));
       }
       this.messages = rendered;
-      chat.conversationId = id;
+      this.currentCloudId = id;
       hilog.info(0x0000, 'SCNetLite', 'history: %{public}d messages', rendered.length);
       setTimeout(() => this.scrollToEnd(), 80);
     } catch (e) {
@@ -278,13 +239,11 @@ struct Index {
       const item: ChatMessage = { role: m.role, content: m.content };
       return item;
     });
-    if (this.modelId > 0) {
-      // 平台 v2 智能体（modelId 来自 recommend/list 的 aiagent-router）
-      chat.stream(this.modelId, text, handlers);
-    } else if (this.apiKey.length > 0) {
+    // 网关 OpenAI 兼容通道（与官方客户端 / scnet-cli 同一条链路）
+    if (this.apiKey.length > 0) {
       this.gateway.stream(this.baseUrl, this.apiKey, this.gatewayModel, history, handlers);
     } else {
-      this.errorMsg = '没有可用通道：模型目录未加载';
+      this.errorMsg = this.gatewayNotice.length > 0 ? this.gatewayNotice : '没有可用的网关 key：请重新登录';
       this.busy = false;
     }
   }
@@ -382,8 +341,7 @@ struct Index {
           .borderRadius(15)
           .backgroundColor('#F1F3F5')
 
-        Text(this.platformName.length > 0 ? this.platformName :
-          (this.gatewayModel.length > 0 ? prettyModel(this.gatewayModel) : '选择模型'))
+        Text(this.gatewayModel.length > 0 ? prettyModel(this.gatewayModel) : '选择模型')
           .fontSize(11)
           .fontColor('#3B4048')
           .maxLines(1)
@@ -408,7 +366,6 @@ struct Index {
             .borderRadius(15)
             .backgroundColor('#C0392B')
             .onClick(() => {
-              chat.cancel();
               this.gateway.cancel();
               this.finishStream();
             })
@@ -469,7 +426,7 @@ struct Index {
           .onClick(() => {
             this.messages = [];
             this.streaming = '';
-            chat.conversationId = '';
+            this.currentCloudId = '';
             this.drawerOpen = false;
           })
         Text('刷新').fontSize(12).fontColor('#8A8F99').onClick(() => {
@@ -499,7 +456,7 @@ struct Index {
             .width('100%')
             .padding({ left: 10, right: 10, top: 10, bottom: 10 })
             .borderRadius(8)
-            .backgroundColor(item.id === chat.conversationId ? '#EAF3FB' : '#FFFFFF')
+            .backgroundColor(item.id === this.currentCloudId ? '#EAF3FB' : '#FFFFFF')
           }
           .onClick(() => {
             this.openConversation(item);
@@ -601,11 +558,11 @@ struct Index {
             this.showModelSheet = false;
           })
           ModelSheet({
-            services: this.agentServices,
-            currentModelId: this.modelId,
-            onPick: (service: AgentService) => {
-              this.modelId = parseInt(service.modelId ?? '', 10);
-              this.platformName = service.aiAssistantName ?? '智能体服务';
+            models: this.gatewayModels,
+            current: this.gatewayModel,
+            onPick: (name: string) => {
+              this.gatewayModel = name;
+              store.setModel(name);
               this.showModelSheet = false;
             },
             onClose: () => {

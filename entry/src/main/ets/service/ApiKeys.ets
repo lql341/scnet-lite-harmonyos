@@ -1,13 +1,16 @@
 /**
  * 网关（LLM）凭据获取 —— 对齐官方客户端 / scnet-cli 的链路：
  *
+ *   GET  /acx/user/users/cluster-user-detail          → 集群身份（accountId / groupId / userId）
  *   GET  /acx/llm/account/config/status?accountId=…   → modelServiceEnabled（0 未授权 / 1 已授权）
  *   POST /acx/llm/account/config/authorize?accountId=…  → 开通平台模型服务（客户端登录时自动做）
  *   POST /acx/llm/api-key/createActivityApiKey         → 一把 sk- key + baseUrl + 默认模型（一条搞定）
  *   兜底：POST /acx/llm/api-key/query（团队维度查）→ POST /acx/llm/api-key/create
  *
  * 关键事实（2026-11-09 实测）：
- * - `modelServiceEnabled: 0` 时网关一律 `402 Insufficient Balance`，跟 key 无关；
+ * - `authorize` / 团队 key 的 `accountId` 必须是**集群账号**（427416191724683264），
+ *   用 `current-user-info.id`（11224910962）会 `API010006 无权限访问`；
+ * - 授权成功（`modelServiceEnabled: 1`）后若账号**余额为 0**，chat 仍回 `402 Insufficient Balance`；
  * - 平台下发的 baseUrl 是 `https://api.scnet.cn/api/llm/v1`（不是 `/api/gw/v1`）；
  * - `/api-key/query` 只支持 POST（GET → `405 Request method 'GET' not supported`）；
  * - 列表里的 key 是打码的（含 `*`），明文只在 create / detail 里出现一次。
@@ -16,6 +19,7 @@ import { http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { httpClient } from './Http';
 import { store } from './Store';
+import { ClusterIdentity } from './Auth';
 
 const TAG: string = 'SCNetLite';
 
@@ -118,7 +122,7 @@ class ApiKeys {
       return false;
     }
     try {
-      await httpClient.postRaw(`/acx/llm/account/config/authorize?accountId=${accountId}`, '');
+      await httpClient.postForm(`/acx/llm/account/config/authorize?accountId=${accountId}`, '');
       const after: ConfigStatus | null = await this.accountStatus(accountId);
       const ok: boolean = after !== null && after.modelServiceEnabled === 1;
       hilog.info(0x0000, TAG, 'authorize -> modelServiceEnabled=%{public}s', String(ok));
@@ -191,7 +195,8 @@ class ApiKeys {
    * 全链路：status → 必要时 authorize → activity key → 兜底 query。
    * 结果（key/baseUrl/model）落到 preferences，下次启动直接用缓存的 key。
    */
-  async ensureAccess(accountId: string): Promise<GatewayAccess> {
+  async ensureAccess(identity: ClusterIdentity): Promise<GatewayAccess> {
+    const accountId: string = identity.accountId;
     this.lastBlocked = '';
 
     const cached: string = store.getAutoKey();
@@ -203,6 +208,11 @@ class ApiKeys {
         source: 'cached'
       };
       return hit;
+    }
+
+    if (accountId.length === 0) {
+      this.lastBlocked = '拿不到集群身份（cluster-user-detail），无法授权/取 key';
+      return { key: '', baseUrl: LLM_BASE, model: '', source: 'none' };
     }
 
     const status: ConfigStatus | null = await this.accountStatus(accountId);

@@ -1,8 +1,8 @@
 # NEXT — 下一步要做的事（可直接照做）
 
-> 更新时间：2026-11-09 12:10。**卡点已解除**：`系统繁忙` 是 `modelId` 取错了目录
-> （v2 要走 `recommend/list` 的 `aiagent-router` → `600`，不是 `config/list.modelList` 的 LLM id）。
-> 协议细节以 `docs/PROTOCOL.md` §8.3/§8.4 为准。
+> 更新时间：2026-11-09 12:25。对话改走**网关模型链路**（与 `../scnet-cli` 一致），
+> 平台 v2 智能体通道已从代码中移除（历史留在 `b60d149`）。
+> 当前唯一卡点：账号 `unpaidStatus: 1`（欠费）→ 网关 chat 402，需人去控制台处理。
 
 ---
 
@@ -21,38 +21,29 @@ hdc list targets                  # 必须不是 [Empty]
 
 ## 1. 现状一句话
 
-登录/会话列表/历史/智能体服务目录都通；`v2/agent/stream` 已在本机用真实凭据跑通（`modelId=600`），
-代码按真实帧词表改完并构建通过；**只剩真机装机复验**。
+登录 → 集群身份 → 授权 → 取 `sk-` key → `/models`（33 个）这条链路已在本机逐步实测通过；
+流式对话代码（OpenAI 兼容 SSE）就绪。**只差账号余额**：`unpaidStatus: 1` 导致 chat 402。
 
-## 2. 本机脱机调试 v2（不需要手机，强烈推荐）
+## 2. 本机脱机调试（不需要手机，强烈推荐）
 
 协议实验全是纯 HTTP，没必要上机循环。仓库自带探针：
 
 ```bash
-./scripts/probe-v2.sh services                     # 列服务表，标出 aiagent-router 的 modelId
-./scripts/probe-v2.sh stream "用一句话说明 SLURM"   # 只要正文，工具帧/标题走 stderr
-./scripts/probe-v2.sh stream "继续" --cid <id>     # 多轮
-./scripts/probe-v2.sh raw GET '/acx/chatbot/config/list'
-./scripts/probe-v2.sh raw POST '/acx/chatbot/v2/agent/stop' '{"conversationId":"…","modelId":600}'
+./scripts/probe.sh account      # 集群身份 + 授权状态 + 欠费标记（402 先看这个）
+./scripts/probe.sh authorize    # 开通模型服务（幂等，用集群 accountId）
+./scripts/probe.sh models       # 取 key → 列网关模型
+./scripts/probe.sh chat "只回两个字：收到"
+./scripts/probe.sh raw POST '/acx/llm/api-key/createActivityApiKey' '{}'
 ```
 
-凭据自动从桌面客户端配置 `~/.config/scnet-client/config.json` 的 `accessToken`（235 字符 JWT）取，
-再换一份 `jsessionid`（参数名就是 `desktopToken`）。也可 `SC_TOKEN`/`SC_COOKIE` 覆盖；
-`SC_MODEL_ID=600` 可跳过服务表。
+凭据自动从桌面客户端配置 `~/.config/scnet-client/config.json` 的 `accessToken` 取，
+再换一份 `jsessionid`（参数名就是 `desktopToken`）。也可 `SC_TOKEN`/`SC_COOKIE` 覆盖。
 
-手工等价命令（探针坏了时对照用）：
+**关键坑**：`authorize` 和团队 key 用的 `accountId` 必须是 `cluster-user-detail` 里的
+**集群账号**（`427416191724683264`），用 `current-user-info.id`（`11224910962`）会
+`API010006 无权限访问`。
 
-```bash
-curl -s -X POST https://www.scnet.cn/ac/api/auth/loginDesktopClientByToken.action \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d "desktopToken=$AT" -D - -o /dev/null | grep -i set-cookie
-
-curl -s 'https://www.scnet.cn/acx/chatbot/recommend/list?enable=true' \
-  -H "Token: $AT" -H "Cookie: $CK" | jq -r '.data[]? | select(.identify=="aiagent-router") | .modelId'
-# → 600
-```
-
-调试纪律：**先在本机 curl 复现 → 改协议 → 再上机**，不要用装机循环试协议。
+调试纪律：**先在本机 curl 复现 → 改协议 → 再上机**。
 
 ## 3. 换电脑后第一天（5 分钟）
 

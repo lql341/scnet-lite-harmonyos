@@ -3,12 +3,32 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { store } from './Store';
 import { credentials, httpClient, ApiError } from './Http';
-import { AgentService, ApiEnvelope, ChatConfig, ConversationPage, HistoryPage, UserInfo } from '../model/Types';
+import { ApiEnvelope, ChatConfig, ConversationPage, HistoryPage, UserInfo } from '../model/Types';
 
 /** 登录成功后的会话态。 */
 export interface Session {
   token: string;
   cookie: string;
+}
+
+/**
+ * 集群侧身份。`accountId` 是**集群账号**（≠ 用户 id），
+ * `authorize` / 建团队 key 都用它（实测用用户 id 会 API010006 无权限访问）。
+ */
+export interface ClusterIdentity {
+  accountId: string;
+  groupId: string;
+  createUser: string;
+  clusterName: string;
+}
+
+interface ClusterRow {
+  accountId?: string;
+  groupId?: string;
+  userId?: string;
+  status?: string;
+  clusterName?: string;
+  memberType?: string;
 }
 
 interface LoginBody {
@@ -123,13 +143,42 @@ class Auth {
   }
 
   /**
-   * 智能体服务表。**v2 对话的 modelId 只能从这里拿**（`aiagent-router` → "600"）。
-   * client/lib 侧对应桌面端 `GET /recommend/list?enable=true`。
+   * 集群身份（`cluster-user-detail`）。
+   * ⚠️ `authorize` / 团队 key 用的是这里的 `accountId`（集群账号，如 427416191724683264），
+   * **不是** `current-user-info` 里的 `id`（11224910962）—— 用后者会 `API010006 无权限访问`。
+   * 该接口按集群返回多行（一台集群一行），同一账号的 accountId/groupId/userId 是重复的，取第一行即可。
    */
-  async agentServices(): Promise<AgentService[]> {
-    const data = await httpClient.getData('/acx/chatbot/recommend/list?enable=true');
-    // 信封里的 data 直接就是数组
-    return data as AgentService[];
+  async clusterIdentity(): Promise<ClusterIdentity> {
+    const empty: ClusterIdentity = { accountId: '', groupId: '', createUser: '', clusterName: '' };
+    try {
+      const data = await httpClient.getData('/acx/user/users/cluster-user-detail');
+      const rows: ClusterRow[] = data as ClusterRow[];
+      if (!Array.isArray(rows)) {
+        return empty;
+      }
+      for (let i = 0; i < rows.length; i++) {
+        const row: ClusterRow = rows[i];
+        const accountId: string = row.accountId ?? '';
+        const groupId: string = row.groupId ?? '';
+        const userId: string = row.userId ?? '';
+        const status: string = row.status ?? '';
+        if (accountId.length > 0 && groupId.length > 0 && userId.length > 0 && status !== 'inactive') {
+          const identity: ClusterIdentity = {
+            accountId: accountId,
+            groupId: groupId,
+            createUser: userId,
+            clusterName: row.clusterName ?? ''
+          };
+          hilog.info(0x0000, 'SCNetLite', 'cluster identity: account=%{public}s group=%{public}s',
+            accountId, groupId);
+          return identity;
+        }
+      }
+      return empty;
+    } catch (e) {
+      hilog.warn(0x0000, 'SCNetLite', 'cluster-user-detail failed');
+      return empty;
+    }
   }
 
   /** 某个会话的历史消息（v2）。 */

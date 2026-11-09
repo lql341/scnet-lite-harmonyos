@@ -32,20 +32,6 @@ export interface ModelItem {
   mcpEnable?: boolean;
 }
 
-/**
- * /acx/chatbot/recommend/list?enable=true 的服务项。
- * ⚠️ v2 stream 的 `modelId` 取自这里（`identify === 'aiagent-router'` → `modelId: "600"`），
- * **不是** `config/list.modelList[].id`。用 modelList 的 id（17/120/410/520）会立刻返回
- * 一帧 `{"type":"error","errorText":"系统繁忙，请稍后再试"}`。
- * 注意 `modelId` 是字符串。证据：2026-11-09 直连实测 + 桌面端 main 包 `th()`/`eA()`。
- */
-export interface AgentService {
-  identify?: string;
-  aiAssistantName?: string;
-  modelId?: string;
-  description?: string;
-}
-
 export interface ChatConfig {
   recommendQuestion?: string[];
   modelList?: ModelItem[];
