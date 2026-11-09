@@ -50,6 +50,18 @@ struct MarketPage {
       page, result.pages, this.items.length);
   }
 
+  private featured(): MarketItem[] {
+    return this.items.filter((item: MarketItem) => item.recommend === '1');
+  }
+
+  private recommended(): MarketItem[] {
+    return this.items.filter((item: MarketItem) => item.recommend === '2');
+  }
+
+  private community(): MarketItem[] {
+    return this.items.filter((item: MarketItem) => item.recommend !== '1' && item.recommend !== '2');
+  }
+
   private switchKind(kind: string): void {
     if (this.kind === kind) {
       return;
@@ -239,11 +251,50 @@ struct MarketPage {
         .justifyContent(FlexAlign.Center)
       } else {
         List({ space: 8 }) {
-          ForEach(this.items, (item: MarketItem) => {
+          if (this.featured().length > 0) {
+            ListItem() {
+              Text(L.t('精选', 'Featured'))
+                .fontSize(Theme.fTiny)
+                .fontColor(Theme.textFaint)
+                .width('100%')
+                .padding({ left: 2, top: 4 })
+            }
+          }
+          ForEach(this.featured(), (item: MarketItem) => {
             ListItem() {
               this.card(item)
             }
-          }, (item: MarketItem) => `${item.id}-${item.name}`)
+          }, (item: MarketItem) => `f-${item.id}`)
+
+          if (this.recommended().length > 0) {
+            ListItem() {
+              Text(L.t('推荐', 'Recommended'))
+                .fontSize(Theme.fTiny)
+                .fontColor(Theme.textFaint)
+                .width('100%')
+                .padding({ left: 2, top: 8 })
+            }
+          }
+          ForEach(this.recommended(), (item: MarketItem) => {
+            ListItem() {
+              this.card(item)
+            }
+          }, (item: MarketItem) => `r-${item.id}`)
+
+          if (this.community().length > 0 && this.featured().length + this.recommended().length > 0) {
+            ListItem() {
+              Text(L.t('社区', 'Community'))
+                .fontSize(Theme.fTiny)
+                .fontColor(Theme.textFaint)
+                .width('100%')
+                .padding({ left: 2, top: 8 })
+            }
+          }
+          ForEach(this.community(), (item: MarketItem) => {
+            ListItem() {
+              this.card(item)
+            }
+          }, (item: MarketItem) => `c-${item.id}`)
 
           if (this.page < this.pages) {
             ListItem() {

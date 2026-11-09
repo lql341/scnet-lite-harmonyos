@@ -815,210 +815,222 @@ struct Index {
   // ---------------------------------------------------------------- 空状态
   @Builder
   emptyState() {
-    Column() {
-      Column({ space: 10 }) {
-        Image($r('app.media.app_icon'))
-          .width(68)
-          .height(68)
-          .borderRadius(19)
-          .objectFit(ImageFit.Cover)
-          .shadow({ radius: 18, color: '#0B1F3322', offsetY: 6 })
-        Text(L.t('你好，我是超级计算智能体', 'Hi, I am your SCNet agent'))
-          .fontSize(24)
-          .fontWeight(FontWeight.Normal)
-          .fontFamily(Theme.fontDisplay)
-          .fontColor(Theme.text)
-          .margin({ top: 6 })
-        Text(L.t('作业调度、模型训练、数据分析，说一声就开始',
-          'Job scheduling, training, data analysis — just ask'))
-          .fontSize(Theme.fSmall)
-          .fontColor(Theme.textFaint)
-          .textAlign(TextAlign.Center)
-      }
-      .padding({ top: 4, bottom: 16 })
-
-      if (this.sceneTabs.length > 0) {
-        Scroll() {
-          Row({ space: 8 }) {
-            ForEach(this.sceneTabs, (tab: SceneTab) => {
-              Text(tab.title)
-                .fontSize(Theme.fSmall)
-                .fontColor(tab.id === this.sceneTabId ? Theme.textOnAccent : Theme.textSub)
-                .padding({ left: 12, right: 12, top: 7, bottom: 7 })
-                .backgroundColor(tab.id === this.sceneTabId ? Theme.accent : Theme.surface)
-                .borderRadius(Theme.rPill)
-                .border({ width: 1, color: tab.id === this.sceneTabId ? Theme.accent : Theme.hairline })
-                .onClick(() => {
-                  this.pickSceneTab(tab.id);
-                })
-            }, (tab: SceneTab) => tab.id)
-          }
-          .padding({ left: 2, right: 2 })
-        }
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
-        .width('100%')
-        .margin({ top: 4, bottom: 10 })
-
-        Column({ space: 8 }) {
-          ForEach(this.visibleQuestions(), (question: string) => {
-            Row({ space: 10 }) {
-              Text(question)
-                .fontSize(Theme.fSmall)
-                .lineHeight(19)
-                .fontColor(Theme.textSub)
-                .maxLines(2)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .layoutWeight(1)
-              Text('›').fontSize(16).fontColor(Theme.textFaint)
-            }
-            .width('100%')
-            .alignItems(VerticalAlign.Center)
-            .padding({ left: 14, right: 12, top: 10, bottom: 10 })
-            .backgroundColor(Theme.surface)
-            .borderRadius(Theme.rMd)
-            .border({ width: 1, color: Theme.hairline })
-            .onClick(() => {
-              this.input = question;
-              this.send();
-            })
-          }, (question: string) => question)
-        }
-        .width('100%')
-
-        Row({ space: 8 }) {
-          Text(L.t('换一批', 'Shuffle'))
-            .fontSize(Theme.fTiny)
-            .fontColor(Theme.accent)
-            .onClick(() => {
-              this.shuffleScenes();
-            })
-          Text(L.t('更多场景', 'More scenes'))
-            .fontSize(Theme.fTiny)
+    Scroll() {
+      Column() {
+        Column({ space: 10 }) {
+          Image($r('app.media.app_icon'))
+            .width(68)
+            .height(68)
+            .borderRadius(19)
+            .objectFit(ImageFit.Cover)
+            .shadow({ radius: 18, color: '#0B1F3322', offsetY: 6 })
+          Text(L.t('你好，我是超级计算智能体', 'Hi, I am your SCNet agent'))
+            .fontSize(24)
+            .fontWeight(FontWeight.Normal)
+            .fontFamily(Theme.fontDisplay)
+            .fontColor(Theme.text)
+            .margin({ top: 6 })
+          Text(L.t('作业调度、模型训练、数据分析，说一声就开始',
+            'Job scheduling, training, data analysis — just ask'))
+            .fontSize(Theme.fSmall)
             .fontColor(Theme.textFaint)
-            .onClick(() => {
-              this.showScenarioSheet = true;
-            })
-          Blank().layoutWeight(1)
+            .textAlign(TextAlign.Center)
         }
-        .width('100%')
-        .padding({ top: 10, left: 4 })
-      } else if (this.scenarioCategories.length > 0) {
-        // 领域场景：分类 + 场景卡（数据来自桌面端 home-scenarios 目录）
-        Scroll() {
-          Row({ space: 8 }) {
-            ForEach(this.scenarioCategories, (category: ScenarioCategory) => {
-              Text(category.title)
-                .fontSize(Theme.fSmall)
-                .fontColor(category.id === this.scenarioCategory ? Theme.textOnAccent : Theme.textSub)
-                .padding({ left: 12, right: 12, top: 7, bottom: 7 })
-                .backgroundColor(category.id === this.scenarioCategory ? Theme.accent : Theme.surface)
-                .borderRadius(Theme.rPill)
-                .border({ width: 1, color: category.id === this.scenarioCategory ? Theme.accent : Theme.hairline })
-                .onClick(() => {
-                  this.switchScenarioCategory(category.id);
-                })
-            }, (category: ScenarioCategory) => category.id)
-          }
-          .padding({ left: 2, right: 2 })
-        }
-        .scrollable(ScrollDirection.Horizontal)
-        .scrollBar(BarState.Off)
-        .width('100%')
-        .margin({ top: 4, bottom: 10 })
+        .padding({ top: 12, bottom: 18 })
 
-        Column({ space: 8 }) {
-          ForEach(this.scenarioItems, (item: ScenarioItem) => {
-            Row({ space: 10 }) {
-              Column({ space: 3 }) {
-                Text(item.title)
+        if (this.scenarioCategories.length > 0) {
+          // 7 类场景目录（同步自桌面客户端 home-scenarios）
+          Scroll() {
+            Row({ space: 8 }) {
+              ForEach(this.scenarioCategories, (category: ScenarioCategory) => {
+                Text(category.title)
                   .fontSize(Theme.fSmall)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor(Theme.text)
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(item.summary)
-                  .fontSize(Theme.fTiny)
-                  .fontColor(Theme.textFaint)
-                  .lineHeight(17)
+                  .fontColor(category.id === this.scenarioCategory ? Theme.textOnAccent : Theme.textSub)
+                  .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+                  .backgroundColor(category.id === this.scenarioCategory ? Theme.accent : Theme.surface)
+                  .borderRadius(Theme.rPill)
+                  .border({
+                    width: 1,
+                    color: category.id === this.scenarioCategory ? Theme.accent : Theme.hairline
+                  })
+                  .onClick(() => {
+                    this.switchScenarioCategory(category.id);
+                  })
+              }, (category: ScenarioCategory) => category.id)
+            }
+            .padding({ left: 2, right: 2 })
+          }
+          .scrollable(ScrollDirection.Horizontal)
+          .scrollBar(BarState.Off)
+          .width('100%')
+          .margin({ top: 2, bottom: 10 })
+
+          Column({ space: 8 }) {
+            ForEach(this.scenarioItems, (item: ScenarioItem) => {
+              Row({ space: 10 }) {
+                Column({ space: 3 }) {
+                  Text(item.title)
+                    .fontSize(Theme.fSmall)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(Theme.text)
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(item.summary)
+                    .fontSize(Theme.fTiny)
+                    .fontColor(Theme.textFaint)
+                    .lineHeight(17)
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1)
+                if (item.inputCount > 0) {
+                  Text(`附件 ${item.inputCount}`)
+                    .fontSize(9)
+                    .fontColor(Theme.warn)
+                    .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                    .backgroundColor('#FFF4E5')
+                    .borderRadius(5)
+                }
+                Text('›').fontSize(16).fontColor(Theme.textFaint)
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+              .padding({ left: 14, right: 12, top: 11, bottom: 11 })
+              .backgroundColor(Theme.surface)
+              .borderRadius(Theme.rMd)
+              .border({ width: 1, color: Theme.hairline })
+              .onClick(() => {
+                this.pickScenario(item);
+              })
+            }, (item: ScenarioItem) => item.id)
+          }
+          .width('100%')
+
+          Row({ space: 14 }) {
+            Text(L.t('换一批', 'Shuffle'))
+              .fontSize(Theme.fTiny)
+              .fontColor(Theme.accent)
+              .onClick(() => {
+                this.rotateScenarios();
+              })
+            Text(L.t('更多场景', 'More scenes'))
+              .fontSize(Theme.fTiny)
+              .fontColor(Theme.textFaint)
+              .onClick(() => {
+                this.showScenarioSheet = true;
+              })
+            Blank().layoutWeight(1)
+          }
+          .width('100%')
+          .padding({ top: 12, left: 4 })
+        } else if (this.sceneTabs.length > 0) {
+          Scroll() {
+            Row({ space: 8 }) {
+              ForEach(this.sceneTabs, (tab: SceneTab) => {
+                Text(tab.title)
+                  .fontSize(Theme.fSmall)
+                  .fontColor(tab.id === this.sceneTabId ? Theme.textOnAccent : Theme.textSub)
+                  .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+                  .backgroundColor(tab.id === this.sceneTabId ? Theme.accent : Theme.surface)
+                  .borderRadius(Theme.rPill)
+                  .border({ width: 1, color: tab.id === this.sceneTabId ? Theme.accent : Theme.hairline })
+                  .onClick(() => {
+                    this.pickSceneTab(tab.id);
+                  })
+              }, (tab: SceneTab) => tab.id)
+            }
+            .padding({ left: 2, right: 2 })
+          }
+          .scrollable(ScrollDirection.Horizontal)
+          .scrollBar(BarState.Off)
+          .width('100%')
+          .margin({ top: 2, bottom: 10 })
+
+          Column({ space: 8 }) {
+            ForEach(this.visibleQuestions(), (question: string) => {
+              Row({ space: 10 }) {
+                Text(question)
+                  .fontSize(Theme.fSmall)
+                  .lineHeight(19)
+                  .fontColor(Theme.textSub)
                   .maxLines(2)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .layoutWeight(1)
+                Text('›').fontSize(16).fontColor(Theme.textFaint)
               }
-              .alignItems(HorizontalAlign.Start)
-              .layoutWeight(1)
-              Text('›').fontSize(16).fontColor(Theme.textFaint)
-            }
-            .width('100%')
-            .alignItems(VerticalAlign.Center)
-            .padding({ left: 14, right: 12, top: 10, bottom: 10 })
-            .backgroundColor(Theme.surface)
-            .borderRadius(Theme.rMd)
-            .border({ width: 1, color: Theme.hairline })
-            .onClick(() => {
-              this.pickScenario(item);
-            })
-          }, (item: ScenarioItem) => item.id)
-        }
-        .width('100%')
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+              .padding({ left: 14, right: 12, top: 10, bottom: 10 })
+              .backgroundColor(Theme.surface)
+              .borderRadius(Theme.rMd)
+              .border({ width: 1, color: Theme.hairline })
+              .onClick(() => {
+                this.input = question;
+                this.send();
+              })
+            }, (question: string) => question)
+          }
+          .width('100%')
 
-        Row({ space: 8 }) {
-          Text(L.t('换一批', 'Shuffle'))
-            .fontSize(Theme.fTiny)
-            .fontColor(Theme.accent)
-            .onClick(() => {
-              this.rotateScenarios();
-            })
-          Text(L.t('更多场景', 'More scenes'))
-            .fontSize(Theme.fTiny)
-            .fontColor(Theme.textFaint)
-            .onClick(() => {
-              this.showScenarioSheet = true;
-            })
-          Blank().layoutWeight(1)
+          Row({ space: 14 }) {
+            Text(L.t('换一批', 'Shuffle'))
+              .fontSize(Theme.fTiny)
+              .fontColor(Theme.accent)
+              .onClick(() => {
+                this.shuffleScenes();
+              })
+            Blank().layoutWeight(1)
+          }
+          .width('100%')
+          .padding({ top: 12, left: 4 })
+        } else {
+          Column({ space: 8 }) {
+            ForEach(this.suggest, (item: string, index: number) => {
+              Row({ space: 10 }) {
+                Text(`${index + 1}`)
+                  .fontSize(10)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(Theme.accent)
+                  .width(18)
+                  .height(18)
+                  .textAlign(TextAlign.Center)
+                  .borderRadius(9)
+                  .backgroundColor(Theme.accentGhost)
+                Text(item)
+                  .fontSize(Theme.fSmall)
+                  .lineHeight(19)
+                  .fontColor(Theme.textSub)
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .layoutWeight(1)
+                Text('›').fontSize(16).fontColor(Theme.textFaint)
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+              .padding({ left: 14, right: 12, top: 10, bottom: 10 })
+              .backgroundColor(Theme.surface)
+              .borderRadius(Theme.rMd)
+              .border({ width: 1, color: Theme.hairline })
+              .onClick(() => {
+                this.input = item;
+                this.send();
+              })
+            }, (item: string, index: number) => `${index}-${item}`)
+          }
+          .width('100%')
         }
-        .width('100%')
-        .padding({ top: 10, left: 4 })
-      } else {
-        Column({ space: 8 }) {
-          ForEach(this.suggest, (item: string, index: number) => {
-            Row({ space: 10 }) {
-              Text(`${index + 1}`)
-                .fontSize(10)
-                .fontWeight(FontWeight.Medium)
-                .fontColor(Theme.accent)
-                .width(18)
-                .height(18)
-                .textAlign(TextAlign.Center)
-                .borderRadius(9)
-                .backgroundColor(Theme.accentGhost)
-              Text(item)
-                .fontSize(Theme.fSmall)
-                .lineHeight(19)
-                .fontColor(Theme.textSub)
-                .maxLines(2)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .layoutWeight(1)
-              Text('›').fontSize(16).fontColor(Theme.textFaint)
-            }
-            .width('100%')
-            .alignItems(VerticalAlign.Center)
-            .padding({ left: 14, right: 12, top: 10, bottom: 10 })
-            .backgroundColor(Theme.surface)
-            .borderRadius(Theme.rMd)
-            .border({ width: 1, color: Theme.hairline })
-            .onClick(() => {
-              this.input = item;
-              this.send();
-            })
-          }, (item: string, index: number) => `${index}-${item}`)
-        }
-        .width('100%')
       }
+      .width('100%')
+      .padding({ left: 18, right: 18, top: 4, bottom: 20 })
     }
-
+    .layoutWeight(1)
+    .width('100%')
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
+    .align(Alignment.Top)
   }
 
-  // ---------------------------------------------------------------- 输入区
   @Builder
   composer() {
     Column() {

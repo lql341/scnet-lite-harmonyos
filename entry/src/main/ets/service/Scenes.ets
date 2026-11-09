@@ -139,8 +139,43 @@ class Scenes {
         }
       }
 
-      hilog.info(0x0000, TAG, 'scenes: tabs=%{public}d services=%{public}d',
-        tabs.length, byService.size);
+      // 标签对齐桌面客户端（config 里的 label 与客户端显示不同）
+      const LABELS: Map<string, string> = new Map<string, string>();
+      LABELS.set('industry', '材料科学');
+      LABELS.set('bioinformatics', '生物信息');
+      LABELS.set('simulation', '工业仿真');
+      LABELS.set('office', '办公创作');
+      LABELS.set('general', '平台助手');
+      for (let i = 0; i < tabs.length; i++) {
+        const mapped: string | undefined = LABELS.get(tabs[i].id);
+        if (mapped !== undefined) {
+          tabs[i].title = mapped;
+        }
+      }
+
+      // 客户端还有两个分类（文献阅读 / 学术写作），不是 config 里的 scene，
+      // 而是从推荐问题里按主题分出的静态 tab —— 这里用真实问题按关键词归组。
+      const reading: string[] = [];
+      const writing: string[] = [];
+      for (let i = 0; i < usable.length; i++) {
+        const name: string = String(usable[i].name);
+        if (/文献|论文|检索|综述|arXiv|Pubmed/i.test(name)) {
+          reading.push(name);
+        } else if (/写作|润色|报告|摘要|投稿|论证|写作/i.test(name)) {
+          writing.push(name);
+        }
+      }
+      if (reading.length > 0) {
+        const tab: SceneTab = { id: 'literature', title: '文献阅读', questions: reading };
+        tabs.push(tab);
+      }
+      if (writing.length > 0) {
+        const tab: SceneTab = { id: 'writing', title: '学术写作', questions: writing };
+        tabs.push(tab);
+      }
+
+      hilog.info(0x0000, TAG, 'scenes: tabs=%{public}d services=%{public}d reading=%{public}d writing=%{public}d',
+        tabs.length, byService.size, reading.length, writing.length);
     } catch (e) {
       hilog.warn(0x0000, TAG, 'scenes load failed');
     }

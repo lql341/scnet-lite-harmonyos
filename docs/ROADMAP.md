@@ -206,7 +206,26 @@ POST /acx/search/dolphin/skills/full-text   ← 技能
 （连接器/技能 Tab、最热/最新/最多下载排序、搜索、分页加载，点卡片用内嵌 Web 打开 AIHub 详情），
 抽屉「插件」入口。
 
-### 首页分类 — ✅ 已按桌面端算法实现（2026-11-09）
+### 首页 7 个分类的真正来源 — ✅ 已定位并同步（2026-11-09）
+
+**不是**服务端 config，而是桌面客户端的**本地场景目录**：
+渲染进程通过 host op `home-scenarios.read`（主进程 `iW()`）读取
+`userData/home-scenarios/catalog.json` + `assets/`，2026-11-08 版为 7 类 32 项：
+
+```
+literature 文献阅读(3) · materials 材料科学(3) · simulation 工业仿真(3) ·
+bioinformatics 生物信息(3) · writing 学术写作(3) · platform-assistant 平台助手(4) ·
+office 办公创作(13)
+```
+
+定位方法（可复用）：Electron 客户端带 `--remote-debugging-port=9222` 启动 →
+CDP 连 renderer → `window.host.invoke('home-scenarios.read')` 直接返回目录 JSON。
+（`window.host.invoke` 不接受第二参数，传 `{}` 会报 `payload is not allowed`。）
+
+已同步：`rawfile/scenarios.json` 换成这 7 类 32 项（21 KB），首页按其展示；
+服务端 `vibeCodingScenes` 那套降级为兜底。
+
+### 首页分类（旧方案，保留作兜底）
 
 桌面端 4.1.1 `dist-electron/main` 的 `tp()` 是这么算 tab 的：
 

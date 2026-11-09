@@ -26,6 +26,8 @@ export const SORT_NEW: string = 'updateTime';
 export const SORT_DOWNLOAD: string = 'downloadCount';
 
 export interface MarketItem {
+  /** '1' 精选 / '2' 推荐 / '' 社区（平台 suggestType） */
+  recommend: string;
   id: string;
   name: string;
   desc: string;
@@ -62,6 +64,7 @@ interface MarketRow {
   imageUrl?: string;
   createUser?: string;
   authenticatedName?: string;
+  suggestType?: string;
   browseCount?: number;
   downloadCount?: number;
   updateTime?: string;
@@ -86,7 +89,7 @@ class Market {
     sort[sortField] = 'desc';
     const query: Record<string, Object> = {
       'keyWords': keywords,
-      'pageSize': 20,
+      'pageSize': 64,
       'pageNum': page
     };
     const body: Record<string, Object> = { 'query': query, 'sort': sort };
@@ -107,6 +110,7 @@ class Market {
         const slug: string = row.nameEn ?? name;
         const tags: TagRow[] = row.tags ?? [];
         const item: MarketItem = {
+          recommend: row.suggestType === undefined || row.suggestType === null ? '' : String(row.suggestType),
           id: row.id ?? '',
           name: name,
           desc: row.desc ?? (row.description ?? ''),
