@@ -104,6 +104,14 @@ struct Index {
   private gateway: Gateway = new Gateway();
   private scroller: Scroller = new Scroller();
 
+  onPageShow(): void {
+    // OCR 页「发送到对话」会把文字带回来
+    const params = router.getParams() as Record<string, string> | undefined;
+    if (params !== undefined && params !== null && params['prefill'] !== undefined) {
+      this.input = params['prefill'];
+    }
+  }
+
   aboutToAppear(): void {
     store.init(getContext(this) as common.UIAbilityContext);
     if (!auth.isLoggedIn()) {
@@ -1252,6 +1260,38 @@ struct Index {
       .onClick(() => {
         this.drawerOpen = false;
         router.pushUrl({ url: 'pages/Jobs' });
+      })
+
+      Row({ space: 8 }) {
+        Text('OCR')
+          .fontSize(9)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.accent)
+          .width(24)
+          .height(24)
+          .textAlign(TextAlign.Center)
+          .borderRadius(7)
+          .backgroundColor(Theme.accentGhost)
+        Column({ space: 1 }) {
+          Text(L.t('文字识别', 'OCR'))
+            .fontSize(Theme.fSmall)
+            .fontColor(Theme.text)
+          Text(L.t('图片转文字', 'Image to text'))
+            .fontSize(10)
+            .fontColor(Theme.textFaint)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Text('›').fontSize(14).fontColor(Theme.textFaint)
+      }
+      .width('100%')
+      .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+      .margin({ top: 8 })
+      .backgroundColor(Theme.surfaceAlt)
+      .borderRadius(Theme.rSm)
+      .onClick(() => {
+        this.drawerOpen = false;
+        router.pushUrl({ url: 'pages/OcrPage' });
       })
 
       Row({ space: 6 }) {

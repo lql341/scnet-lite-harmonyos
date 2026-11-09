@@ -184,9 +184,43 @@ AK/SK 录入：一次粘贴 `AccessKey:SecretKey`（自动按 `:`/`,`/空白/64 
 - 依赖：先有 P1/P2，否则装上插件也无法执行
 - UI：市场列表 / 详情 / 安装到本地 = 写 `filesDir/skills/<slug>/SKILL.md` + `.scnet-marketplace.json`
 
-### P5 语音与 OCR
-- 语音：`wss://www.scnet.cn/acx/chatbot/ws/audio/recognize`（`config/list` 的 `speechInputSecretKey`）
-- OCR：`POST /api/llm/v1/ocr/recognize`（需 `ensureOcrApiKey`）
+### P5 OCR — ✅ 已完成（2026-11-09）｜语音输入按需求取消
+
+契约（与本机实测一致，**不是 JSON 接口**）：
+
+```
+POST https://api.scnet.cn/api/llm/v1/ocr/recognize
+     Authorization: Bearer <sk-…>
+     Content-Type: multipart/form-data
+     fields: file=<图片字节>, ocrType=<大写枚举>
+  → { code:"0", data:[{ traceId, originalFilename, cosPath,
+                       result:[{ status, coordinate[], confidence, elements{…} }] }] }
+```
+
+**踩坑（花了最多时间的一处）**：
+- `ocrType` 必须是**表单字段**。放 JSON body 会被完全忽略，报
+  `Field 'ocrType' cannot be null` —— 很容易误判成"参数名不对"，我在这上面试了
+  十来种 body 写法（camelCase / snake_case / 嵌套 / 带图 URL）全是同一个错。
+- 查询参数 `ocr_type` 不参与校验（传什么都"通过"，但不生效）。
+- 值是**大写枚举**，小写会报 `ocr_type ：{x} is not support`。
+
+实测可用枚举（12 个）：
+`GENERAL` `PRINTED_TEXT` `HANDWRITING` `ID_CARD` `BANK_CARD` `DRIVER_LICENSE`
+`VEHICLE_LICENSE` `VEHICLE_VIN` `BUSINESS_LICENSE` `INVOICE` `TAXI_RECEIPT` `SOCIAL_SECURITY`
+
+平台模型目录里 `OCR` 项带 `teamFreeQuota: 200 / teamFreeRemaining: 198`（试用额度），
+`inputPrice 0.01`，属于按次计费的试用模型。
+
+实现：
+- `service/Ocr.ets`：手写 multipart 拼装（不引三方库）+ 递归展开 `elements` 取文字
+- `pages/OcrPage.ets`：相册选图 / 12 种识别类型 / 结果行数 + 复制 + 发送到对话 /
+  内置小图「自检」（`rawfile/ocr-selftest.png`），真机日志
+  `ocr selftest ok trace=… lines=0`
+- 抽屉「文字识别」入口
+
+### P5 语音输入（已按需求取消）
+- ~~语音~~：用户确认不需要（CLI 形态也不需要），跳过。
+- OCR：见上，已完成。
 
 ## 2. 不做的
 
