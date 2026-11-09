@@ -138,7 +138,38 @@ P2 附件上传完成后，这类场景在有附件时可直接发送；没附�
 - UI：+ 号接 `photoAccessHelper` / `filePicker`，缩略图在气泡里预览
 - 验收：发一张图，模型能描述内容
 
-### P3 作业面（HPC OpenAPI，照 `../scnet-cli`）
+### P3 作业面（HPC OpenAPI）— 🟡 代码完成，待正确凭据下验数据
+
+已实现（`service/Hpc.ets` + `pages/Jobs.ets`，抽屉「作业」入口）：
+
+```
+POST api.scnet.cn/api/user/v3/tokens
+     headers: user / accessKey / timestamp / signature
+     signature = hex(HMAC-SHA256(secretKey, '{"accessKey":…,"timestamp":…,"user":…}'))
+     → data[{clusterId, clusterName, token}]
+GET  www.scnet.cn/ac/openapi/v2/center          → hpcUrls / efileUrls / clusterUserInfo
+GET  {hpc}/hpc/openapi/v2/cluster               → 调度器（SLURM id = strJobManagerID） 实测
+GET  …/queuenames/users/{user}?strJobManagerID= → 队列 + 空闲核数                      实测
+GET  …/userquotas/userlimit?strJobManagerID=    → 配额上限                             实测
+GET  …/jobs?strClusterIDList=&start=&limit=     → 运行中作业（平台偶发 10001 internal_error）
+```
+
+⚠️ **踩坑：cryptoFramework 的 `createMac('SHA256')` 不可用**
+同一 key/message，它算出的摘要与标准 HMAC-SHA256 不一致（用 Python `hmac` 对比），
+平台因此报「AK/SK签名校验失败」。改为用 `createMd('SHA256')` 按 RFC 2104 自己拼
+ipad/opad，并在启动时用已知向量自检：`sha('abc')` 与
+`HMAC('key','The quick brown fox jumps over the lazy dog')`，真机日志
+`crypto selfcheck sha=true hmac=true`。
+
+AK/SK 录入：一次粘贴 `AccessKey:SecretKey`（自动按 `:`/`,`/空白/64 位连写拆分），
+并校验 32 位十六进制，避免重复输入导致签名失败。
+
+待办：
+- [ ] 正确 AK/SK 下的实际数据拉取（真机验证时设备锁屏，凭证录入未完成）
+- [ ] 作业提交（`POST …/apptemplates/BASIC/BASE/job` + `GAP_*`）与取消
+- [ ] 日志/产物查看（efile `file/content`、`file/download`）
+
+原始计划（保留背景）：
 - `POST /api/user/v3/tokens`：`signature = HMAC-SHA256(secretKey, JSON.stringify({accessKey,timestamp,user}))`
 - `GET /ac/openapi/v2/center` → 各区域 `hpcUrls` / `efileUrls`（token TTL 4h）
 - `POST {hpc}/hpc/openapi/v2/apptemplates/BASIC/BASE/job`（`GAP_NPROC` 是总核数）
