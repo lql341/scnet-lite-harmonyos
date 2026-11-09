@@ -381,6 +381,24 @@ struct Jobs {
             .onClick(() => {
               this.refresh();
             })
+          Text(L.t('文件', 'Files'))
+            .fontSize(Theme.fTiny)
+            .fontColor(Theme.accent)
+            .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+            .backgroundColor(Theme.accentGhost)
+            .borderRadius(Theme.rPill)
+            .onClick(() => {
+              router.pushUrl({ url: 'pages/Files' });
+            })
+          Text(L.t('提交', 'Submit'))
+            .fontSize(Theme.fTiny)
+            .fontColor(Theme.textOnAccent)
+            .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+            .backgroundColor(Theme.accent)
+            .borderRadius(Theme.rPill)
+            .onClick(() => {
+              router.pushUrl({ url: 'pages/JobSubmit' });
+            })
           Text('AK')
             .fontSize(Theme.fTiny)
             .fontColor(Theme.accent)
@@ -575,7 +593,8 @@ struct Jobs {
                 .border({ width: 1, color: Theme.hairline })
               }
 
-              Text(L.t('提交作业（含 SLURM 脚本）正在开发中', 'Job submission (with SLURM script) is coming'))
+              Text(L.t('提交作业：点右上「提交」进入表单（默认只做校验与脚本预览）',
+                'Tap Submit (top right): form with dry-run by default'))
                 .fontSize(10)
                 .fontColor(Theme.textFaint)
                 .width('100%')

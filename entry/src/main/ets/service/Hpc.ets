@@ -48,6 +48,12 @@ export interface HpcQueue {
   nodes: string;
 }
 
+/** efile 目录项。 */
+export interface RemoteEntry {
+  name: string;
+  path: string;
+}
+
 export interface HpcQuota {
   userName: string;
   accountMaxCpu: number;
@@ -159,6 +165,82 @@ export function cryptoSelfCheck(): boolean {
   hilog.info(0x0000, TAG, 'crypto selfcheck sha=%{public}s hmac=%{public}s',
     String(shaOk), String(macOk));
   return shaOk && macOk;
+}
+
+/** 提交计划（表单 + sbatch 预览的共同数据源）。 */
+export interface JobPlan {
+  name: string;
+  queue: string;
+  nodes: number;
+  /** 每节点核数 */
+  cpus: number;
+  gpus: number;
+  dcus: number;
+  memory: string;
+  walltime: string;
+  workDir: string;
+  command: string;
+  exclusive: boolean;
+}
+
+/** 渲染等价 sbatch（给人复核用，与提交体一一对应）。 */
+export function renderSbatch(plan: JobPlan, stdout: string, stderr: string): string {
+  const lines: string[] = [];
+  lines.push('#!/bin/bash');
+  lines.push(`#SBATCH --job-name=${plan.name}`);
+  lines.push(`#SBATCH --partition=${plan.queue}`);
+  lines.push(`#SBATCH --nodes=${plan.nodes}`);
+  lines.push(`#SBATCH --ntasks-per-node=${plan.cpus}`);
+  if (plan.gpus > 0) {
+    lines.push(`#SBATCH --gres=gpu:${plan.gpus}`);
+  }
+  if (plan.dcus > 0) {
+    lines.push(`#SBATCH --gres=dcu:${plan.dcus}`);
+  }
+  if (plan.memory.length > 0) {
+    lines.push(`#SBATCH --mem=${plan.memory}`);
+  }
+  lines.push(`#SBATCH --time=${plan.walltime}`);
+  lines.push(`#SBATCH --chdir=${plan.workDir}`);
+  lines.push(`#SBATCH --output=${stdout}`);
+  lines.push(`#SBATCH --error=${stderr}`);
+  if (plan.exclusive) {
+    lines.push('#SBATCH --exclusive');
+  }
+  lines.push('');
+  lines.push('set -euo pipefail');
+  lines.push(plan.command);
+  lines.push('');
+  return lines.join('\n');
+}
+
+/** 表单校验。返回空串=通过。 */
+export function validatePlan(plan: JobPlan, queues: string[]): string {
+  if (plan.name.trim().length === 0) {
+    return '作业名不能为空';
+  }
+  if (plan.queue.length === 0) {
+    return '请选择队列';
+  }
+  if (queues.length > 0 && queues.indexOf(plan.queue) < 0) {
+    return `队列 ${plan.queue} 不在可用列表里`;
+  }
+  if (plan.nodes < 1 || plan.nodes > 64) {
+    return '节点数应在 1~64';
+  }
+  if (plan.cpus < 1 || plan.cpus > 64) {
+    return '每节点核数应在 1~64';
+  }
+  if (!/^\d{2}:\d{2}:\d{2}$/.test(plan.walltime)) {
+    return '运行时长格式应为 HH:MM:SS';
+  }
+  if (plan.workDir.length === 0 || plan.workDir.charAt(0) !== '/') {
+    return '工作目录必须是绝对路径';
+  }
+  if (plan.command.trim().length === 0) {
+    return '命令不能为空';
+  }
+  return '';
 }
 
 class Hpc {
@@ -366,6 +448,144 @@ class Hpc {
       return quota;
     } catch (e) {
       return null;
+    }
+  }
+
+  /**
+   * 组装提交体（`mapAppJobInfo` 用 GAP_* 字段）。
+   * ⚠️ GAP_NPROC 是**总核数**（cpus × nodes），GAP_NGPU/GAP_NDCU 是**每节点**。
+   */
+  buildSubmitBody(ctx: HpcContext, plan: JobPlan, stdout: string, stderr: string): Record<string, Object> {
+    const info: Record<string, Object> = {
+      'GAP_CMD_FILE': plan.command,
+      'GAP_NNODE': `${plan.nodes}`,
+      'GAP_NODE_STRING': '',
+      'GAP_SUBMIT_TYPE': 'cmd',
+      'GAP_JOB_NAME': plan.name,
+      'GAP_WORK_DIR': plan.workDir,
+      'GAP_QUEUE': plan.queue,
+      'GAP_NPROC': `${plan.cpus * plan.nodes}`,
+      'GAP_PPN': '',
+      'GAP_NGPU': plan.gpus > 0 ? `${plan.gpus}` : '',
+      'GAP_NDCU': plan.dcus > 0 ? `${plan.dcus}` : '',
+      'GAP_JOB_MEM': plan.memory,
+      'GAP_WALL_TIME': plan.walltime,
+      'GAP_EXCLUSIVE': plan.exclusive ? '1' : '',
+      'GAP_APPNAME': 'BASE',
+      'GAP_MULTI_SUB': '',
+      'GAP_STD_OUT_FILE': stdout,
+      'GAP_STD_ERR_FILE': stderr,
+      'GAP_SCHEDULER_OPT_WEB': '',
+      'GAP_CLUSTER_ID': ctx.clusterId
+    };
+    const body: Record<string, Object> = {
+      'strJobManagerID': ctx.schedulerId,
+      'mapAppJobInfo': info
+    };
+    return body;
+  }
+
+  /**
+   * 真正提交。**默认不调用**（会真计费）。
+   * 只有 UI 里显式开启 `allowSubmit` 并且用户二次确认后才会走到这里。
+   */
+  async submit(ctx: HpcContext, plan: JobPlan, stdout: string, stderr: string): Promise<string> {
+    const body: Record<string, Object> = this.buildSubmitBody(ctx, plan, stdout, stderr);
+    const head: Record<string, string> = {
+      'token': ctx.token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+    const options: http.HttpRequestOptions = {
+      method: http.RequestMethod.POST,
+      header: head,
+      extraData: JSON.stringify(body),
+      expectDataType: http.HttpDataType.STRING,
+      connectTimeout: 20000,
+      readTimeout: 60000
+    };
+    const client: http.HttpRequest = http.createHttp();
+    try {
+      const resp = await client.request(`${ctx.hpcUrl}/hpc/openapi/v2/apptemplates/BASIC/BASE/job`, options);
+      const text: string = typeof resp.result === 'string' ? resp.result as string : '';
+      const env: Envelope = JSON.parse(text) as Envelope;
+      if (env.code !== undefined && String(env.code) !== '0') {
+        throw new HpcError(String(env.code), env.msg ?? '提交被拒绝');
+      }
+      const jobId: string = String(env.data ?? '').trim();
+      if (jobId.length === 0) {
+        throw new HpcError('no-id', '提交成功但没有返回作业号');
+      }
+      hilog.info(0x0000, TAG, 'job submitted id=%{public}s', jobId);
+      return jobId;
+    } finally {
+      client.destroy();
+    }
+  }
+
+  /**
+   * 列远程目录（efile 服务）。
+   * 实测返回 `data.children[{path,id,label}]`；根目录 `/` 会 911030 无权限，需从 home 起。
+   */
+  async listDir(ctx: HpcContext, path: string): Promise<RemoteEntry[]> {
+    const url: string = `${ctx.efileUrl}/openapi/v2/file/list?path=${encodeURIComponent(path)}`;
+    const resp: Envelope = await this.getJson(url, ctx.token);
+    if (resp.code !== undefined && String(resp.code) !== '0') {
+      throw new HpcError(String(resp.code), resp.msg ?? '读取目录失败');
+    }
+    const data = resp.data as Record<string, Object>;
+    const children = data !== undefined && data !== null ? data['children'] : undefined;
+    const out: RemoteEntry[] = [];
+    if (!Array.isArray(children)) {
+      return out;
+    }
+    const rows: Record<string, Object>[] = children as Record<string, Object>[];
+    for (let i = 0; i < rows.length; i++) {
+      const name: string = String(rows[i]['label'] ?? '');
+      const full: string = String(rows[i]['path'] ?? '');
+      if (name.length === 0) {
+        continue;
+      }
+      const entry: RemoteEntry = { name: name, path: full };
+      out.push(entry);
+    }
+    out.sort((a: RemoteEntry, b: RemoteEntry) => a.name.localeCompare(b.name));
+    hilog.info(0x0000, TAG, 'efile list %{public}s: %{public}d', path, out.length);
+    return out;
+  }
+
+  /**
+   * 读远程文件内容（hpc 服务的 file/content，form 提交）。
+   * 返回 `data.data` 文本；`allLineTotal` 是总行数。
+   */
+  async readFile(ctx: HpcContext, path: string, tail: boolean): Promise<string> {
+    const head: Record<string, string> = {
+      'token': ctx.token,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    };
+    const form: string = `hostName=&dirPath=${encodeURIComponent(path)}&triggerNum=1` +
+      `&rollDirection=${tail ? 'UP' : 'DOWN'}`;
+    const options: http.HttpRequestOptions = {
+      method: http.RequestMethod.POST,
+      header: head,
+      extraData: form,
+      expectDataType: http.HttpDataType.STRING,
+      connectTimeout: 20000,
+      readTimeout: 60000
+    };
+    const client: http.HttpRequest = http.createHttp();
+    try {
+      const resp = await client.request(`${ctx.hpcUrl}/hpc/openapi/v2/file/content`, options);
+      const text: string = typeof resp.result === 'string' ? resp.result as string : '';
+      const env: Envelope = JSON.parse(text) as Envelope;
+      if (env.code !== undefined && String(env.code) !== '0') {
+        throw new HpcError(String(env.code), env.msg ?? '读取文件失败');
+      }
+      const data = env.data as Record<string, Object>;
+      const body = data !== undefined && data !== null ? data['data'] : undefined;
+      return typeof body === 'string' ? body as string : '';
+    } finally {
+      client.destroy();
     }
   }
 

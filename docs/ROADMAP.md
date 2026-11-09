@@ -164,10 +164,25 @@ ipad/opad，并在启动时用已知向量自检：`sha('abc')` 与
 AK/SK 录入：一次粘贴 `AccessKey:SecretKey`（自动按 `:`/`,`/空白/64 位连写拆分），
 并校验 32 位十六进制，避免重复输入导致签名失败。
 
-待办：
-- [ ] 正确 AK/SK 下的实际数据拉取（真机验证时设备锁屏，凭证录入未完成）
-- [ ] 作业提交（`POST …/apptemplates/BASIC/BASE/job` + `GAP_*`）与取消
-- [ ] 日志/产物查看（efile `file/content`、`file/download`）
+进度：
+- [x] 正确 AK/SK 下的实际数据拉取（真机：14 集群 / 6 队列 / 4 作业）
+- [x] 提交表单 + 校验 + 等价 sbatch 预览 + 二次确认（`pages/JobSubmit.ets`）
+      **默认 dry-run**：只把请求体打到 hilog；页面上的红色开关打开后才会真实提交
+- [x] 提交体构造 `hpc.buildSubmitBody()`：`{strJobManagerID, mapAppJobInfo{GAP_*}}`，
+      `GAP_NPROC = cpus × nodes`（总核），`GAP_NGPU/NDCU` 是每节点
+- [x] 文件/日志浏览 `pages/Files.ets` + `service/Hpc.ets:listDir/readFile`
+- [ ] 提交取消 `DELETE /openapi/v2/jobs`（`strJobInfoMap=<scheduler>,<user>:<jobId>:`）
+- [ ] 作业详情（`/openapi/v2/jobs/{id}`）与产物下载（efile `file/download`）
+
+文件浏览契约（本机 curl 实测）：
+```
+GET  {efile}/efile/openapi/v2/file/list?path=<dir>
+     → data.children[{path,id,label}]
+     ⚠️ 根目录 `/` 返回 911030 无权限，必须从 clusterUserInfo.homePath 起浏览
+     ⚠️ 返回里**没有** isDirectory 标记，只能「先按目录试，失败再当文件读」
+POST {hpc}/hpc/openapi/v2/file/content   (form)
+     hostName= & dirPath=<file> & triggerNum=1 & rollDirection=UP|DOWN
+     → data.data = 文本内容，data.allLineTotal = 总行数
 
 原始计划（保留背景）：
 - `POST /api/user/v3/tokens`：`signature = HMAC-SHA256(secretKey, JSON.stringify({accessKey,timestamp,user}))`
