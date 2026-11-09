@@ -104,11 +104,35 @@ UI 上就是模型选择器里的两个分组，不是两套页面。
 - `pages/Index.ets`：输入区加「场景」入口；空状态直接展示当前分类前 3 个 + 换一批
 - 点场景 = 把预置 prompt 填进输入框并发送（与桌面端行为一致）
 
-**已知限制**：30 个场景里 26 个带 `inputs`（如 `standard-doe.csv`）。附件上传没做完之前，
-这类场景只预填不发送，并提示「需要 N 个附件」——否则 agent 会干等文件
-（实测：DTC 船型阻力分析发出去后卡在「您好！」）。→ 这就是 P2 要做的第一件事。
+**已知限制**：30 个场景里 26 个带 `inputs`（如 `standard-doe.csv`）。
+P2 附件上传完成后，这类场景在有附件时可直接发送；没附件时提示「点 ＋ 选择文件」。
 
-### P2 附件与图片
+### P2 附件上传 — ✅ 已完成（2026-11-09）
+
+契约（本机 curl + 真机双向验证）：
+
+```
+1) POST /acx/chatbot/file/upload/url   body: [{fileId, fileName, totalSize:"0"}]
+   → [{fileName, fileId, uploadUrl}]     # OSS 预签名，5 分钟有效，host: oss.ksai.scnet.cn:58003
+2) PUT uploadUrl
+   Content-Type: <mime>  Content-Length: <bytes>  x-amz-meta-total-size: 0
+   → 200（注意：**不能**带平台 Token/Cookie 头，OSS 会拒）
+3) 发消息时 inputs 追加：
+   { "type": "file" | "image",           # image/ 前缀走 image
+     "resource": { "name": <返回的 fileName>, "mimeType": "...", "size": <KB> } }
+```
+
+实测：智能体侧调用 `download_oss_files` 工具读取，问「附件有多少行数据」答 `33`
+（与主机 curl 同一份文件、同一个答案）。
+
+实现：
+- `service/Upload.ets`：ticket → OSS PUT → `UploadedFile{name,mimeType,sizeKb}`
+  （`mimeOf()` 与桌面端同一张扩展名表；`readSync` 读 picker 的 uri）
+- `service/AgentChat.ets`：`stream(modelId, text, files, handlers)`，按 mime 分 file/image
+- `pages/Index.ets`：＋ 接 `DocumentViewPicker`（最多 3 个）、附件 chip 可删、
+  中性提示与红色错误分离；**长按 ＋** 跑一次上传自检（诊断用）
+
+### P2.1 图片与附件（后续）
 - 网关：多模态模型 `messages[].content = [{type:'text'},{type:'image_url'}]`
 - 智能体：`POST /acx/chatbot/file/upload/url` 拿 OSS 直传 → `inputs[]` 追加 file
 - UI：+ 号接 `photoAccessHelper` / `filePicker`，缩略图在气泡里预览

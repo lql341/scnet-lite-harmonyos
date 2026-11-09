@@ -77,6 +77,8 @@ struct Index {
   /** 待发送的附件（已上传到 OSS，拿到平台 fileName） */
   @State attachments: UploadedFile[] = [];
   @State uploading: boolean = false;
+  /** 中性提示（附件就绪等），与红色错误分开 */
+  @State notice: string = '';
   /** 智能体通道的平台会话 id（新对话时清空） */
   @State agentConversationId: string = '';
   /** 本次请求用的通道名，流结束时写进消息 */
@@ -317,17 +319,20 @@ struct Index {
 
   /** 长按 ＋ 走一次上传自检（诊断用）。 */
   private async runUploadSelfTest(): Promise<void> {
-    this.errorMsg = '正在自检附件链路…';
+    this.errorMsg = '';
+    this.notice = L.t('正在上传测试附件…', 'Uploading test file…');
     const result: UploadedFile | null = await uploader.selfTest();
     if (result === null) {
       hilog.warn(0x0000, TAG, 'upload selftest failed');
-      this.errorMsg = '附件自检失败（看 hilog）';
+      this.notice = '';
+      this.errorMsg = L.t('附件上传失败，请重试', 'Upload failed, please retry');
       return;
     }
     // 顺手挂成待发送附件，这样能直接验证「附件 → 智能体读到」的完整路径
     this.attachments = this.attachments.concat([result]);
     hilog.info(0x0000, TAG, 'upload selftest ok: %{public}s', result.name);
-    this.errorMsg = `附件已就绪：${result.localName}`;
+    this.errorMsg = '';
+    this.notice = L.t(`附件已就绪：${result.localName}`, `Attached: ${result.localName}`);
   }
 
   /** 选场景：把预置 prompt 填进输入框并直接发送（与桌面端行为一致）。 */
@@ -339,10 +344,12 @@ struct Index {
       return;
     }
     this.input = item.prompt;
-    if (item.inputCount > 0) {
-      // 场景需要附件（如 standard-doe.csv），当前还没有上传能力：
-      // 直接发出去 agent 只会干等文件，所以先填进输入框并说明情况。
-      this.errorMsg = `「${item.title}」需要 ${item.inputCount} 个附件，附件上传还没做完，已把指令填进输入框`;
+    if (item.inputCount > 0 && this.attachments.length === 0) {
+      // 场景需要附件（如 standard-doe.csv）。没附件时直接发会让 agent 干等文件，
+      // 所以先把指令填进输入框，并提示用户点 ＋ 选文件。
+      this.errorMsg = L.t(
+        `「${item.title}」需要 ${item.inputCount} 个附件，请点 ＋ 选择文件后再发送`,
+        `"${item.title}" needs ${item.inputCount} attachment(s). Tap + to pick files first.`);
       return;
     }
     this.send();
@@ -496,6 +503,7 @@ struct Index {
       return;
     }
     this.errorMsg = '';
+    this.notice = '';
     this.input = '';
     this.streaming = '';
     this.progressText = '';
@@ -889,6 +897,48 @@ struct Index {
   composer() {
     Column() {
       Column() {
+        if (this.attachments.length > 0 || this.uploading) {
+          Scroll() {
+            Row({ space: 8 }) {
+              if (this.uploading) {
+                Row({ space: 6 }) {
+                  LoadingProgress().width(12).height(12).color(Theme.accent)
+                  Text(L.t('上传中…', 'Uploading…'))
+                    .fontSize(Theme.fTiny)
+                    .fontColor(Theme.textFaint)
+                }
+                .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                .backgroundColor(Theme.surfaceAlt)
+                .borderRadius(Theme.rPill)
+              }
+              ForEach(this.attachments, (file: UploadedFile) => {
+                Row({ space: 6 }) {
+                  Text(file.localName)
+                    .fontSize(Theme.fTiny)
+                    .fontColor(Theme.textSub)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .constraintSize({ maxWidth: 150 })
+                  Text('✕')
+                    .fontSize(10)
+                    .fontColor(Theme.textFaint)
+                    .onClick(() => {
+                      this.removeAttachment(file.name);
+                    })
+                }
+                .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                .backgroundColor(Theme.accentGhost)
+                .borderRadius(Theme.rPill)
+                .border({ width: 1, color: Theme.accentSoft })
+              }, (file: UploadedFile) => file.name)
+            }
+            .padding({ left: 12, right: 12, top: 10 })
+          }
+          .scrollable(ScrollDirection.Horizontal)
+          .scrollBar(BarState.Off)
+          .width('100%')
+        }
+
         TextArea({ text: this.input, placeholder: L.t('发消息…', 'Message…') })
           .width('100%')
           .constraintSize({ minHeight: 42, maxHeight: 132 })
@@ -1381,6 +1431,24 @@ struct Index {
           .onClick(() => {
             this.hideKeyboard();
           })
+        }
+
+        if (this.notice.length > 0 && this.errorMsg.length === 0) {
+          Row({ space: 6 }) {
+            Text(this.notice)
+              .fontSize(10)
+              .fontColor(Theme.textSub)
+              .layoutWeight(1)
+              .maxLines(2)
+            Text('✕')
+              .fontSize(10)
+              .fontColor(Theme.textFaint)
+              .onClick(() => {
+                this.notice = '';
+              })
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 4 })
         }
 
         if (this.errorMsg.length > 0) {
