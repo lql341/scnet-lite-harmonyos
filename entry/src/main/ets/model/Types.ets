@@ -12,6 +12,8 @@ export interface ApiEnvelope {
 
 export interface UserInfo {
   id?: string;
+  userId?: string;
+  accountId?: string;
   userName?: string;
   fullName?: string;
   mobilephoneNum?: string;

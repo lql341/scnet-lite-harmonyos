@@ -88,6 +88,8 @@ struct Index {
   @State scenarioCategory: string = 'science';
   @State scenarioItems: ScenarioItem[] = [];
   @State showScenarioSheet: boolean = false;
+  /** 订阅主题版本：换主题后本页重建，读到新的 Theme 颜色 */
+  @StorageLink('themeVersion') themeVersion: number = 0;
 
   private gateway: Gateway = new Gateway();
   private scroller: Scroller = new Scroller();
@@ -528,6 +530,16 @@ struct Index {
       .textAlign(TextAlign.Center)
       .borderRadius(size / 2)
       .backgroundColor(Theme.accent)
+      .onClick(() => {
+        this.openProfile();
+      })
+  }
+
+  private openProfile(): void {
+    this.drawerOpen = false;
+    router.pushUrl({ url: 'pages/Profile' }).catch((err: Error) => {
+      hilog.warn(0x0000, TAG, 'open profile failed: %{public}s', err.message);
+    });
   }
 
   @Builder
@@ -1020,6 +1032,9 @@ struct Index {
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
+        .onClick(() => {
+          this.openProfile();
+        })
         Text('✕')
           .fontSize(13)
           .fontColor(Theme.textFaint)

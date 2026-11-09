@@ -3,6 +3,7 @@
     "pages/Login",
     "pages/Index",
     "pages/AiHubPage",
-    "pages/WebPage"
+    "pages/WebPage",
+    "pages/Profile"
   ]
 }
