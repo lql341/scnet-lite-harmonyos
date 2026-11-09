@@ -4,6 +4,7 @@
     "pages/Index",
     "pages/AiHubPage",
     "pages/WebPage",
-    "pages/Profile"
+    "pages/Profile",
+    "pages/Jobs"
   ]
 }

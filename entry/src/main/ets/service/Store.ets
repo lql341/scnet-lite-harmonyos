@@ -14,6 +14,10 @@ const KEY_MODEL: string = 'model';
 export const DEFAULT_MODEL: string = 'SCNet-Max';
 const KEY_THEME: string = 'themePalette';
 const KEY_CLUSTER: string = 'clusterId';
+const KEY_USER_NAME: string = 'platformUserName';
+const KEY_HPC_AK: string = 'hpcAk';
+const KEY_HPC_SK: string = 'hpcSk';
+const KEY_HPC_USER: string = 'hpcUser';
 const KEY_FONT_LEVEL: string = 'fontLevel';
 const KEY_LANG: string = 'lang';
 const KEY_CHANNEL: string = 'channel';
@@ -83,6 +87,38 @@ class Store {
     } catch (e) {
       // 忽略
     }
+  }
+
+  getPlatformUserName(): string {
+    return this.readString(KEY_USER_NAME, '');
+  }
+
+  setPlatformUserName(value: string): void {
+    this.writeString(KEY_USER_NAME, value);
+  }
+
+  getHpcAk(): string {
+    return this.readString(KEY_HPC_AK, '');
+  }
+
+  setHpcAk(value: string): void {
+    this.writeString(KEY_HPC_AK, value);
+  }
+
+  getHpcSk(): string {
+    return this.readString(KEY_HPC_SK, '');
+  }
+
+  setHpcSk(value: string): void {
+    this.writeString(KEY_HPC_SK, value);
+  }
+
+  getHpcUser(): string {
+    return this.readString(KEY_HPC_USER, '');
+  }
+
+  setHpcUser(value: string): void {
+    this.writeString(KEY_HPC_USER, value);
   }
 
   getFontLevel(): number {

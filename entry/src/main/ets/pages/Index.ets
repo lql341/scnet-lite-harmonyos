@@ -137,7 +137,10 @@ struct Index {
   private async loadCloud(): Promise<void> {
     try {
       const me: UserInfo = await auth.refreshUser();
-      this.userName = me.fullName ?? (me.userName ?? '');
+      this.userName = safe(me.fullName).length > 0 ? safe(me.fullName) : safe(me.userName);
+      if (safe(me.userName).length > 0) {
+        store.setPlatformUserName(safe(me.userName));
+      }
     } catch (e) {
       hilog.warn(0x0000, TAG, 'user info failed');
     }
@@ -1218,6 +1221,37 @@ struct Index {
       .onClick(() => {
         this.drawerOpen = false;
         router.pushUrl({ url: 'pages/AiHubPage' });
+      })
+
+      Row({ space: 8 }) {
+        Text('HPC')
+          .fontSize(10)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.accent)
+          .width(24)
+          .height(24)
+          .textAlign(TextAlign.Center)
+          .borderRadius(7)
+          .backgroundColor(Theme.accentGhost)
+        Column({ space: 1 }) {
+          Text(L.t('作业', 'Jobs'))
+            .fontSize(Theme.fSmall)
+            .fontColor(Theme.text)
+          Text(L.t('集群 · 队列 · 配额', 'Cluster · queues · quota'))
+            .fontSize(10)
+            .fontColor(Theme.textFaint)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Text('›').fontSize(14).fontColor(Theme.textFaint)
+      }
+      .width('100%')
+      .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+      .backgroundColor(Theme.surfaceAlt)
+      .borderRadius(Theme.rSm)
+      .onClick(() => {
+        this.drawerOpen = false;
+        router.pushUrl({ url: 'pages/Jobs' });
       })
 
       Row({ space: 6 }) {
