@@ -88,6 +88,26 @@ UI 上就是模型选择器里的两个分组，不是两套页面。
 - 模型选择器分两组：**LLM（网关）** / **智能体（平台服务）**
 - 验收：在同一条 UI 里切到 `超级科学计算智能体`，能出字、能停、标题回填
 
+### P1.5 领域智能体（场景模板）— ✅ 已完成（2026-11-09）
+
+用户说的「领域智能体」= 桌面端首页那排 **科学计算 / 科研助手 / 办公与创作 / 开发** 下面的场景卡，
+数据源是**本地目录** `~/.config/scnet-client/home-scenarios/catalog.json`
+（schemaVersion 2，由 `home-scenarios.read/refresh` 维护，不是接口）。
+
+每个场景带：`prompt`（预置中文指令）、`workflowIntent{executionMode, requiredCapabilities, skillName}`、
+`requires.skills`、`inputs`（附件）、`artifacts`、`tier`。
+
+实现：
+- `entry/src/main/resources/rawfile/scenarios.json`（23 KB，从桌面目录裁剪：4 类 30 个场景）
+- `service/Scenarios.ets`：读 rawfile、分类/取前 N/换一批/查找
+- `view/ScenarioSheet.ets`：分类 Tab + 场景卡 + 「附件 N」标记
+- `pages/Index.ets`：输入区加「场景」入口；空状态直接展示当前分类前 3 个 + 换一批
+- 点场景 = 把预置 prompt 填进输入框并发送（与桌面端行为一致）
+
+**已知限制**：30 个场景里 26 个带 `inputs`（如 `standard-doe.csv`）。附件上传没做完之前，
+这类场景只预填不发送，并提示「需要 N 个附件」——否则 agent 会干等文件
+（实测：DTC 船型阻力分析发出去后卡在「您好！」）。→ 这就是 P2 要做的第一件事。
+
 ### P2 附件与图片
 - 网关：多模态模型 `messages[].content = [{type:'text'},{type:'image_url'}]`
 - 智能体：`POST /acx/chatbot/file/upload/url` 拿 OSS 直传 → `inputs[]` 追加 file

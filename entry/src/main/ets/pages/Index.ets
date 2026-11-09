@@ -12,6 +12,8 @@ import { Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from 
 import { Theme, prettyModel, safe } from '../common/Theme';
 import { MarkdownView } from '../view/MarkdownView';
 import { ModelSheet } from '../view/ModelSheet';
+import { ScenarioSheet } from '../view/ScenarioSheet';
+import { scenarios, ScenarioCategory, ScenarioItem } from '../service/Scenarios';
 
 const TAG: string = 'SCNetLite';
 
@@ -82,6 +84,10 @@ struct Index {
   @State draftKey: string = '';
   @State draftUrl: string = DEFAULT_BASE_URL;
   @State showModelSheet: boolean = false;
+  @State scenarioCategories: ScenarioCategory[] = [];
+  @State scenarioCategory: string = 'science';
+  @State scenarioItems: ScenarioItem[] = [];
+  @State showScenarioSheet: boolean = false;
 
   private gateway: Gateway = new Gateway();
   private scroller: Scroller = new Scroller();
@@ -99,7 +105,15 @@ struct Index {
     this.agentKey = store.getAgent();
     this.draftKey = this.apiKey;
     this.draftUrl = this.baseUrl;
-    sessions.init(getContext(this) as common.UIAbilityContext);
+    const context = getContext(this) as common.UIAbilityContext;
+    sessions.init(context);
+    scenarios.load(context.resourceManager).then(() => {
+      this.scenarioCategories = scenarios.list();
+      if (this.scenarioCategories.length > 0) {
+        this.scenarioCategory = this.scenarioCategories[0].id;
+        this.scenarioItems = scenarios.top(this.scenarioCategory, 3);
+      }
+    });
     this.localSessions = sessions.list();
     hilog.info(0x0000, TAG, 'sessions on start: %{public}d', this.localSessions.length);
     if (this.localSessions.length > 0) {
@@ -249,6 +263,36 @@ struct Index {
       }
     }
     return list.length > 0 ? list[0] : preferred;
+  }
+
+  /** 选场景：把预置 prompt 填进输入框并直接发送（与桌面端行为一致）。 */
+  private pickScenario(item: ScenarioItem): void {
+    this.showScenarioSheet = false;
+    this.errorMsg = '';
+    if (item.prompt.length === 0) {
+      this.input = item.title;
+      return;
+    }
+    this.input = item.prompt;
+    if (item.inputCount > 0) {
+      // 场景需要附件（如 standard-doe.csv），当前还没有上传能力：
+      // 直接发出去 agent 只会干等文件，所以先填进输入框并说明情况。
+      this.errorMsg = `「${item.title}」需要 ${item.inputCount} 个附件，附件上传还没做完，已把指令填进输入框`;
+      return;
+    }
+    this.send();
+  }
+
+  private switchScenarioCategory(id: string): void {
+    this.scenarioCategory = id;
+    this.scenarioItems = scenarios.top(id, 3);
+  }
+
+  private rotateScenarios(): void {
+    const all: ScenarioItem[] = scenarios.rotate(this.scenarioCategory, 3, Date.now() % 7);
+    if (all.length > 0) {
+      this.scenarioItems = all;
+    }
   }
 
   /** 打开本地会话。 */
@@ -658,45 +702,119 @@ struct Index {
       }
       .padding({ top: 8, bottom: 22 })
 
-      Column({ space: 8 }) {
-        ForEach(this.suggest, (item: string, index: number) => {
-          Row({ space: 10 }) {
-            Text(`${index + 1}`)
-              .fontSize(10)
-              .fontWeight(FontWeight.Medium)
-              .fontColor(Theme.accent)
-              .width(18)
-              .height(18)
-              .textAlign(TextAlign.Center)
-              .borderRadius(9)
-              .backgroundColor(Theme.accentGhost)
-            Text(item)
-              .fontSize(Theme.fSmall)
-              .lineHeight(19)
-              .fontColor(Theme.textSub)
-              .maxLines(2)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .layoutWeight(1)
-            Text('›').fontSize(16).fontColor(Theme.textFaint)
+      if (this.scenarioCategories.length > 0) {
+        // 领域场景：分类 + 场景卡（数据来自桌面端 home-scenarios 目录）
+        Scroll() {
+          Row({ space: 8 }) {
+            ForEach(this.scenarioCategories, (category: ScenarioCategory) => {
+              Text(category.title)
+                .fontSize(Theme.fSmall)
+                .fontColor(category.id === this.scenarioCategory ? Theme.textOnAccent : Theme.textSub)
+                .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+                .backgroundColor(category.id === this.scenarioCategory ? Theme.accent : Theme.surface)
+                .borderRadius(Theme.rPill)
+                .border({ width: 1, color: category.id === this.scenarioCategory ? Theme.accent : Theme.hairline })
+                .onClick(() => {
+                  this.switchScenarioCategory(category.id);
+                })
+            }, (category: ScenarioCategory) => category.id)
           }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-          .padding({ left: 14, right: 12, top: 10, bottom: 10 })
-          .backgroundColor(Theme.surface)
-          .borderRadius(Theme.rMd)
-          .border({ width: 1, color: Theme.hairline })
-          .onClick(() => {
-            this.input = item;
-            this.send();
-          })
-        }, (item: string, index: number) => `${index}-${item}`)
+          .padding({ left: 2, right: 2 })
+        }
+        .scrollable(ScrollDirection.Horizontal)
+        .scrollBar(BarState.Off)
+        .width('100%')
+        .margin({ top: 4, bottom: 10 })
+
+        Column({ space: 8 }) {
+          ForEach(this.scenarioItems, (item: ScenarioItem) => {
+            Row({ space: 10 }) {
+              Column({ space: 3 }) {
+                Text(item.title)
+                  .fontSize(Theme.fSmall)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(Theme.text)
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                Text(item.summary)
+                  .fontSize(Theme.fTiny)
+                  .fontColor(Theme.textFaint)
+                  .lineHeight(17)
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+              Text('›').fontSize(16).fontColor(Theme.textFaint)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+            .padding({ left: 14, right: 12, top: 10, bottom: 10 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+            .onClick(() => {
+              this.pickScenario(item);
+            })
+          }, (item: ScenarioItem) => item.id)
+        }
+        .width('100%')
+
+        Row({ space: 8 }) {
+          Text('换一批')
+            .fontSize(Theme.fTiny)
+            .fontColor(Theme.accent)
+            .onClick(() => {
+              this.rotateScenarios();
+            })
+          Text('更多场景')
+            .fontSize(Theme.fTiny)
+            .fontColor(Theme.textFaint)
+            .onClick(() => {
+              this.showScenarioSheet = true;
+            })
+          Blank().layoutWeight(1)
+        }
+        .width('100%')
+        .padding({ top: 10, left: 4 })
+      } else {
+        Column({ space: 8 }) {
+          ForEach(this.suggest, (item: string, index: number) => {
+            Row({ space: 10 }) {
+              Text(`${index + 1}`)
+                .fontSize(10)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(Theme.accent)
+                .width(18)
+                .height(18)
+                .textAlign(TextAlign.Center)
+                .borderRadius(9)
+                .backgroundColor(Theme.accentGhost)
+              Text(item)
+                .fontSize(Theme.fSmall)
+                .lineHeight(19)
+                .fontColor(Theme.textSub)
+                .maxLines(2)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .layoutWeight(1)
+              Text('›').fontSize(16).fontColor(Theme.textFaint)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+            .padding({ left: 14, right: 12, top: 10, bottom: 10 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+            .onClick(() => {
+              this.input = item;
+              this.send();
+            })
+          }, (item: string, index: number) => `${index}-${item}`)
+        }
+        .width('100%')
       }
-      .width('100%')
     }
-    .width('100%')
-    .layoutWeight(1)
-    .padding({ left: 18, right: 18 })
-    .justifyContent(FlexAlign.Center)
+
   }
 
   // ---------------------------------------------------------------- 输入区
@@ -718,6 +836,19 @@ struct Index {
           })
 
         Row({ space: 8 }) {
+          Row({ space: 4 }) {
+            Text('场景')
+              .fontSize(Theme.fTiny)
+              .fontColor(Theme.textSub)
+            Text('▸').fontSize(9).fontColor(Theme.textFaint)
+          }
+          .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+          .backgroundColor(Theme.surfaceAlt)
+          .borderRadius(Theme.rPill)
+          .onClick(() => {
+            this.showScenarioSheet = true;
+          })
+
           Row({ space: 5 }) {
             Text(this.currentLabel())
               .fontSize(Theme.fTiny)
@@ -920,6 +1051,38 @@ struct Index {
       .borderRadius(Theme.rMd)
       .onClick(() => {
         this.newChat();
+      })
+
+      Row({ space: 8 }) {
+        Text('AI')
+          .fontSize(11)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.accent)
+          .width(24)
+          .height(24)
+          .textAlign(TextAlign.Center)
+          .borderRadius(7)
+          .backgroundColor(Theme.accentGhost)
+        Column({ space: 1 }) {
+          Text('AI 社区')
+            .fontSize(Theme.fSmall)
+            .fontColor(Theme.text)
+          Text('领域智能体 / 应用市场')
+            .fontSize(10)
+            .fontColor(Theme.textFaint)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Text('›').fontSize(14).fontColor(Theme.textFaint)
+      }
+      .width('100%')
+      .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+      .margin({ top: 8 })
+      .backgroundColor(Theme.surfaceAlt)
+      .borderRadius(Theme.rSm)
+      .onClick(() => {
+        this.drawerOpen = false;
+        router.pushUrl({ url: 'pages/AiHubPage' });
       })
 
       Row({ space: 6 }) {
@@ -1158,6 +1321,30 @@ struct Index {
         }
         .width('100%')
         .height('100%')
+      }
+
+      if (this.showScenarioSheet) {
+        Column() {
+          Blank().layoutWeight(1).width('100%').onClick(() => {
+            this.showScenarioSheet = false;
+          })
+          ScenarioSheet({
+            categories: this.scenarioCategories,
+            currentCategory: this.scenarioCategory,
+            onPick: (item: ScenarioItem) => {
+              this.pickScenario(item);
+            },
+            onPickCategory: (id: string) => {
+              this.switchScenarioCategory(id);
+            },
+            onClose: () => {
+              this.showScenarioSheet = false;
+            }
+          })
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#0B1F3355')
       }
 
       if (this.showModelSheet) {

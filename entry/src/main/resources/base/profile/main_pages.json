@@ -1,6 +1,8 @@
 {
   "src": [
     "pages/Login",
-    "pages/Index"
+    "pages/Index",
+    "pages/AiHubPage",
+    "pages/WebPage"
   ]
 }

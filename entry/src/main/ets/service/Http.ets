@@ -115,6 +115,12 @@ class Http {
     return env.data === undefined ? new EmptyData() : env.data;
   }
 
+  /** JSON POST，返回信封里的 data（AIHub 等 REST 接口用）。 */
+  async postJson(path: string, body: string): Promise<object> {
+    const env = await this.send(path, http.RequestMethod.POST, body);
+    return env.data === undefined ? new EmptyData() : env.data;
+  }
+
   /** 表单 POST（SSO 那套是 x-www-form-urlencoded，不是 JSON）。 */
   async postForm(path: string, form: string): Promise<http.HttpResponse> {
     const header: RequestHeaders = {
