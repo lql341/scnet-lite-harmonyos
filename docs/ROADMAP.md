@@ -50,6 +50,29 @@ UI 上就是模型选择器里的两个分组，不是两套页面。
 （响应里可见 `toolName: resolve_subtask_agents`、`agentName: AI助理` 的 subagent 帧）。
 所以选择器里只有「智能体服务」一项，用户用自然语言说需求即可。
 
+**进一步的否定验证（2026-11-09，避免以后再试错）**：
+
+| 变体 | 结果 |
+| --- | --- |
+| `{modelId:300}` | ❌ 系统繁忙 |
+| `{modelId:300, clusterId:11250}` | ❌ 系统繁忙 |
+| `{modelId:300, identify:"aiagent-science"}` | ❌ 系统繁忙 |
+| `{modelId:300, service:"aiagent-science"}` | ❌ 系统繁忙 |
+| `POST /acx/chatbot/v1/chat/completion {content,autoRun,…}` | ⚠️ 200 且**无 error 帧**（帧结构是 v1 的 `msgFromType/msgContent`，未解析） |
+
+也就是说：**不是"缺字段"**，是这些服务在 v2 上根本不可用。
+桌面端 `eA()` 里普通发送的 body 就只是 `{modelId, origin, inputs}`（`...l` 是附件 helper、
+`...s` 只在交互表单时出现），它自己都只发 router。
+
+**要真正接上领域智能体，还缺一次"谁在调它"的证据**：
+
+1. 手机 APK 抓包（Dart AOT 不可读，REA 也不支持）—— mitmproxy + 系统证书；
+2. 或 Web 端 `https://www.scnet.cn/ui/chatbot/index.html` 打开"智能体"入口抓 Network（最省事）。
+
+拿到那一次请求的 body 与 path，就知道是 `v2 + 某个未发现的字段`、还是另一套端点。
+在此之前，聊天里选「智能体服务」并说清需求，router 会在服务端路由到对应子智能体
+（响应里可见 `agentName: AI助理`、`toolName: resolve_subtask_agents`）。
+
 已实现：
 - `service/AgentChat.ets`：v2 流 + 帧按 `type` 分派 + `stop` 真停服务端任务 + `title_gen` 回写会话标题
 - `model/Pick.ets`：智能体/模型统一成 `PickItem`，只保留可用的 router
