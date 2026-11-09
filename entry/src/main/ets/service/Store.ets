@@ -13,6 +13,7 @@ const KEY_MODEL: string = 'model';
  */
 export const DEFAULT_MODEL: string = 'SCNet-Max';
 const KEY_THEME: string = 'themePalette';
+const KEY_CLUSTER: string = 'clusterId';
 const KEY_CHANNEL: string = 'channel';
 const KEY_AGENT: string = 'agentIdentify';
 const KEY_CLOUD_TOKEN: string = 'cloudToken';
@@ -57,8 +58,33 @@ class Store {
     this.writeString(KEY_MODEL, value);
   }
 
+  /** 当前选中的集群 id（0 = 还没选，用列表第一个）。 */
+  getClusterId(): number {
+    if (this.prefs === null) {
+      return 0;
+    }
+    try {
+      const value = this.prefs.getSync(KEY_CLUSTER, 0);
+      return typeof value === 'number' ? value as number : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  setClusterId(value: number): void {
+    if (this.prefs === null) {
+      return;
+    }
+    try {
+      this.prefs.putSync(KEY_CLUSTER, value);
+      this.prefs.flush();
+    } catch (e) {
+      // 忽略
+    }
+  }
+
   getTheme(): string {
-    return this.readString(KEY_THEME, 'ocean');
+    return this.readString(KEY_THEME, 'claude');
   }
 
   setTheme(value: string): void {

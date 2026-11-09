@@ -10,31 +10,81 @@ export interface Palette {
   accentSoft: string;
   accentGhost: string;
   bg: string;
+  surface: string;
+  surfaceAlt: string;
+  text: string;
+  textSub: string;
+  textFaint: string;
+  border: string;
+  hairline: string;
 }
 
 /** 可选主题（主色 + 背景微调）。顺序就是设置页里的排列顺序。 */
 export const PALETTES: Palette[] = [
-  { id: 'ocean', name: '深海蓝', accent: '#0B4F8A', accentDeep: '#083A66', accentSoft: '#E7F0F8', accentGhost: '#F3F8FC', bg: '#F4F6F9' },
-  { id: 'graphite', name: '石墨', accent: '#1F2937', accentDeep: '#111827', accentSoft: '#E8EBEF', accentGhost: '#F5F6F8', bg: '#F4F5F7' },
-  { id: 'pine', name: '松绿', accent: '#0E7C66', accentDeep: '#0A5D4D', accentSoft: '#E2F2EE', accentGhost: '#F2FAF7', bg: '#F3F7F6' },
-  { id: 'amber', name: '琥珀', accent: '#B45309', accentDeep: '#8A3F07', accentSoft: '#FAEDE0', accentGhost: '#FEF8F2', bg: '#F8F5F1' },
-  { id: 'violet', name: '紫罗兰', accent: '#5B3FA8', accentDeep: '#46308A', accentSoft: '#ECE8F9', accentGhost: '#F6F4FD', bg: '#F5F4F9' },
-  { id: 'rose', name: '玫瑰', accent: '#B02A5B', accentDeep: '#8C1F47', accentSoft: '#FAE8EF', accentGhost: '#FDF4F8', bg: '#F8F4F6' }
+  {
+    id: 'claude', name: '暖砂',
+    accent: '#C15F3C', accentDeep: '#A44A2C', accentSoft: '#F2E4DC', accentGhost: '#FAF3EF',
+    bg: '#F7F5F2', surface: '#FFFFFF', surfaceAlt: '#F1EDE7',
+    text: '#1F1E1D', textSub: '#5D5A57', textFaint: '#8F8A84',
+    border: '#E6DFD7', hairline: '#EFE9E2'
+  },
+  {
+    id: 'ocean', name: '深海蓝',
+    accent: '#0B4F8A', accentDeep: '#083A66', accentSoft: '#E7F0F8', accentGhost: '#F3F8FC',
+    bg: '#F4F6F9', surface: '#FFFFFF', surfaceAlt: '#F1F3F7',
+    text: '#101828', textSub: '#475467', textFaint: '#98A2B3',
+    border: '#E6E9EF', hairline: '#EFF1F5'
+  },
+  {
+    id: 'graphite', name: '石墨',
+    accent: '#1F2937', accentDeep: '#111827', accentSoft: '#E8EBEF', accentGhost: '#F5F6F8',
+    bg: '#F4F5F7', surface: '#FFFFFF', surfaceAlt: '#EDEFF2',
+    text: '#111827', textSub: '#4B5563', textFaint: '#9CA3AF',
+    border: '#E2E5EA', hairline: '#EDEFF2'
+  },
+  {
+    id: 'pine', name: '松绿',
+    accent: '#0E7C66', accentDeep: '#0A5D4D', accentSoft: '#E2F2EE', accentGhost: '#F2FAF7',
+    bg: '#F3F7F6', surface: '#FFFFFF', surfaceAlt: '#EAF2EF',
+    text: '#12211E', textSub: '#47605A', textFaint: '#8FA8A1',
+    border: '#DEE9E5', hairline: '#E9F1EE'
+  },
+  {
+    id: 'amber', name: '琥珀',
+    accent: '#B45309', accentDeep: '#8A3F07', accentSoft: '#FAEDE0', accentGhost: '#FEF8F2',
+    bg: '#F8F5F1', surface: '#FFFFFF', surfaceAlt: '#F2EBE2',
+    text: '#1F1A15', textSub: '#5C5348', textFaint: '#9C9184',
+    border: '#E8DFD2', hairline: '#F1EAE0'
+  },
+  {
+    id: 'violet', name: '紫罗兰',
+    accent: '#5B3FA8', accentDeep: '#46308A', accentSoft: '#ECE8F9', accentGhost: '#F6F4FD',
+    bg: '#F5F4F9', surface: '#FFFFFF', surfaceAlt: '#EEECF6',
+    text: '#1B1726', textSub: '#544E68', textFaint: '#9891AC',
+    border: '#E3DFEF', hairline: '#EEEBF7'
+  },
+  {
+    id: 'rose', name: '玫瑰',
+    accent: '#B02A5B', accentDeep: '#8C1F47', accentSoft: '#FAE8EF', accentGhost: '#FDF4F8',
+    bg: '#F8F4F6', surface: '#FFFFFF', surfaceAlt: '#F4E9EE',
+    text: '#211519', textSub: '#5E4A52', textFaint: '#A08D95',
+    border: '#EADDE3', hairline: '#F4EBEF'
+  }
 ];
 
 export class Theme {
   // 背景与表面
-  static bg: string = '#F4F6F9';
-  static readonly surface: string = '#FFFFFF';
-  static readonly surfaceAlt: string = '#F1F3F7';
-  static readonly surfaceSunken: string = '#EAEEF4';
+  static bg: string = '#F7F5F2';
+  static surface: string = '#FFFFFF';
+  static surfaceAlt: string = '#F1EDE7';
+  static surfaceSunken: string = '#EAE4DC';
 
   // 主色（运行时可换，见 applyPalette）
-  static accent: string = '#0B4F8A';
-  static accentDeep: string = '#083A66';
-  static accentSoft: string = '#E7F0F8';
-  static accentGhost: string = '#F3F8FC';
-  static paletteId: string = 'ocean';
+  static accent: string = '#C15F3C';
+  static accentDeep: string = '#A44A2C';
+  static accentSoft: string = '#F2E4DC';
+  static accentGhost: string = '#FAF3EF';
+  static paletteId: string = 'claude';
 
   /**
    * 切换主题。改完要让它生效：调用方 bump AppStorage('themeVersion')，
@@ -57,6 +107,14 @@ export class Theme {
     Theme.accentSoft = chosen.accentSoft;
     Theme.accentGhost = chosen.accentGhost;
     Theme.bg = chosen.bg;
+    Theme.surface = chosen.surface;
+    Theme.surfaceAlt = chosen.surfaceAlt;
+    Theme.surfaceSunken = chosen.border;
+    Theme.text = chosen.text;
+    Theme.textSub = chosen.textSub;
+    Theme.textFaint = chosen.textFaint;
+    Theme.border = chosen.border;
+    Theme.hairline = chosen.hairline;
   }
 
   static findPalette(id: string): Palette {
@@ -68,15 +126,19 @@ export class Theme {
     return PALETTES[0];
   }
 
-  // 文本
-  static readonly text: string = '#101828';
-  static readonly textSub: string = '#475467';
-  static readonly textFaint: string = '#98A2B3';
+  // 文本（随主题变）
+  static text: string = '#1F1E1D';
+  static textSub: string = '#5D5A57';
+  static textFaint: string = '#8F8A84';
   static readonly textOnAccent: string = '#FFFFFF';
 
-  // 边框/分隔
-  static readonly border: string = '#E6E9EF';
-  static readonly hairline: string = '#EFF1F5';
+  // 边框/分隔（随主题变）
+  static border: string = '#E6DFD7';
+  static hairline: string = '#EFE9E2';
+
+  /** 标题字体：Claude 那种衬线感。设备没有 serif 时会自动回落到系统字体。 */
+  static readonly fontDisplay: string = 'serif';
+  static readonly fontBody: string = 'HarmonyOS Sans';
 
   // 状态
   static readonly danger: string = '#B42318';

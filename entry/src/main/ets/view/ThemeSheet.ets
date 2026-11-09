@@ -60,7 +60,7 @@ export struct ThemeSheet {
 
       Row() {
         Column({ space: 2 }) {
-          Text('主题色').fontSize(Theme.fTitle).fontWeight(FontWeight.Medium).fontColor(Theme.text)
+          Text('主题色').fontSize(Theme.fTitle).fontFamily(Theme.fontDisplay).fontColor(Theme.text)
           Text('选中即刻生效，会记住') .fontSize(Theme.fTiny).fontColor(Theme.textFaint)
         }
         .alignItems(HorizontalAlign.Start)

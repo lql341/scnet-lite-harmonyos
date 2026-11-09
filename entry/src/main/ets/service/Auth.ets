@@ -23,7 +23,18 @@ export interface ClusterIdentity {
   clusterName: string;
 }
 
+/** 一个可用集群（`cluster-user-detail` 的一行，跨集群去重后）。 */
+export interface ClusterInfo {
+  clusterId: number;
+  clusterName: string;
+  accountId: string;
+  groupId: string;
+  createUser: string;
+  status: string;
+}
+
 interface ClusterRow {
+  clusterId?: number;
   accountId?: string;
   groupId?: string;
   userId?: string;
@@ -149,6 +160,49 @@ class Auth {
    * **不是** `current-user-info` 里的 `id`（11224910962）—— 用后者会 `API010006 无权限访问`。
    * 该接口按集群返回多行（一台集群一行），同一账号的 accountId/groupId/userId 是重复的，取第一行即可。
    */
+  /**
+   * 全部可用集群（去重）。平台按"账号 × 集群"返回多行，
+   * 本账号实测 13 个（华东一区昆山 / 西北二区甘肃 / 华北二区太原 …），
+   * 其中 status=inactive 的排在后面。
+   */
+  async clusters(): Promise<ClusterInfo[]> {
+    const out: ClusterInfo[] = [];
+    try {
+      const data = await httpClient.getData('/acx/user/users/cluster-user-detail');
+      const rows: ClusterRow[] = data as ClusterRow[];
+      if (!Array.isArray(rows)) {
+        return out;
+      }
+      const seen: number[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row: ClusterRow = rows[i];
+        const id: number = row.clusterId ?? 0;
+        if (id <= 0 || seen.indexOf(id) >= 0) {
+          continue;
+        }
+        seen.push(id);
+        const info: ClusterInfo = {
+          clusterId: id,
+          clusterName: row.clusterName ?? `集群 ${id}`,
+          accountId: row.accountId ?? '',
+          groupId: row.groupId ?? '',
+          createUser: row.userId ?? '',
+          status: row.status ?? ''
+        };
+        out.push(info);
+      }
+      out.sort((a: ClusterInfo, b: ClusterInfo) => {
+        const ax: number = a.status === 'inactive' ? 1 : 0;
+        const bx: number = b.status === 'inactive' ? 1 : 0;
+        return ax - bx;
+      });
+      hilog.info(0x0000, 'SCNetLite', 'clusters: %{public}d', out.length);
+    } catch (e) {
+      hilog.warn(0x0000, 'SCNetLite', 'clusters failed');
+    }
+    return out;
+  }
+
   async clusterIdentity(): Promise<ClusterIdentity> {
     const empty: ClusterIdentity = { accountId: '', groupId: '', createUser: '', clusterName: '' };
     try {

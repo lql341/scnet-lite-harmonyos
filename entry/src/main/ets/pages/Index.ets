@@ -553,6 +553,7 @@ struct Index {
         Text('智能体')
           .fontSize(Theme.fTitle)
           .fontWeight(FontWeight.Medium)
+          .fontFamily(Theme.fontDisplay)
           .fontColor(Theme.text)
         Row({ space: 4 }) {
           Column()
@@ -599,14 +600,11 @@ struct Index {
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
-      .padding({ left: 14, right: 14, top: 12, bottom: 12 })
-      .backgroundColor(Theme.surface)
-      .borderRadius(Theme.rLg)
-      .border({ width: 1, color: Theme.hairline })
+      .padding({ left: 2, right: 2, top: 2, bottom: 2 })
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
-    .padding({ top: 8, bottom: 4 })
+    .padding({ top: 6, bottom: 10 })
   }
 
   @Builder
@@ -614,12 +612,12 @@ struct Index {
     Row() {
       Text(content)
         .fontSize(Theme.fBody)
-        .lineHeight(23)
-        .fontColor(Theme.textOnAccent)
-        .padding({ left: 13, right: 13, top: 9, bottom: 9 })
-        .backgroundColor(Theme.accent)
-        .borderRadius({ topLeft: Theme.rLg, topRight: Theme.rLg, bottomLeft: Theme.rLg, bottomRight: 4 })
-        .constraintSize({ maxWidth: '80%' })
+        .lineHeight(24)
+        .fontColor(Theme.text)
+        .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+        .backgroundColor(Theme.surfaceAlt)
+        .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl, bottomLeft: Theme.rXl, bottomRight: 6 })
+        .constraintSize({ maxWidth: '82%' })
     }
     .width('100%')
     .justifyContent(FlexAlign.End)
@@ -639,10 +637,7 @@ struct Index {
           .fontSize(Theme.fSmall)
           .fontColor(Theme.textFaint)
       }
-      .padding({ left: 14, right: 16, top: 11, bottom: 11 })
-      .backgroundColor(Theme.surface)
-      .borderRadius(Theme.rLg)
-      .border({ width: 1, color: Theme.hairline })
+      .padding({ left: 2, right: 16, top: 4, bottom: 4 })
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
@@ -703,10 +698,11 @@ struct Index {
             .fontColor('#FFFFFF')
         }
         Text('你好，我是 SCNet 智能体')
-          .fontSize(21)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(24)
+          .fontWeight(FontWeight.Normal)
+          .fontFamily(Theme.fontDisplay)
           .fontColor(Theme.text)
-          .margin({ top: 4 })
+          .margin({ top: 6 })
         Text('面向科研计算的助手：作业调度、模型训练、数据分析')
           .fontSize(Theme.fSmall)
           .fontColor(Theme.textFaint)

@@ -73,7 +73,7 @@ export struct ScenarioSheet {
 
       Row() {
         Column({ space: 2 }) {
-          Text('场景').fontSize(Theme.fTitle).fontWeight(FontWeight.Medium).fontColor(Theme.text)
+          Text('场景').fontSize(Theme.fTitle).fontFamily(Theme.fontDisplay).fontColor(Theme.text)
           Text('选一个领域任务，直接带着指令开始')
             .fontSize(Theme.fTiny)
             .fontColor(Theme.textFaint)

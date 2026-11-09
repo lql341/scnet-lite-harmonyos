@@ -120,7 +120,7 @@ struct AiHubPage {
         Column({ space: 1 }) {
           Text('AI 社区')
             .fontSize(Theme.fTitle)
-            .fontWeight(FontWeight.Medium)
+            .fontFamily(Theme.fontDisplay)
             .fontColor(Theme.text)
           Text('领域智能体 · 由平台与第三方提供')
             .fontSize(10)

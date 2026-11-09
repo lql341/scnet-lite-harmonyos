@@ -99,7 +99,7 @@ export struct ModelSheet {
 
       Row() {
         Column({ space: 2 }) {
-          Text('选择通道').fontSize(Theme.fTitle).fontWeight(FontWeight.Medium).fontColor(Theme.text)
+          Text('选择通道').fontSize(Theme.fTitle).fontFamily(Theme.fontDisplay).fontColor(Theme.text)
           Text('智能体走平台服务，模型走网关（SCNet Max 免费）')
             .fontSize(Theme.fTiny)
             .fontColor(Theme.textFaint)

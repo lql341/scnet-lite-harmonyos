@@ -89,7 +89,7 @@ export struct MarkdownView {
           .margin({ right: 6 })
       }
       Column() {
-        this.inline(block.text, Theme.fBody, 23, Theme.text)
+        this.inline(block.text, 15.5, 25, Theme.text)
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -108,7 +108,7 @@ export struct MarkdownView {
         .backgroundColor(Theme.accentSoft)
         .margin({ right: 10, top: 2, bottom: 2 })
       Column() {
-        this.inline(block.text, Theme.fBody, 23, Theme.textSub)
+        this.inline(block.text, 15.5, 25, Theme.textSub)
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
@@ -168,7 +168,7 @@ export struct MarkdownView {
           this.quote(block)
         } else {
           Row() {
-            this.inline(block.text, Theme.fBody, 24, Theme.text)
+            this.inline(block.text, 15.5, 26, Theme.text)
             if (this.streaming) {
               Text('▍')
                 .fontSize(Theme.fBody)

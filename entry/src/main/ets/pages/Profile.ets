@@ -6,7 +6,7 @@ import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Theme, prettyModel, safe } from '../common/Theme';
 import { store, DEFAULT_MODEL } from '../service/Store';
-import { auth, ClusterIdentity } from '../service/Auth';
+import { auth, ClusterIdentity, ClusterInfo } from '../service/Auth';
 import { credentials } from '../service/Http';
 import { UserInfo } from '../model/Types';
 import { ThemeSheet } from '../view/ThemeSheet';
@@ -30,6 +30,9 @@ struct Profile {
   @State clusterName: string = '';
   @State showThemeSheet: boolean = false;
   @State rows: InfoRow[] = [];
+  @State clusters: ClusterInfo[] = [];
+  @State clusterId: number = 0;
+  @State showClusterSheet: boolean = false;
   /** 本次进来换过主题 → 返回时要用 replaceUrl 重建对话页，否则还是旧配色 */
   private themeChanged: boolean = false;
 
@@ -51,9 +54,25 @@ struct Profile {
     }
     this.rebuildRows();
     try {
+      const list: ClusterInfo[] = await auth.clusters();
+      this.clusters = list;
+      const saved: number = store.getClusterId();
+      let picked: number = saved;
+      let pickedName: string = '';
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].clusterId === saved) {
+          pickedName = list[i].clusterName;
+        }
+      }
+      if (pickedName.length === 0 && list.length > 0) {
+        picked = list[0].clusterId;
+        pickedName = list[0].clusterName;
+        store.setClusterId(picked);
+      }
+      this.clusterId = picked;
+      this.clusterName = pickedName;
       const identity: ClusterIdentity = await auth.clusterIdentity();
       this.clusterAccount = safe(identity.accountId);
-      this.clusterName = safe(identity.clusterName);
       hilog.info(0x0000, TAG, 'profile cluster: acc=%{public}d name=%{public}d',
         this.clusterAccount.length, this.clusterName.length);
     } catch (e) {
@@ -66,7 +85,8 @@ struct Profile {
     const rows: InfoRow[] = [
       { label: '账号', value: this.userId },
       { label: '集群账号', value: this.clusterAccount },
-      { label: '集群', value: this.clusterName },
+      { label: '集群', value: this.clusterName.length > 0
+          ? `${this.clusterName}（${this.clusters.length} 个可选）` : '' },
       { label: '当前通道', value: this.channelLabel() },
       { label: '网关 key', value: this.maskedKey() }
     ];
@@ -111,6 +131,7 @@ struct Profile {
             })
           Text('账号')
             .fontSize(Theme.fTitle)
+            .fontFamily(Theme.fontDisplay)
             .fontWeight(FontWeight.Medium)
             .fontColor(Theme.text)
             .layoutWeight(1)
@@ -133,8 +154,9 @@ struct Profile {
                 .backgroundColor(Theme.accent)
                 .shadow({ radius: 18, color: '#0B1F3320', offsetY: 6 })
               Text(this.userName.length > 0 ? this.userName : '未命名用户')
-                .fontSize(18)
-                .fontWeight(FontWeight.Medium)
+                .fontSize(20)
+                .fontWeight(FontWeight.Normal)
+                .fontFamily(Theme.fontDisplay)
                 .fontColor(Theme.text)
               Text('已登录 · 超算互联网')
                 .fontSize(Theme.fTiny)
@@ -156,6 +178,11 @@ struct Profile {
                 }
                 .width('100%')
                 .padding({ top: 11, bottom: 11 })
+                .onClick(() => {
+                  if (row.label === '集群' && this.clusters.length > 0) {
+                    this.showClusterSheet = true;
+                  }
+                })
 
                 if (index < this.rows.length - 1) {
                   Divider().color(Theme.hairline)
@@ -219,6 +246,85 @@ struct Profile {
       .width('100%')
       .height('100%')
       .backgroundColor(Theme.bg)
+
+      if (this.showClusterSheet) {
+        Column() {
+          Blank().layoutWeight(1).width('100%').onClick(() => {
+            this.showClusterSheet = false;
+          })
+          Column() {
+            Row()
+              .width(36)
+              .height(4)
+              .borderRadius(2)
+              .backgroundColor(Theme.surfaceSunken)
+              .margin({ top: 8, bottom: 8 })
+            Row() {
+              Text(`集群（${this.clusters.length}）`)
+                .fontSize(Theme.fTitle)
+                .fontFamily(Theme.fontDisplay)
+                .fontColor(Theme.text)
+                .layoutWeight(1)
+              Text('✕')
+                .fontSize(14)
+                .fontColor(Theme.textFaint)
+                .width(30)
+                .height(30)
+                .textAlign(TextAlign.Center)
+                .borderRadius(15)
+                .backgroundColor(Theme.surfaceAlt)
+                .onClick(() => {
+                  this.showClusterSheet = false;
+                })
+            }
+            .width('100%')
+            .padding({ left: 4, right: 4, bottom: 6 })
+
+            List() {
+              ForEach(this.clusters, (cluster: ClusterInfo) => {
+                ListItem() {
+                  Row({ space: 8 }) {
+                    Column({ space: 2 }) {
+                      Text(cluster.clusterName)
+                        .fontSize(Theme.fBody)
+                        .fontColor(cluster.clusterId === this.clusterId ? Theme.accent : Theme.text)
+                        .fontWeight(cluster.clusterId === this.clusterId ? FontWeight.Medium : FontWeight.Normal)
+                      Text(cluster.status === 'inactive' ? `${cluster.clusterId} · 已停用` : `${cluster.clusterId}`)
+                        .fontSize(10)
+                        .fontColor(cluster.status === 'inactive' ? Theme.danger : Theme.textFaint)
+                    }
+                    .alignItems(HorizontalAlign.Start)
+                    .layoutWeight(1)
+                    if (cluster.clusterId === this.clusterId) {
+                      Text('✓').fontSize(14).fontColor(Theme.accent).fontWeight(FontWeight.Bold)
+                    }
+                  }
+                  .width('100%')
+                  .padding({ left: 4, right: 4, top: 11, bottom: 11 })
+                }
+                .onClick(() => {
+                  this.clusterId = cluster.clusterId;
+                  this.clusterName = cluster.clusterName;
+                  store.setClusterId(cluster.clusterId);
+                  this.rebuildRows();
+                  this.showClusterSheet = false;
+                })
+              }, (cluster: ClusterInfo) => `${cluster.clusterId}`)
+            }
+            .width('100%')
+            .height(360)
+            .scrollBar(BarState.Off)
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 26 })
+          .backgroundColor(Theme.surface)
+          .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl })
+          .shadow(Theme.shadowSheet)
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#0B1F3355')
+      }
 
       if (this.showThemeSheet) {
         Column() {
