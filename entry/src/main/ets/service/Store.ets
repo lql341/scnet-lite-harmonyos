@@ -6,6 +6,12 @@ const STORE_NAME: string = 'scnet_lite';
 const KEY_API_KEY: string = 'apiKey';
 const KEY_BASE_URL: string = 'baseUrl';
 const KEY_MODEL: string = 'model';
+/**
+ * 默认模型。**必须是 `SCNet-Max`**：它是平台自营模型，账号无余额也能用；
+ * 其余 32 个都是上游付费模型，余额为 0 时一律 `402 Insufficient Balance`。
+ * （隔壁 scnet-cli 的 `pickDefaultModel()` 也是优先 SCNet-Max，所以它“不需要余额”。）
+ */
+export const DEFAULT_MODEL: string = 'SCNet-Max';
 const KEY_CLOUD_TOKEN: string = 'cloudToken';
 const KEY_CLOUD_COOKIE: string = 'cloudCookie';
 const KEY_AUTO_KEY: string = 'autoGatewayKey';
@@ -41,7 +47,7 @@ class Store {
   }
 
   getModel(): string {
-    return this.readString(KEY_MODEL, 'glm-5.3-flash');
+    return this.readString(KEY_MODEL, DEFAULT_MODEL);
   }
 
   setModel(value: string): void {

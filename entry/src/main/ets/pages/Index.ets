@@ -3,7 +3,7 @@ import { http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { router } from '@kit.ArkUI';
 import { Gateway, ChatMessage, StreamHandlers } from '../service/Gateway';
-import { store, DEFAULT_BASE_URL } from '../service/Store';
+import { store, DEFAULT_BASE_URL, DEFAULT_MODEL } from '../service/Store';
 import { auth } from '../service/Auth';
 import { credentials } from '../service/Http';
 import { apiKeys, GatewayAccess } from '../service/ApiKeys';
@@ -119,6 +119,10 @@ struct Index {
           this.gatewayModel = this.gatewayAccess.model;
         }
         this.gatewayModels = await apiKeys.listModels(this.baseUrl, this.apiKey);
+        this.gatewayModel = this.pickModel(this.gatewayModels, this.gatewayModel);
+        store.setModel(this.gatewayModel);
+        hilog.info(0x0000, 'SCNetLite', 'model=%{public}s (of %{public}d)',
+          this.gatewayModel, this.gatewayModels.length);
       }
       if (apiKeys.lastBlocked.length > 0) {
         this.gatewayNotice = apiKeys.lastBlocked;
@@ -177,6 +181,26 @@ struct Index {
     } catch (e) {
       hilog.warn(0x0000, 'SCNetLite', 'conversation list failed');
     }
+  }
+
+  /**
+   * 选默认模型：优先用户上次选的 → 其次 `SCNet-Max`（平台自营、不扣余额）→ 最后列表第一个。
+   * 余额为 0 的账号只有 SCNet-Max 能用，所以这个优先级很关键。
+   */
+  private pickModel(list: string[], preferred: string): string {
+    if (preferred.length > 0) {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i] === preferred) {
+          return preferred;
+        }
+      }
+    }
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] === DEFAULT_MODEL) {
+        return DEFAULT_MODEL;
+      }
+    }
+    return list.length > 0 ? list[0] : preferred;
   }
 
   private scrollToEnd(): void {

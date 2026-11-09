@@ -36,13 +36,15 @@
 | 集群身份 / 模型服务授权状态 | ✅ 本机实测（`scripts/probe.sh account`） |
 | 自动取 key（activity → 兜底 query） | ✅ 本机实测（43 字符 `sk-`，33 个模型） |
 | 模型列表 / 选择 | ✅（`/models` 33 个） |
-| 流式对话出字 | ⚠️ 代码就绪，**当前账号 402 余额不足**（见下） |
+| 流式对话出字 | ✅ 本机实测（`SCNet-Max`，OpenAI 兼容 SSE） |
 | 会话列表 / 历史浏览（只读） | ✅ 真机通过 |
 | UI（移动端布局 + 抽屉 + 底部输入） | ✅ 已装机验证 |
 
-> **402 是账号侧**：`scripts/probe.sh account` 显示 `modelServiceEnabled: 1`（已自动授权）、
-> `unpaidStatus: 1`（有未结清账单）。key 能拿、`/models` 能列，chat 一律
-> `Insufficient Balance`。需要去控制台清账/充值，代码侧无解。
+> **模型分两类，别踩坑**：`/models` 返回 33 个 id 里，只有 **`SCNet-Max`** 是平台自营、
+> 不扣余额；其余 32 个是上游付费模型，账号余额为 0 时一律
+> `402 Insufficient Balance`（包括 activity key 接口回带的 `MiniMax-M2.5` —— 那个字段
+> 只是"活动推荐模型"，不代表免费）。所以默认模型固定 `SCNet-Max`
+> （`Store.DEFAULT_MODEL`），与隔壁 `scnet-cli` 的 `pickDefaultModel()` 一致。
 >
 > 调试提示：协议问题不必装机。`scripts/probe.sh` 用桌面客户端里的活体 `accessToken`
 > 直接打平台与网关接口，几秒一轮。

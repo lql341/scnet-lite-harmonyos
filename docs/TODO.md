@@ -10,10 +10,12 @@
   账号登录 → `cluster-user-detail` → `account/config/status` →（必要时）`authorize`
   → `api-key/createActivityApiKey` → `{baseUrl}/models` → `{baseUrl}/chat/completions`。
   平台 v2 智能体通道已从代码移除（历史见 `b60d149`）。
-- [?] **网关 chat 402（账号侧，唯一未解）**
-  `unpaidStatus: 1` + `modelAllowOverdraft: 0` → 即使 `modelServiceEnabled: 1` 也一律
-  `Insufficient Balance`。key 能拿、`/models` 能列 33 个，只有 chat 被拦。
-  **需要人去控制台清账/充值**；复现：`./scripts/probe.sh account` / `chat`。
+- [x] **402 的真相：按模型计费，不是账号级封锁**（2026-11-09 12:25 纠正）
+  33 个模型里只有 **`SCNet-Max`**（平台自营）免费；其余 32 个是上游付费模型，
+  余额为 0 → `402 Insufficient Balance`。`MiniMax-M2.5` 也一样收费（它只是
+  `createActivityApiKey` 回带的"活动推荐模型"字段，别当默认值用）。
+  默认模型已固定 `SCNet-Max` —— 隔壁 `scnet-cli` 的 `pickDefaultModel()` 正是这个逻辑，
+  所以"它不需要余额"。
 - [x] `authorize` 的正确 accountId 是**集群账号**（427416191724683264），用
       `current-user-info.id` 会 `API010006 无权限访问`（踩过）。
 - [x] `/api/gw/v1` 与 `/api/llm/v1` 不是一套 key 空间（前者 401 token_not_found_in_db）

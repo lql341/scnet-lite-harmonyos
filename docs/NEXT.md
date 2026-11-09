@@ -2,7 +2,7 @@
 
 > 更新时间：2026-11-09 12:25。对话改走**网关模型链路**（与 `../scnet-cli` 一致），
 > 平台 v2 智能体通道已从代码中移除（历史留在 `b60d149`）。
-> 当前唯一卡点：账号 `unpaidStatus: 1`（欠费）→ 网关 chat 402，需人去控制台处理。
+> 对话已在本机跑通（`SCNet-Max` 免费模型）；付费上游模型需余额，见 §1。
 
 ---
 
@@ -21,8 +21,11 @@ hdc list targets                  # 必须不是 [Empty]
 
 ## 1. 现状一句话
 
-登录 → 集群身份 → 授权 → 取 `sk-` key → `/models`（33 个）这条链路已在本机逐步实测通过；
-流式对话代码（OpenAI 兼容 SSE）就绪。**只差账号余额**：`unpaidStatus: 1` 导致 chat 402。
+登录 → 集群身份 → 授权 → 取 `sk-` key → `/models`（33 个）→ 流式对话，整条已在本机实测通过。
+
+**关键**：33 个模型里只有 `SCNet-Max` 免费（平台自营，不扣余额），其余 32 个是上游付费模型，
+余额为 0 时 `402 Insufficient Balance`。默认模型固定 `SCNet-Max`，与 `scnet-cli` 的
+`pickDefaultModel()` 一致 —— 这就是"隔壁不需要余额"的原因。
 
 ## 2. 本机脱机调试（不需要手机，强烈推荐）
 
@@ -32,7 +35,8 @@ hdc list targets                  # 必须不是 [Empty]
 ./scripts/probe.sh account      # 集群身份 + 授权状态 + 欠费标记（402 先看这个）
 ./scripts/probe.sh authorize    # 开通模型服务（幂等，用集群 accountId）
 ./scripts/probe.sh models       # 取 key → 列网关模型
-./scripts/probe.sh chat "只回两个字：收到"
+./scripts/probe.sh chat "只回两个字：收到"          # 默认 SCNet-Max（免费）
+./scripts/probe.sh chat "你好" --model GLM-5.3   # 付费模型，无余额会 402
 ./scripts/probe.sh raw POST '/acx/llm/api-key/createActivityApiKey' '{}'
 ```
 

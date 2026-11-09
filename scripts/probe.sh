@@ -10,7 +10,7 @@
 #   scripts/probe.sh account          # 集群身份 + 模型服务授权状态（402 先看这里）
 #   scripts/probe.sh authorize        # 开通平台模型服务（幂等；用集群 accountId）
 #   scripts/probe.sh models           # 取 key 并列出网关模型
-#   scripts/probe.sh chat [文本] [--model M]    # 流式对话（默认用平台下发的模型）
+#   scripts/probe.sh chat [文本] [--model M]    # 流式对话（默认 SCNet-Max：平台自营、不扣余额）
 #   scripts/probe.sh raw <METHOD> <path> [json] # 任意 /acx 接口
 #
 # 凭据来源（按优先级）：
@@ -21,7 +21,7 @@ set -uo pipefail
 BASE=${SC_BASE:-https://www.scnet.cn}
 SOURCE=${SC_SOURCE:-HarmonyOS}
 VERSION=${SC_VERSION:-1.0.0}
-MODEL=""
+MODEL=${SC_MODEL:-SCNet-Max}   # 默认 SCNet-Max：平台自营、不扣余额；其余模型需余额
 CACHE=${SC_CACHE:-/tmp/scnet-probe-cache}
 
 die() { printf '[err] %s\n' "$1" >&2; exit "${2:-1}"; }
@@ -135,8 +135,10 @@ cmd_models() {
   curl -s "$base/models" -H "Authorization: Bearer $key" | python3 -c '
 import json,sys
 rows=json.load(sys.stdin).get("data") or []
-print("models: %d" % len(rows))
-for r in rows: print(" ", r.get("id"))
+print("models: %d（SCNet-Max 免费，其余需余额）" % len(rows))
+for r in rows:
+    i=r.get("id")
+    print(("  %s  <- 默认" % i) if i=="SCNet-Max" else ("  %s" % i))
 '
 }
 

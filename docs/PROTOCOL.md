@@ -305,6 +305,19 @@ POST /ac/api/auth/logoutDesktopClient.action                 → 登出
 但 `accountId` / `groupId` / `userId` 三者在所有 active 行里相同，取第一行即可。
 `groupId=99450319708108649`，`userId=11224910962`（= 用户 id，`createUser` 用它）。
 
+### 10.2.2 实测：33 个模型里只有 `SCNet-Max` 免费
+
+同一把 key、同一个 base，按模型分：
+
+| model | 结果 |
+| --- | --- |
+| `SCNet-Max`（平台自营，别名 `gpt-5.6-luna`） | ✅ 200，正常流式出字 |
+| `MiniMax-M2.5` | ❌ 402 |
+| `GLM-5.3-Flash` / `DeepSeek-V4.1-Flash-1017` / 其余 30 个 | ❌ 402 |
+
+`createActivityApiKey` 回带的 `model: "MiniMax-M2.5"` 只是**活动推荐模型**，
+不代表免费 —— 拿它当默认值会直接 402（踩过）。默认必须是 `SCNet-Max`。
+
 ### 10.3 `402 Insufficient Balance` 的诊断顺序
 
 **402 与 API key 无关，先看账号状态**：
@@ -320,11 +333,12 @@ scripts/probe-v2.sh gateway     # 拿 activity key → /models → 试一次 cha
 | --- | --- |
 | `authorize`（集群 accountId） | ✅ `modelServiceEnabled: 0 → 1` |
 | `createActivityApiKey` | ✅ `sk-…`（43 字符）、`baseUrl=https://api.scnet.cn/api/llm/v1`、`model=MiniMax-M2.5` |
-| `GET {baseUrl}/models` | ✅ 33 个 |
-| `POST {baseUrl}/chat/completions` | ❌ `402 Insufficient Balance` |
+| `GET {baseUrl}/models` | ✅ 33 个（含 `SCNet-Max`） |
+| `POST .../chat/completions` model=`SCNet-Max` | ✅ 200 流式出字 |
+| 同上 model=`MiniMax-M2.5` / `GLM-5.3-Flash` / … | ❌ 402 |
 
-→ **授权 ≠ 有余额**。`unpaidStatus: 1` + `modelAllowOverdraft: 0` 时，即使
-`modelServiceEnabled: 1`，网关也一律 402。需要在控制台结清账单/充值，代码侧无解。
+→ 402 **不是账号级封锁**，是"这个模型要钱"。`unpaidStatus: 1` 只影响付费模型；
+`SCNet-Max` 是平台自营、走平台算力，无余额也能用。
 
 ⚠️ 两条 base 不是一套 key 空间：同一把 `sk-` 打 `/api/gw/v1` 会
 `401 token_not_found_in_db`（LiteLLM 的 key 表里没有它），只有 `/api/llm/v1` 认。
@@ -333,7 +347,7 @@ scripts/probe-v2.sh gateway     # 拿 activity key → /models → 试一次 cha
 
 | 通道 | 依赖 | 本账号现状 | 本仓库 |
 | --- | --- | --- | --- |
-| 网关 `{baseUrl}/chat/completions` | `sk-` key + 余额 | ❌ 402 余额不足 | ✅ **唯一实现**（与官方客户端 / scnet-cli 一致） |
+| 网关 `{baseUrl}/chat/completions` | `sk-` key（+ 付费模型需余额） | ✅ `SCNet-Max` 可用 | ✅ **唯一实现**（与官方客户端 / scnet-cli 一致） |
 | v2 智能体 `POST /acx/chatbot/v2/agent/stream` | 登录 cookie + `modelId=600` | ✅ 免费可用 | ❌ 已移除（代码在 `b60d149`） |
 
 两条通道**不是一套模型目录**：v2 是服务 id（600），网关是 LLM id（`GLM-5.3` / `MiniMax-M2.5` …）。

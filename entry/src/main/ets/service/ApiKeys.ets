@@ -18,7 +18,7 @@
 import { http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { httpClient } from './Http';
-import { store } from './Store';
+import { store, DEFAULT_MODEL } from './Store';
 import { ClusterIdentity } from './Auth';
 
 const TAG: string = 'SCNetLite';
@@ -255,9 +255,9 @@ class ApiKeys {
     };
     store.setAutoKey(fixed.key);
     store.setBaseUrl(fixed.baseUrl);
-    if (fixed.model.length > 0) {
-      store.setModel(fixed.model);
-    }
+    // 注意：接口回带的 `model` 是 MiniMax-M2.5（付费上游），不是默认该用的模型；
+    // 默认模型固定为 SCNet-Max（平台自营、不扣余额），见 Store.DEFAULT_MODEL。
+    store.setModel(DEFAULT_MODEL);
     hilog.info(0x0000, TAG, 'gateway access ready: source=%{public}s keyLen=%{public}d base=%{public}s',
       fixed.source, fixed.key.length, fixed.baseUrl);
     return fixed;

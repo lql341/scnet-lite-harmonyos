@@ -53,7 +53,7 @@ function describeGatewayError(body: GatewayErrorBody, httpCode: number): string 
     (body.message !== undefined ? body.message : '');
   const code: string = err !== undefined && err.code !== undefined ? err.code : String(httpCode);
   if (code === '402' || raw.indexOf('Insufficient Balance') >= 0) {
-    return '网关返回「余额不足」(402)：账号未开通模型服务或余额为 0，请到控制台处理';
+    return '该模型需要余额（402 Insufficient Balance）。改用 SCNet-Max 可免费使用，或到控制台充值';
   }
   if (code === '401' || raw.indexOf('Authentication') >= 0 || raw.indexOf('token_not_found') >= 0) {
     return '网关 key 无效 (401)：请重新登录以重新获取 key';
