@@ -7,6 +7,7 @@ import { store, DEFAULT_BASE_URL } from '../service/Store';
 import { auth } from '../service/Auth';
 import { credentials } from '../service/Http';
 import { chat } from '../service/Chat';
+import { apiKeys, GatewayAccess } from '../service/ApiKeys';
 import { ModelSheet } from '../view/ModelSheet';
 import { MODELS, ModelInfo, modelLabel } from '../model/Models';
 import { ModelItem, AgentService, Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
@@ -67,6 +68,8 @@ struct Index {
   @State platformName: string = '';
   @State modelId: number = 0;
   @State agentServices: AgentService[] = [];
+  @State gatewayAccess: GatewayAccess = { key: '', baseUrl: '', model: '', source: 'none' };
+  @State gatewayNotice: string = '';
   @State platformModels: ModelItem[] = [];
   @State gatewayModels: string[] = [];
   @State conversations: Conversation[] = [];
@@ -97,10 +100,12 @@ struct Index {
   }
 
   private async loadCloud(): Promise<void> {
+    let accountId: string = '';
     try {
       const me: UserInfo = await auth.refreshUser();
       this.userName = me.fullName ?? (me.userName ?? '');
-      hilog.info(0x0000, 'SCNetLite', 'user %{public}s', this.userName);
+      accountId = me.id ?? '';
+      hilog.info(0x0000, 'SCNetLite', 'user %{public}s account=%{public}s', this.userName, accountId);
     } catch (e) {
       hilog.warn(0x0000, 'SCNetLite', 'user info failed');
     }
@@ -110,6 +115,28 @@ struct Index {
       hilog.info(0x0000, 'SCNetLite', 'llm models %{public}d', this.platformModels.length);
     } catch (e) {
       hilog.warn(0x0000, 'SCNetLite', 'config failed');
+    }
+    // 网关（LLM）通道：status → 必要时 authorize → createActivityApiKey。
+    // 对齐官方客户端 / scnet-cli 的登录后链路（见 service/ApiKeys.ets 头注释）。
+    // v2 智能体通道不依赖它，所以这里失败不影响主流程。
+    try {
+      this.gatewayAccess = await apiKeys.ensureAccess(accountId);
+      if (this.gatewayAccess.key.length > 0) {
+        this.apiKey = this.gatewayAccess.key;
+        this.baseUrl = this.gatewayAccess.baseUrl;
+        this.draftKey = this.apiKey;
+        this.draftUrl = this.baseUrl;
+        if (this.gatewayAccess.model.length > 0) {
+          this.gatewayModel = this.gatewayAccess.model;
+        }
+        this.gatewayModels = await apiKeys.listModels(this.baseUrl, this.apiKey);
+      }
+      if (apiKeys.lastBlocked.length > 0) {
+        this.gatewayNotice = apiKeys.lastBlocked;
+        hilog.warn(0x0000, 'SCNetLite', 'gateway blocked: %{public}s', this.gatewayNotice);
+      }
+    } catch (e) {
+      hilog.warn(0x0000, 'SCNetLite', 'gateway access failed');
     }
     // ⚠️ v2 对话的 modelId 只能来自 recommend/list 的 aiagent-router（实测 600）。
     // 用 config/list.modelList 的 id（17/120/410/520）服务端会秒回「系统繁忙，请稍后再试」。

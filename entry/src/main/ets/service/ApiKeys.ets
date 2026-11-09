@@ -1,221 +1,260 @@
+/**
+ * 网关（LLM）凭据获取 —— 对齐官方客户端 / scnet-cli 的链路：
+ *
+ *   GET  /acx/llm/account/config/status?accountId=…   → modelServiceEnabled（0 未授权 / 1 已授权）
+ *   POST /acx/llm/account/config/authorize?accountId=…  → 开通平台模型服务（客户端登录时自动做）
+ *   POST /acx/llm/api-key/createActivityApiKey         → 一把 sk- key + baseUrl + 默认模型（一条搞定）
+ *   兜底：POST /acx/llm/api-key/query（团队维度查）→ POST /acx/llm/api-key/create
+ *
+ * 关键事实（2026-11-09 实测）：
+ * - `modelServiceEnabled: 0` 时网关一律 `402 Insufficient Balance`，跟 key 无关；
+ * - 平台下发的 baseUrl 是 `https://api.scnet.cn/api/llm/v1`（不是 `/api/gw/v1`）；
+ * - `/api-key/query` 只支持 POST（GET → `405 Request method 'GET' not supported`）；
+ * - 列表里的 key 是打码的（含 `*`），明文只在 create / detail 里出现一次。
+ */
 import { http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { httpClient, credentials } from './Http';
+import { httpClient } from './Http';
 import { store } from './Store';
 
 const TAG: string = 'SCNetLite';
 
-/** 网关 key 的候选字段名（不同接口命名不一致，逐个试）。 */
-const KEY_FIELDS: string[] = ['apiKey', 'key', 'secretKey', 'apiKeyValue', 'token'];
+/** 平台下发的 baseUrl 兜底值（`createActivityApiKey` 正常会带回来）。 */
+export const LLM_BASE: string = 'https://api.scnet.cn/api/llm/v1';
 
-/** 创建 key 的请求体。 */
-interface CreateKeyBody {
-  apiKeyName: string;
-  accountId: string;
-  teamName: string;
+const KEY_FIELDS: string[] = ['apiKey', 'key', 'secretKey', 'apiKeyValue', 'credential'];
+
+export interface GatewayAccess {
+  key: string;
+  baseUrl: string;
+  model: string;
+  /** `activity` 一把到手 / `existing` 查到 / `created` 新建（带团队维度）/ `none` */
+  source: string;
 }
 
-export interface ApiKeyRecord {
+interface ConfigStatus {
+  accountId?: string;
+  modelServiceEnabled?: number;
+  modelAllowOverdraft?: number;
+  accessibleModelScope?: string;
+  /** 1 = 有未结清账单，通常是 402 的直接原因 */
+  unpaidStatus?: number;
+  isVip?: boolean;
+  overallQuota?: number;
+  overallRpm?: number;
+}
+
+interface ActivityKeyData {
   apiKey?: string;
   key?: string;
-  secretKey?: string;
-  apiKeyValue?: string;
-  token?: string;
-  apiKeyName?: string;
-  name?: string;
-  status?: string;
-  accountId?: string;
-  teamName?: string;
-  accessibleModelScope?: string;
+  baseUrl?: string;
+  anthropicBaseUrl?: string;
+  model?: string;
 }
 
-interface KeyListData {
-  records?: ApiKeyRecord[];
-  list?: ApiKeyRecord[];
-  data?: ApiKeyRecord[];
+interface CreateKeyBody {
+  apiKeyName: string;
+  serviceTypes: string[];
+  accessibleModelScope: string;
+  accountId: string;
+  groupId: string;
+  createUser: string;
 }
 
-function pickKey(record: ApiKeyRecord): string {
-  const asMap = record as Record<string, string>;
+function pickKey(data: ActivityKeyData): string {
+  const asMap = data as Record<string, Object>;
   for (let i = 0; i < KEY_FIELDS.length; i++) {
     const value = asMap[KEY_FIELDS[i]];
-    // 平台列表接口返回的是"打码"的 key（形如 sk-N****MTM=），跳过；
-    // 完整 key 只在 create 响应里给一次。
-    if (typeof value === 'string' && (value as string).length >= 20 && (value as string).indexOf('*') < 0) {
-      hilog.info(0x0000, TAG, 'pickKey via %{public}s len=%{public}d', KEY_FIELDS[i],
-        (value as string).length);
-      return value;
+    if (typeof value !== 'string') {
+      continue;
+    }
+    const text: string = value as string;
+    // 打码的 key 一律跳过
+    if (text.length >= 20 && text.indexOf('*') < 0) {
+      return text;
     }
   }
   return '';
 }
 
-/**
- * 平台会给每个账号自动发一个网关 key（APK 里能看到 createUserApiKey / ensureOcrApiKey）。
- * 手机端对话走的是网关 https://api.scnet.cn/api/gw/v1（OpenAI 兼容），
- * 这解释了为什么手机能用、而平台 v2 agent 接口回「系统繁忙」。
- */
-/** 把长字符串值替换成 <str:N>，只保留结构和字段名，避免把 key 写进日志。 */
-function maskJson(text: string): string {
-  try {
-    const walk = (value: Object): Object => {
-      if (typeof value === 'string') {
-        const str = value as string;
-        return str.length > 16 ? `<str:${str.length}>` : str;
-      }
-      if (Array.isArray(value)) {
-        return (value as Object[]).map((v: Object): Object => walk(v));
-      }
-      if (value !== null && typeof value === 'object') {
-        const src = value as Record<string, Object>;
-        const keys: string[] = Object.keys(src);
-        const pairs: string[] = [];
-        for (let i = 0; i < keys.length; i++) {
-          pairs.push(`${JSON.stringify(keys[i])}:${JSON.stringify(walk(src[keys[i]]))}`);
-        }
-        return `{${pairs.join(',')}}`;
-      }
-      return value;
-    };
-    return JSON.stringify(walk(JSON.parse(text) as Object));
-  } catch (e) {
-    return `<unparsable len=${text.length}>`;
+/** `data` 常被再包一层字符串，统一拆开。 */
+function unwrap(text: string): object {
+  const parsed = JSON.parse(text) as Record<string, Object>;
+  const data = parsed['data'];
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data as string) as object;
+    } catch (e) {
+      return parsed as object;
+    }
   }
+  return data === undefined ? parsed as object : data as object;
 }
 
 class ApiKeys {
-  private teamAccountId: string = '';
-  private teamName: string = '';
+  /** 平台要求验证码/未授权等需要人介入时的文案；空表示没这类问题。 */
+  lastBlocked: string = '';
 
-  /** 只露头尾，够判断是哪一版 key。 */
-  private fingerprint(value: string): string {
-    if (value.length === 0) {
-      return '';
+  /** 模型服务授权状态。null 表示没查到。 */
+  async accountStatus(accountId: string): Promise<ConfigStatus | null> {
+    if (accountId.length === 0) {
+      return null;
     }
-    if (value.length <= 4) {
-      return `*${value.length}`;
+    try {
+      const data = await httpClient.getData(`/acx/llm/account/config/status?accountId=${accountId}`);
+      return data as ConfigStatus;
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'account/config/status failed');
+      return null;
     }
-    return `${value.substring(0, 2)}***${value.substring(value.length - 2)}`;
   }
 
-  /** 查已有 key；没有就创建一个。返回值空表示失败（细节看 hilog）。 */
-  async ensureKey(): Promise<string> {
-    const cached: string = store.getAutoKey();
-    hilog.info(0x0000, TAG, 'apiKey cached len=%{public}d %{public}s', cached.length, this.fingerprint(cached));
-    // 网关 key 是 25 字符；比这短的一定是脏数据（之前误存过）
-    if (cached.length >= 20) {
-      return cached;
+  /**
+   * 开通平台模型服务。官方客户端在登录后自动做这一步；
+   * 我们只在 status 明确是 0 时调用一次，失败不抛（只记日志）。
+   */
+  async authorize(accountId: string): Promise<boolean> {
+    if (accountId.length === 0) {
+      return false;
     }
-    if (cached.length > 0) {
-      store.setAutoKey('');
+    try {
+      await httpClient.postRaw(`/acx/llm/account/config/authorize?accountId=${accountId}`, '');
+      const after: ConfigStatus | null = await this.accountStatus(accountId);
+      const ok: boolean = after !== null && after.modelServiceEnabled === 1;
+      hilog.info(0x0000, TAG, 'authorize -> modelServiceEnabled=%{public}s', String(ok));
+      return ok;
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'authorize failed');
+      return false;
     }
-
-    const found: string = await this.query();
-    hilog.info(0x0000, TAG, 'apiKey query result len=%{public}d', found.length);
-    if (found.length > 0) {
-      store.setAutoKey(found);
-      return found;
-    }
-
-    const created: string = await this.create();
-    hilog.info(0x0000, TAG, 'apiKey create result len=%{public}d', created.length);
-    if (created.length > 0) {
-      store.setAutoKey(created);
-      return created;
-    }
-    return '';
   }
 
-  /** 只有 POST 可用（GET 返回 "Request method 'GET' not supported"）。响应是三层编码的 JSON。 */
-  private async query(): Promise<string> {
-    let text: string = '';
+  /** 一把到位：返回 key + baseUrl + 默认模型。 */
+  private async activityKey(): Promise<GatewayAccess> {
+    const empty: GatewayAccess = { key: '', baseUrl: '', model: '', source: 'none' };
+    try {
+      const raw = await httpClient.postRaw('/acx/llm/api-key/createActivityApiKey', '{}');
+      const text: string = typeof raw.result === 'string' ? raw.result as string : '';
+      if (text.length === 0) {
+        return empty;
+      }
+      const data = unwrap(text) as ActivityKeyData;
+      const key: string = pickKey(data);
+      if (key.length === 0) {
+        return empty;
+      }
+      const result: GatewayAccess = {
+        key: key,
+        baseUrl: (data.baseUrl ?? '').replace(/\/+$/, ''),
+        model: data.model ?? '',
+        source: 'activity'
+      };
+      hilog.info(0x0000, TAG, 'activity key len=%{public}d base=%{public}s model=%{public}s',
+        key.length, result.baseUrl, result.model);
+      return result;
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'createActivityApiKey failed');
+      return empty;
+    }
+  }
+
+  /** 兜底：按团队维度查一把已有的 key（列表里是打码的，能用的才行）。 */
+  private async queryExisting(): Promise<GatewayAccess> {
+    const empty: GatewayAccess = { key: '', baseUrl: LLM_BASE, model: '', source: 'none' };
     try {
       const raw = await httpClient.postRaw('/acx/llm/api-key/query', '{}');
-      text = typeof raw.result === 'string' ? raw.result as string : '';
-    } catch (e) {
-      hilog.warn(0x0000, TAG, 'apiKey query request failed');
-      return '';
-    }
-    if (text.length === 0) {
-      return '';
-    }
-    let payload: object;
-    try {
-      const outer = JSON.parse(text) as Record<string, Object>;
-      const data = outer['data'];
-      payload = typeof data === 'string' ? JSON.parse(data as string) as object : data as object;
-    } catch (e) {
-      hilog.warn(0x0000, TAG, 'apiKey query parse failed');
-      return '';
-    }
-    const list: ApiKeyRecord[] = this.asList(payload);
-    hilog.info(0x0000, TAG, 'apiKey records=%{public}d', list.length);
-    let key: string = '';
-    for (let i = 0; i < list.length; i++) {
-      const record: ApiKeyRecord = list[i];
-      if (this.teamAccountId.length === 0) {
-        const asMap = record as Record<string, Object>;
-        const account = asMap['accountId'];
-        if (typeof account === 'string') {
-          this.teamAccountId = account as string;
-          const team = asMap['teamName'];
-          this.teamName = typeof team === 'string' ? team as string : '';
-          hilog.info(0x0000, TAG, 'team captured: name=%{public}s idLen=%{public}d',
-            this.teamName, this.teamAccountId.length);
+      const text: string = typeof raw.result === 'string' ? raw.result as string : '';
+      if (text.length === 0) {
+        return empty;
+      }
+      const payload = unwrap(text);
+      const rows: Object[] = Array.isArray(payload) ? payload as Object[] : [];
+      for (let i = 0; i < rows.length; i++) {
+        const item = rows[i];
+        if (item === null || typeof item !== 'object') {
+          continue;
+        }
+        const key: string = pickKey(item as ActivityKeyData);
+        if (key.length > 0) {
+          const found: GatewayAccess = { key: key, baseUrl: LLM_BASE, model: '', source: 'existing' };
+          return found;
         }
       }
-      if (key.length === 0) {
-        key = pickKey(record);
-      }
+      return empty;
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'api-key/query failed');
+      return empty;
     }
-    return key;
   }
 
-  private async create(): Promise<string> {
-    try {
-      if (this.teamAccountId.length === 0) {
-        await this.query(); // 先查一次拿团队信息
-      }
-      const body: CreateKeyBody = {
-        apiKeyName: 'harmonyos-lite',
-        accountId: this.teamAccountId,
-        teamName: this.teamName
+  /**
+   * 全链路：status → 必要时 authorize → activity key → 兜底 query。
+   * 结果（key/baseUrl/model）落到 preferences，下次启动直接用缓存的 key。
+   */
+  async ensureAccess(accountId: string): Promise<GatewayAccess> {
+    this.lastBlocked = '';
+
+    const cached: string = store.getAutoKey();
+    if (cached.length >= 20) {
+      const hit: GatewayAccess = {
+        key: cached,
+        baseUrl: store.getBaseUrl(),
+        model: store.getModel(),
+        source: 'cached'
       };
-      hilog.info(0x0000, TAG, 'create with team=%{public}s accountLen=%{public}d',
-        this.teamName, this.teamAccountId.length);
-      const raw = await httpClient.postRaw('/acx/llm/api-key/create', JSON.stringify(body));
-      const text: string = typeof raw.result === 'string' ? raw.result as string : '';
-      hilog.info(0x0000, TAG, 'apiKey create raw: %{public}s',
-        text.length > 400 ? text.substring(0, 400) : text);
-      hilog.info(0x0000, TAG, 'apiKey create raw=%{public}s', text.length > 300 ? text.substring(0, 300) : text);
-      if (text.length > 0) {
-        const parsed = JSON.parse(text) as Record<string, Object>;
-        const data = parsed['data'];
-        if (data !== undefined) {
-          const record = data as ApiKeyRecord;
-          const key: string = pickKey(record);
-          if (key.length > 0) {
-            return key;
+      return hit;
+    }
+
+    const status: ConfigStatus | null = await this.accountStatus(accountId);
+    if (status !== null) {
+      hilog.info(0x0000, TAG, 'modelServiceEnabled=%{public}d unpaidStatus=%{public}d scope=%{public}s',
+        status.modelServiceEnabled ?? -1, status.unpaidStatus ?? -1, status.accessibleModelScope ?? '');
+      if (status.modelServiceEnabled !== 1) {
+        // 只在账号没有未结清账单时自动开通（官方客户端登录后就是这个行为）；
+        // 有欠费时不要替用户动计费相关的开关。
+        if (status.unpaidStatus === 1) {
+          this.lastBlocked = '账号有未结清账单，模型服务被暂停（网关会返回 402）';
+        } else {
+          const ok: boolean = await this.authorize(accountId);
+          if (!ok) {
+            this.lastBlocked = '模型服务未开通（authorize 未生效）';
           }
         }
+      } else if (status.unpaidStatus === 1) {
+        this.lastBlocked = '账号有未结清账单，模型服务可能被限（网关可能返回 402）';
       }
-    } catch (e) {
-      hilog.warn(0x0000, TAG, 'apiKey create failed');
     }
-    return '';
+
+    let access: GatewayAccess = await this.activityKey();
+    if (access.key.length === 0) {
+      access = await this.queryExisting();
+    }
+    if (access.key.length === 0) {
+      if (this.lastBlocked.length === 0) {
+        this.lastBlocked = '拿不到网关 key（授权未开通或接口变更）';
+      }
+      return access;
+    }
+
+    const baseUrl: string = access.baseUrl.length > 0 ? access.baseUrl : LLM_BASE;
+    const fixed: GatewayAccess = {
+      key: access.key,
+      baseUrl: baseUrl,
+      model: access.model,
+      source: access.source
+    };
+    store.setAutoKey(fixed.key);
+    store.setBaseUrl(fixed.baseUrl);
+    if (fixed.model.length > 0) {
+      store.setModel(fixed.model);
+    }
+    hilog.info(0x0000, TAG, 'gateway access ready: source=%{public}s keyLen=%{public}d base=%{public}s',
+      fixed.source, fixed.key.length, fixed.baseUrl);
+    return fixed;
   }
 
-  /**
-   * 用建好的 key 打一次"非流式"最小请求，把两条候选路径的真实响应打出来。
-   * 目的：确认手机端到底打哪个 base（/api/llm/v1 还是 /api/gw/v1）、以及 key 到底认哪个。
-   */
-  /**
-   * 用不同的 source/version 头探一次 v2 agent stream。
-   * 服务端可能按 source 路由到不同后端，手机端能出字、我们回「系统繁忙」，
-   * 很可能是 source/version 不对。
-   */
-  /** 拉网关模型 id 列表（/api/llm/v1/models，33 个，手机端就是这份）。 */
-  async listGatewayModels(key: string): Promise<string[]> {
+  /** 拉网关模型 id 列表。 */
+  async listModels(baseUrl: string, key: string): Promise<string[]> {
     const header: GWHeader = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
@@ -228,9 +267,10 @@ class ApiKeys {
       connectTimeout: 15000,
       readTimeout: 20000
     };
-    const request = http.createHttp();
+    const request: http.HttpRequest = http.createHttp();
     try {
-      const resp = await request.request(LLM_BASE + '/models', options);
+      const base: string = baseUrl.length > 0 ? baseUrl : LLM_BASE;
+      const resp = await request.request(`${base}/models`, options);
       const text: string = typeof resp.result === 'string' ? resp.result as string : '';
       const parsed = JSON.parse(text) as GatewayModelList;
       const list: GatewayModel[] = parsed.data ?? [];
@@ -241,7 +281,7 @@ class ApiKeys {
           out.push(id);
         }
       }
-      hilog.info(0x0000, TAG, 'gateway models loaded: %{public}d', out.length);
+      hilog.info(0x0000, TAG, 'gateway models: %{public}d', out.length);
       return out;
     } catch (e) {
       hilog.warn(0x0000, TAG, 'gateway models load failed');
@@ -250,145 +290,6 @@ class ApiKeys {
       request.destroy();
     }
   }
-
-  /** 探一次网关，返回是否可用与首个模型 id。 */
-  async probeGateway(key: string): Promise<GatewayProbe> {
-    const header: GWHeader = {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${key}`
-    };
-    const options: http.HttpRequestOptions = {
-      method: http.RequestMethod.GET,
-      header: header,
-      expectDataType: http.HttpDataType.STRING,
-      connectTimeout: 15000,
-      readTimeout: 20000
-    };
-    const request = http.createHttp();
-    try {
-      // 手机端 APK 用的是 /api/llm/v1（出现 ocr/recognize），先试它，再试 gw/v1
-      let resp = await request.request(LLM_BASE + '/models', options);
-      hilog.info(0x0000, TAG, 'probe llm/v1/models -> %{public}d', resp.responseCode);
-      if (resp.responseCode !== 200) {
-        resp = await request.request(GW_BASE + '/models', options);
-        hilog.info(0x0000, TAG, 'probe gw/v1/models -> %{public}d', resp.responseCode);
-      }
-      const text: string = typeof resp.result === 'string' ? resp.result as string : '';
-      let models: string = '';
-      try {
-        const parsed = JSON.parse(text) as GatewayModelList;
-        const list: GatewayModel[] = parsed.data ?? [];
-        if (list.length > 0) {
-          models = list[0].id ?? '';
-        }
-        hilog.info(0x0000, TAG, 'gateway models=%{public}d first=%{public}s', list.length, models);
-      } catch (e) {
-        hilog.warn(0x0000, TAG, 'gateway models parse failed');
-      }
-      const result: GatewayProbe = {
-        ok: resp.responseCode === 200 && models.length > 0,
-        status: resp.responseCode,
-        models: models
-      };
-      return result;
-    } catch (e) {
-      const err = e as Error;
-      hilog.warn(0x0000, TAG, 'gateway probe failed: %{public}s', err.message === undefined ? '?' : err.message);
-      const failed: GatewayProbe = { ok: false, status: 0, models: '' };
-      return failed;
-    } finally {
-      request.destroy();
-    }
-  }
-
-  /** 把可能是"字符串里的 JSON"的元素解析成对象（实测平台把 records 每项也编码成字符串）。 */
-  private normalize(items: Object[]): ApiKeyRecord[] {
-    const out: ApiKeyRecord[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (typeof item === 'string') {
-        try {
-          out.push(JSON.parse(item as string) as ApiKeyRecord);
-        } catch (e) {
-          // 跳过坏项
-        }
-      } else if (item !== null && typeof item === 'object') {
-        out.push(item as ApiKeyRecord);
-      }
-    }
-    return out;
-  }
-
-  /**
-   * APK 里出现过 https://api.scnet.cn/api/llm/v1/ocr/recognize —— 说明手机端走的是
-   * `api.scnet.cn/api/llm/v1`（不是 gw/v1），鉴权可能直接用登录 Token+Cookie。
-   * 这条探一次就能确定手机端到底用什么凭据。
-   */
-  async probeMobileGateway(): Promise<number> {
-    const header: GWHeader = {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      source: 'HarmonyOS',
-      version: '1.0.0'
-    };
-    if (credentials.token.length > 0) {
-      header.Token = credentials.token;
-    }
-    if (credentials.cookie.length > 0) {
-      header.Cookie = credentials.cookie;
-    }
-    const options: http.HttpRequestOptions = {
-      method: http.RequestMethod.GET,
-      header: header,
-      expectDataType: http.HttpDataType.STRING,
-      connectTimeout: 15000,
-      readTimeout: 20000
-    };
-    const request = http.createHttp();
-    try {
-      const resp = await request.request('https://api.scnet.cn/api/llm/v1/models', options);
-      const text: string = typeof resp.result === 'string' ? resp.result as string : '';
-      hilog.info(0x0000, TAG, 'mobile gw /api/llm/v1/models -> %{public}d len=%{public}d',
-        resp.responseCode, text.length);
-      if (text.length > 0 && text.length < 300) {
-        hilog.info(0x0000, TAG, 'mobile gw body: %{public}s', text);
-      }
-      return resp.responseCode;
-    } catch (e) {
-      hilog.warn(0x0000, TAG, 'mobile gw probe error');
-      return 0;
-    } finally {
-      request.destroy();
-    }
-  }
-
-  private asList(data: object): ApiKeyRecord[] {
-    const asPage = data as KeyListData;
-    if (asPage.records !== undefined) {
-      return this.normalize(asPage.records as Object[]);
-    }
-    if (asPage.list !== undefined) {
-      return this.normalize(asPage.list as Object[]);
-    }
-    if (asPage.data !== undefined) {
-      return this.normalize(asPage.data as Object[]);
-    }
-    // 直接是数组时
-    const maybe = data as Object;
-    if (Array.isArray(maybe)) {
-      return this.normalize(maybe as Object[]);
-    }
-    const single = data as ApiKeyRecord;
-    return pickKey(single).length > 0 ? [single] : [];
-  }
-}
-
-/** 网关 key 自检：能列出模型就说明 key 可用。 */
-export interface GatewayProbe {
-  ok: boolean;
-  status: number;
-  models: string;
 }
 
 interface GatewayModel {
@@ -399,17 +300,10 @@ interface GatewayModelList {
   data?: GatewayModel[];
 }
 
-export const GW_BASE: string = 'https://api.scnet.cn/api/gw/v1';
-export const LLM_BASE: string = 'https://api.scnet.cn/api/llm/v1';
-
 interface GWHeader {
   'Content-Type': string;
   Accept: string;
   Authorization?: string;
-  Token?: string;
-  Cookie?: string;
-  source?: string;
-  version?: string;
 }
 
 export const apiKeys: ApiKeys = new ApiKeys();

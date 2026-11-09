@@ -256,8 +256,65 @@ tool-exec-progress · heartbeat · text-start · text-delta · text-end · finis
 ## 9. 未解决
 
 - 平台 `Token`/`Cookie` 的签发与刷新时机（`current-user-info?...&refresh=true` 返回的 token 才是新的）。
-  桌面客户端配置里的旧 token 实测已失效（401），所以**必须自己走登录**，不能复用本地残留。
-- `/sso/login` 的表单字段与验证码类型（下一步要么抓登录包，要么用 REA 的 CDP 驱动登录页）。
+- 图形验证码：字段已确认（见 §10.2），但输入 UI 未做。
+
+## 10. 账户 / 模型服务授权 / 网关（对齐隔壁 `../scnet-cli`）
+
+> 来源：`scnet-cli` 的 `packages/scnet-agent/src/core/auth.mjs` + 其 `docs/auth.md`（逆向桌面客户端），
+> 并在本机用真实账号复验过下面标「实测」的行为。
+
+### 10.1 完整链路
+
+```
+GET  /ac/api/auth/isNeedCpatcha.action                      → data:false 表示不需要验证码
+GET  /ac/api/auth/getClientCaptcha.action                   → {data:"data:image/jpeg;base64,…", captchaKey}
+POST /ac/api/auth/loginDesktopClient.action                 form: username/password/[captcha/captchaKey] → cookie 会话
+GET  /acx/user/users/current-user-info?includeToken=true&refresh=true → id(=accountId) / accessToken
+GET  /acx/llm/account/config/status?accountId=…              → modelServiceEnabled / unpaidStatus
+POST /acx/llm/account/config/authorize?accountId=…           → 开通平台模型服务（客户端登录后自动做）
+POST /acx/llm/api-key/createActivityApiKey  {}               → 一把 sk- key + baseUrl + 默认模型
+POST /acx/llm/api-key/query  {createUser,accountId,groupId,serviceType,page,size}
+GET  /acx/llm/api-key/detail?id=…                            → 明文 key（列表里是打码的）
+POST /ac/api/auth/logoutDesktopClient.action                 → 登出
+```
+
+### 10.2 实测字段值与坑（本机，2026-11-09 12:1x）
+
+| 项 | 实测值 / 行为 |
+| --- | --- |
+| 登录字段名 | **`username` / `password` / `captcha` / `captchaKey`（全小写）** |
+| 缺验证码时 | `1014 user not exits or password is not correct`（会被误判成密码错） |
+| 验证码错 | `1006 code is invalid or error`（换一张重试） |
+| `api-key/query` | **只支持 POST**，GET → `{"code":"405","msg":"Request method 'GET' not supported"}` |
+| `createActivityApiKey` | 返回 `{apiKey:"sk-…", baseUrl:"https://api.scnet.cn/api/llm/v1", anthropicBaseUrl:"…/anthropic", model:"MiniMax-M2.5"}`，key 43 字符 |
+| 网关 base | **`/api/llm/v1`**（不是 `/api/gw/v1`）；`/api/llm/v1/models` 对该 key 返 33 个模型 |
+| 身份维度 | `cluster-user-detail` 里的 `accountId`（如 `427416191724683264`）是**集群账号**，与 `userInfo.id`（`11224910962`）不同；建团队 key 用前者 + `groupId` + `userId` |
+| key 命名约定 | 客户端建的叫 `scnet-client-member-<createUser>`，`keyStatus: "100"` |
+
+### 10.3 `402 Insufficient Balance` 的诊断顺序
+
+**402 与 API key 无关，先看账号状态**：
+
+```bash
+scripts/probe-v2.sh account     # modelServiceEnabled / unpaidStatus
+scripts/probe-v2.sh gateway     # 拿 activity key → /models → 试一次 chat
+```
+
+本机实测（账号 `luql`）：`modelServiceEnabled: 0`、`unpaidStatus: 1`、`accessibleModelScope: CUSTOM`。
+→ key 能拿到、`/models` 能列 33 个，但 chat 一律 402。需先去控制台处理账单 / 开通模型服务。
+
+处理顺序：查 `status` →（欠费先清账）→ `authorize` → 重新取 key → `/models` → chat。
+**欠费状态下不要替用户自动 `authorize`**（它是计费相关开关）；本仓库 `ApiKeys.ensureAccess()`
+在 `unpaidStatus === 1` 时只上报、不调用。
+
+### 10.4 两条对话通道的分工
+
+| 通道 | 依赖 | 现状 |
+| --- | --- | --- |
+| v2 智能体 `POST /acx/chatbot/v2/agent/stream` | 登录 cookie + `modelId=600` | ✅ 可用（本仓库主路径） |
+| 网关 `{baseUrl}/chat/completions` | `sk-` key + 模型服务授权 | ❌ 当前账号 402（账号侧，非代码） |
+
+两条通道**不是一套模型目录**：v2 是服务 id（600），网关是 LLM id（`GLM-5.3` / `MiniMax-M2.5` …）。
 
 
 ---

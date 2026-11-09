@@ -9,6 +9,8 @@
 #   scripts/probe-v2.sh stream "用一句话说明 SLURM"
 #   scripts/probe-v2.sh stream "继续" --cid <conversationId>
 #   scripts/probe-v2.sh raw  <method> <path> [json]   # 任意 /acx 接口
+#   scripts/probe-v2.sh account                 # 模型服务授权状态（402 先看这里）
+#   scripts/probe-v2.sh gateway [model]         # createActivityApiKey → /models → 试一次 chat
 #
 # 凭据来源（按优先级）：
 #   1) 环境变量 SC_TOKEN / SC_COOKIE
@@ -97,6 +99,63 @@ for r in rows:
 '
 }
 
+### 账户侧：模型服务授权状态。402 Insufficient Balance 先看这里。
+cmd_account() {
+  local me accountId
+  me=$(request GET '/acx/user/users/current-user-info?includeToken=true&refresh=true')
+  accountId=$(printf '%s' "$me" | python3 -c '
+import json,sys
+d=json.load(sys.stdin).get("data") or {}
+print(d.get("id") or d.get("accountId") or "")' )
+  [[ -n $accountId ]] || die "取不到 accountId"
+  note "accountId=$accountId"
+  request GET "/acx/llm/account/config/status?accountId=$accountId" | python3 -c '
+import json,sys
+d=json.load(sys.stdin).get("data") or {}
+for k in ("accountId","modelServiceEnabled","unpaidStatus","accessibleModelScope","isVip","overallQuota","overallRpm"):
+    print("%-22s %s" % (k, d.get(k)))
+if d.get("modelServiceEnabled") != 1:
+    print("\n-> 未开通模型服务：网关对话会返回 402 Insufficient Balance（与 API key 无关）")
+if d.get("unpaidStatus") == 1:
+    print("   unpaidStatus=1：账号有未结清账单，需先在控制台处理")
+'
+}
+
+### 一把拿 key + baseUrl + 默认模型（官方客户端的做法）
+cmd_gateway() {
+  local model=${1:-}
+  local body key base
+  body=$(request POST '/acx/llm/api-key/createActivityApiKey' '{}')
+  key=$(printf '%s' "$body" | python3 -c '
+import json,sys
+d=json.load(sys.stdin).get("data") or {}
+print(d.get("apiKey") or "")')
+  base=$(printf '%s' "$body" | python3 -c '
+import json,sys
+d=json.load(sys.stdin).get("data") or {}
+print(d.get("baseUrl") or "")')
+  [[ -n $key ]] || die "createActivityApiKey 没给 key：$(printf '%s' "$body" | head -c 200)"
+  [[ -n $model ]] || model=$(printf '%s' "$body" | python3 -c '
+import json,sys
+d=json.load(sys.stdin).get("data") or {}
+print(d.get("model") or "")')
+  note "baseUrl=$base  model=$model  keyLen=${#key}"
+  printf '%s' "$base" | grep -q . || base=https://api.scnet.cn/api/llm/v1
+
+  local n
+  n=$(curl -s "$base/models" -H "Authorization: Bearer $key" | python3 -c '
+import json,sys
+d=json.load(sys.stdin).get("data") or []
+print(len(d))')
+  note "GET $base/models -> $n 个模型"
+  note "试一次 chat/completions（model=$model）"
+  curl -s --max-time 120 "$base/chat/completions" \
+    -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
+    --data-raw "{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"只回两个字：收到\"}],\"stream\":false}" \
+    | head -c 800
+  echo
+}
+
 cmd_stream() {
   local text=$1
   local mid=${SC_MODEL_ID:-}
@@ -165,6 +224,11 @@ while [[ $# -gt 0 ]]; do
         esac
       done
       cmd_stream "$text"
+      ;;
+    account) shift; cmd_account ;;
+    gateway)
+      shift
+      cmd_gateway "${1:-}"
       ;;
     raw)
       shift

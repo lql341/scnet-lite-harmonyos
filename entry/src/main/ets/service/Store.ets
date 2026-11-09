@@ -10,7 +10,8 @@ const KEY_CLOUD_TOKEN: string = 'cloudToken';
 const KEY_CLOUD_COOKIE: string = 'cloudCookie';
 const KEY_AUTO_KEY: string = 'autoGatewayKey';
 
-export const DEFAULT_BASE_URL: string = 'https://api.scnet.cn/api/gw/v1';
+/** 网关默认 base：平台 `createActivityApiKey` 下发的就是 /api/llm/v1（不是 /api/gw/v1）。 */
+export const DEFAULT_BASE_URL: string = 'https://api.scnet.cn/api/llm/v1';
 
 class Store {
   private prefs: preferences.Preferences | null = null;

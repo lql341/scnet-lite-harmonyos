@@ -71,6 +71,18 @@
 
 ## D. 作业 / 文件 / 技能（P4）
 
+> 隔壁仓库 `../scnet-cli` 已经把这套跑通了，照它的实现抄就行
+> （`packages/scnet-agent/src/core/sci/openapi.mjs` 469 行 + `flow.mjs` 411 行）：
+>
+> - 签名：`POST /api/user/v3/tokens`，头 `user` / `accessKey` / `signature` / `timestamp`，
+>   `signature = HMAC-SHA256(secretKey, JSON.stringify({accessKey, timestamp, user}))`（hex）
+> - 区域：`GET /ac/openapi/v2/center` → 各区域 `hpcUrls` / `efileUrls`；token TTL 4 h
+> - 提交：`POST {hpc}/hpc/openapi/v2/apptemplates/BASIC/BASE/job`，`strJobManagerID` = 调度器 id，
+>   `mapAppJobInfo` 用 `GAP_*` 字段（`GAP_NPROC` 是**总核数**，`GAP_NGPU/GAP_NDCU` 是**每节点**）
+> - 取消：`DELETE /openapi/v2/jobs` + `strJobInfoMap=<scheduler>,<user>:<jobId>:`
+> - 流程：`plan → validate → stage → approve → submit → monitor → collect → diagnose → report`
+
+
 - [ ] `agent/task/list`（需要 `scopeKey` 等参数，未测出）
 - [ ] `jobgather/jobs/history/page-list` 作业历史
 - [ ] 产物列表 `v2/agent/conversation/{id}/output-files` + CSV/PDF 预览
@@ -78,6 +90,14 @@
 - [ ] 集群信息（`customer/group/user-cluster-info`）
 
 ## E. 账号 / 团队 / 计费（P5）
+
+- [x] **模型服务授权链路**（对齐官方客户端）：`account/config/status` → `account/config/authorize`
+      → `api-key/createActivityApiKey` → `/models`；代码在 `service/ApiKeys.ets`
+- [?] **网关 402 是账号侧**：本机实测 `modelServiceEnabled: 0`、`unpaidStatus: 1`
+      （`scripts/probe-v2.sh account` 可复现）。需要人去控制台清账 / 开通模型服务，代码侧无解。
+- [ ] 图形验证码输入 UI（`isNeedCpatcha.action` + `getClientCaptcha.action`，
+      登录字段 `username/password/captcha/captchaKey`；当前只在错误文案里提示）
+
 
 - [ ] 用户资料（`user-base-info`）
 - [ ] 手机/邮箱绑定（`user-telephone-email`、`verify-code*`）

@@ -66,8 +66,9 @@ class Auth {
       const err = e as ApiError;
       attempts.push(`loginDesktopClient: ${err.code} ${err.message}`);
       if (err.code === '1014') {
-        // 已经是明确的"账号或密码错误"，不用再试 SSO
-        throw new ApiError('1014', '账号或密码错误');
+        // 有验证码门时 1014 也会出现，文案要说清楚否则很容易误判成密码错
+        const need: boolean = await this.needCaptcha();
+        throw new ApiError('1014', need ? '需要图形验证码（请先在网页端登录一次）或账号密码错误' : '账号或密码错误');
       }
     }
 
@@ -144,14 +145,34 @@ class Auth {
   }
 
   async logout(): Promise<void> {
+    // 平台侧登出：桌面客户端用 POST /ac/api/auth/logoutDesktopClient.action
     try {
-      await httpClient.getData('/acx/user/users/logout');
+      await httpClient.postForm('/ac/api/auth/logoutDesktopClient.action', '');
     } catch (e) {
-      // 服务端登出失败也要清本地
+      try {
+        await httpClient.getData('/acx/user/users/logout');
+      } catch (e2) {
+        // 服务端登出失败也要清本地
+      }
     }
     credentials.token = '';
     credentials.cookie = '';
     store.clearCloudAuth();
+  }
+
+  /**
+   * 平台是否要求图形验证码（厂商拼写就是 isNeedCpatcha）。
+   * 实测平时返回 `data:false`（不需要）；真需要时拿图走 `getClientCaptcha.action`，
+   * 登录表单字段是 `username/password/captcha/captchaKey`（全小写 username）。
+   * 本版只用它把错误文案说清楚，还没做验证码输入 UI（见 docs/PROTOCOL.md §10.2）。
+   */
+  async needCaptcha(): Promise<boolean> {
+    try {
+      const data = await httpClient.getData('/ac/api/auth/isNeedCpatcha.action');
+      return String(data) === 'true';
+    } catch (e) {
+      return false;
+    }
   }
 
   /**
