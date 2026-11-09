@@ -37,8 +37,11 @@ export struct MarkdownView {
           .fontWeight(seg.bold ? FontWeight.Bold : FontWeight.Normal)
           .fontStyle(seg.italic ? FontStyle.Italic : FontStyle.Normal)
           .fontFamily(seg.code ? MONO : 'HarmonyOS Sans')
-          .fontColor(seg.code ? Theme.accent : color)
+          .fontColor(seg.code ? Theme.text : color)
           .fontSize(seg.code ? size - 1 : size)
+          .textBackgroundStyle(seg.code
+            ? { color: Theme.surfaceSunken, radius: 4 }
+            : { color: Color.Transparent, radius: 0 })
       }, (seg: MdSeg, index: number) => `${index}-${seg.text.length}`)
     }
     .width('100%')
@@ -134,17 +137,14 @@ export struct MarkdownView {
       .width('100%')
       .margin({ bottom: 8 })
 
-      Scroll() {
-        Text(block.code)
-          .fontSize(12.5)
-          .lineHeight(19)
-          .fontColor(Theme.codeText)
-          .fontFamily(MONO)
-          .width('100%')
-      }
-      .scrollable(ScrollDirection.Horizontal)
-      .scrollBar(BarState.Off)
-      .width('100%')
+      // 手机上横向滚动看代码很别扭：直接换行，长行按字符断
+      Text(block.code)
+        .fontSize(12.5)
+        .lineHeight(19)
+        .fontColor(Theme.codeText)
+        .fontFamily(MONO)
+        .width('100%')
+        .wordBreak(WordBreak.BREAK_ALL)
     }
     .width('100%')
     .padding({ left: 12, right: 12, top: 10, bottom: 12 })

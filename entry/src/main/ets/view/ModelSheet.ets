@@ -17,6 +17,13 @@ export struct ModelSheet {
   onClose: () => void = () => {
   };
 
+  /** 列表高度跟着结果数走，搜到 1 条时不该留一大片空白。 */
+  private listHeight(): number {
+    const count: number = this.filtered().length;
+    const wanted: number = count * 46 + 10;
+    return wanted > 330 ? 330 : wanted;
+  }
+
   private filtered(): string[] {
     const q: string = this.query.trim().toLowerCase();
     if (q.length === 0) {
@@ -33,41 +40,31 @@ export struct ModelSheet {
 
   @Builder
   row(name: string) {
-    Row({ space: 10 }) {
-      Column({ space: 2 }) {
-        Row({ space: 6 }) {
-          Text(prettyModel(name))
-            .fontSize(Theme.fBody)
-            .fontColor(Theme.text)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-          if (name === FREE_MODEL) {
-            Text('免费')
-              .fontSize(10)
-              .fontColor(Theme.ok)
-              .padding({ left: 5, right: 5, top: 1, bottom: 1 })
-              .backgroundColor('#E8F8F0')
-              .borderRadius(5)
-          }
-        }
-        Text(name)
-          .fontSize(Theme.fTiny)
-          .fontColor(Theme.textFaint)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+    Row({ space: 8 }) {
+      Text(prettyModel(name))
+        .fontSize(Theme.fBody)
+        .fontColor(name === this.current ? Theme.accent : Theme.text)
+        .fontWeight(name === this.current ? FontWeight.Medium : FontWeight.Normal)
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+      if (name === FREE_MODEL) {
+        Text('免费')
+          .fontSize(10)
+          .fontColor(Theme.ok)
+          .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+          .backgroundColor('#E8F8F0')
+          .borderRadius(5)
       }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-
       if (name === this.current) {
         Text('✓')
-          .fontSize(15)
+          .fontSize(14)
           .fontColor(Theme.accent)
           .fontWeight(FontWeight.Bold)
       }
     }
     .width('100%')
-    .padding({ left: 4, right: 4, top: 10, bottom: 10 })
+    .padding({ left: 4, right: 4, top: 12, bottom: 12 })
   }
 
   build() {
@@ -105,7 +102,6 @@ export struct ModelSheet {
       .padding({ left: 4, right: 4, bottom: 10 })
 
       Row({ space: 8 }) {
-        Text('🔍').fontSize(12).fontColor(Theme.textFaint)
         TextInput({ text: this.query, placeholder: '搜索模型' })
           .height(36)
           .padding(0)
@@ -118,7 +114,7 @@ export struct ModelSheet {
           })
       }
       .width('100%')
-      .padding({ left: 12, right: 8 })
+      .padding({ left: 14, right: 10 })
       .backgroundColor(Theme.surfaceAlt)
       .borderRadius(Theme.rPill)
       .margin({ bottom: 6 })
@@ -143,12 +139,12 @@ export struct ModelSheet {
         }
         .divider({ strokeWidth: 1, color: Theme.hairline, startMargin: 4, endMargin: 4 })
         .width('100%')
-        .height(340)
+        .height(this.listHeight())
         .scrollBar(BarState.Off)
       }
     }
     .width('100%')
-    .padding({ left: 16, right: 16, bottom: 20 })
+    .padding({ left: 16, right: 16, bottom: 26 })
     .backgroundColor(Theme.surface)
     .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl })
     .shadow(Theme.shadowSheet)

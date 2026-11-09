@@ -182,6 +182,15 @@ struct Index {
     }
   }
 
+  /** 点消息区时收起软键盘（TextArea 不会因为点别处自动失焦）。 */
+  private hideKeyboard(): void {
+    try {
+      this.getUIContext().getFocusController().clearFocus();
+    } catch (e) {
+      // 低版本没有这个 API，忽略
+    }
+  }
+
   private scrollToEnd(): void {
     try {
       this.scroller.scrollEdge(Edge.Bottom);
@@ -329,32 +338,34 @@ struct Index {
   // ---------------------------------------------------------------- 消息
   @Builder
   assistantBubble(content: string, isStreaming: boolean) {
-    Row({ space: 8 }) {
-      Text('S')
-        .fontSize(11)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(Theme.accent)
-        .width(26)
-        .height(26)
-        .textAlign(TextAlign.Center)
-        .borderRadius(Theme.rSm)
-        .backgroundColor(Theme.accentGhost)
-        .border({ width: 1, color: Theme.accentSoft })
+    Column({ space: 5 }) {
+      // 元信息行：模型名 · AI，比一个看不清的小圆标更实用
+      Row({ space: 5 }) {
+        Text(prettyModel(this.gatewayModel))
+          .fontSize(10)
+          .fontColor(Theme.textFaint)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Column().width(2).height(2).borderRadius(1).backgroundColor(Theme.textFaint)
+        Text(isStreaming ? '生成中' : 'AI')
+          .fontSize(10)
+          .fontColor(isStreaming ? Theme.accent : Theme.textFaint)
+      }
+      .padding({ left: 4 })
 
       Column() {
         MarkdownView({ content: content, streaming: isStreaming })
       }
+      .width('100%')
       .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-      .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+      .padding({ left: 14, right: 14, top: 12, bottom: 12 })
       .backgroundColor(Theme.surface)
-      .borderRadius({ topLeft: 4, topRight: Theme.rLg, bottomLeft: Theme.rLg, bottomRight: Theme.rLg })
+      .borderRadius(Theme.rLg)
       .border({ width: 1, color: Theme.hairline })
     }
     .width('100%')
-    .alignItems(VerticalAlign.Top)
-    .justifyContent(FlexAlign.Start)
-    .padding({ top: 5, bottom: 5 })
+    .alignItems(HorizontalAlign.Start)
+    .padding({ top: 8, bottom: 4 })
   }
 
   @Builder
@@ -366,7 +377,7 @@ struct Index {
         .fontColor(Theme.textOnAccent)
         .padding({ left: 13, right: 13, top: 9, bottom: 9 })
         .backgroundColor(Theme.accent)
-        .borderRadius({ topLeft: Theme.rLg, topRight: 4, bottomLeft: Theme.rLg, bottomRight: Theme.rLg })
+        .borderRadius({ topLeft: Theme.rLg, topRight: Theme.rLg, bottomLeft: Theme.rLg, bottomRight: 4 })
         .constraintSize({ maxWidth: '80%' })
     }
     .width('100%')
@@ -376,31 +387,25 @@ struct Index {
 
   @Builder
   thinking() {
-    Row({ space: 8 }) {
-      Text('S')
-        .fontSize(11)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(Theme.accent)
-        .width(26)
-        .height(26)
-        .textAlign(TextAlign.Center)
-        .borderRadius(Theme.rSm)
-        .backgroundColor(Theme.accentGhost)
-        .border({ width: 1, color: Theme.accentSoft })
+    Column({ space: 5 }) {
+      Text(prettyModel(this.gatewayModel))
+        .fontSize(10)
+        .fontColor(Theme.textFaint)
+        .padding({ left: 4 })
       Row({ space: 8 }) {
         LoadingProgress().width(18).height(18).color(Theme.accent)
         Text(this.progressText.length > 0 ? this.progressText : '正在生成…')
           .fontSize(Theme.fSmall)
           .fontColor(Theme.textFaint)
       }
-      .padding({ left: 12, right: 14, top: 10, bottom: 10 })
+      .padding({ left: 14, right: 16, top: 11, bottom: 11 })
       .backgroundColor(Theme.surface)
-      .borderRadius({ topLeft: 4, topRight: Theme.rLg, bottomLeft: Theme.rLg, bottomRight: Theme.rLg })
+      .borderRadius(Theme.rLg)
       .border({ width: 1, color: Theme.hairline })
     }
     .width('100%')
-    .alignItems(VerticalAlign.Top)
-    .padding({ top: 5, bottom: 5 })
+    .alignItems(HorizontalAlign.Start)
+    .padding({ top: 8, bottom: 4 })
   }
 
   @Builder
@@ -444,11 +449,18 @@ struct Index {
   emptyState() {
     Column() {
       Column({ space: 10 }) {
-        Image($r('app.media.app_icon'))
-          .width(64)
-          .height(64)
-          .borderRadius(18)
-          .shadow({ radius: 18, color: '#0B1F3320', offsetY: 6 })
+        Stack() {
+          Column()
+            .width(66)
+            .height(66)
+            .borderRadius(19)
+            .linearGradient({ angle: 145, colors: [['#1470B8', 0.0], ['#0B4F8A', 0.55], ['#06304F', 1.0]] })
+            .shadow({ radius: 20, color: '#0B4F8A40', offsetY: 8 })
+          Text('S')
+            .fontSize(30)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#FFFFFF')
+        }
         Text('你好，我是 SCNet 智能体')
           .fontSize(21)
           .fontWeight(FontWeight.Medium)
@@ -459,22 +471,32 @@ struct Index {
           .fontColor(Theme.textFaint)
           .textAlign(TextAlign.Center)
       }
-      .padding({ top: 40, bottom: 26 })
+      .padding({ top: 8, bottom: 22 })
 
       Column({ space: 8 }) {
-        ForEach(this.suggest, (item: string) => {
+        ForEach(this.suggest, (item: string, index: number) => {
           Row({ space: 10 }) {
+            Text(`${index + 1}`)
+              .fontSize(10)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(Theme.accent)
+              .width(18)
+              .height(18)
+              .textAlign(TextAlign.Center)
+              .borderRadius(9)
+              .backgroundColor(Theme.accentGhost)
             Text(item)
               .fontSize(Theme.fSmall)
+              .lineHeight(19)
               .fontColor(Theme.textSub)
               .maxLines(2)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
               .layoutWeight(1)
-            Text('›').fontSize(15).fontColor(Theme.textFaint)
+            Text('›').fontSize(16).fontColor(Theme.textFaint)
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
-          .padding({ left: 14, right: 12, top: 11, bottom: 11 })
+          .padding({ left: 14, right: 12, top: 10, bottom: 10 })
           .backgroundColor(Theme.surface)
           .borderRadius(Theme.rMd)
           .border({ width: 1, color: Theme.hairline })
@@ -482,14 +504,14 @@ struct Index {
             this.input = item;
             this.send();
           })
-        }, (item: string) => item)
+        }, (item: string, index: number) => `${index}-${item}`)
       }
       .width('100%')
     }
     .width('100%')
     .layoutWeight(1)
     .padding({ left: 18, right: 18 })
-    .justifyContent(FlexAlign.Start)
+    .justifyContent(FlexAlign.Center)
   }
 
   // ---------------------------------------------------------------- 输入区
@@ -518,7 +540,7 @@ struct Index {
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
               .constraintSize({ maxWidth: 150 })
-            Text('⌄').fontSize(11).fontColor(Theme.accent)
+            Text('▾').fontSize(10).fontColor(Theme.accent)
           }
           .padding({ left: 10, right: 10, top: 5, bottom: 5 })
           .backgroundColor(Theme.accentGhost)
@@ -555,7 +577,8 @@ struct Index {
               .height(34)
               .textAlign(TextAlign.Center)
               .borderRadius(Theme.rPill)
-              .backgroundColor(this.input.trim().length > 0 ? Theme.accent : '#C3CBD6')
+              .backgroundColor(Theme.accent)
+              .opacity(this.input.trim().length > 0 ? 1 : 0.34)
               .onClick(() => {
                 this.send();
               })
@@ -582,6 +605,24 @@ struct Index {
   }
 
   // ---------------------------------------------------------------- 抽屉
+  /** 会话状态中文 + 日期（createTime 形如 2026-11-09 12:00:16）。 */
+  private statusText(item: Conversation): string {
+    const status: string = safe(item.taskStatus);
+    let label: string = '历史';
+    if (status === 'completed') {
+      label = '已完成';
+    } else if (status === 'running') {
+      label = '进行中';
+    } else if (status.length > 0) {
+      label = status;
+    }
+    const time: string = safe(item.createTime);
+    if (time.length >= 10) {
+      return `${label} · ${time.substring(5, 10)}`;
+    }
+    return label;
+  }
+
   @Builder
   drawerItem(item: Conversation) {
     Column({ space: 3 }) {
@@ -596,7 +637,7 @@ struct Index {
           Column().width(5).height(5).borderRadius(3).backgroundColor(Theme.ok)
         }
       }
-      Text(safe(item.taskStatus).length > 0 ? safe(item.taskStatus) : '历史')
+      Text(this.statusText(item))
         .fontSize(10)
         .fontColor(Theme.textFaint)
     }
@@ -830,6 +871,9 @@ struct Index {
           .padding({ left: 14, right: 14, top: 2, bottom: 6 })
           .scrollBar(BarState.Off)
           .edgeEffect(EdgeEffect.Spring)
+          .onClick(() => {
+            this.hideKeyboard();
+          })
         }
 
         if (this.errorMsg.length > 0) {

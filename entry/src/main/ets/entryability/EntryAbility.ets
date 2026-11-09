@@ -1,6 +1,6 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window } from '@kit.ArkUI';
+import { window, KeyboardAvoidMode } from '@kit.ArkUI';
 import { auth } from '../service/Auth';
 
 const TAG: string = 'SCNetLite';
@@ -17,6 +17,13 @@ export default class EntryAbility extends UIAbility {
       if (err.code) {
         hilog.error(0x0000, TAG, 'loadContent failed: %{public}s', JSON.stringify(err));
         return;
+      }
+      // 键盘弹出时压缩页面而不是整体上移：顶栏留在原位，输入区贴着键盘上沿。
+      // 默认是 OFFSET（整页上移），会把顶栏推出屏幕、输入区压到 IME 下面。
+      try {
+        windowStage.getMainWindowSync().getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
+      } catch (e) {
+        hilog.warn(0x0000, TAG, 'setKeyboardAvoidMode failed');
       }
       hilog.info(0x0000, TAG, 'content loaded: %{public}s', entryPage);
     });
