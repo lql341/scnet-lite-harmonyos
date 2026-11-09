@@ -5,6 +5,7 @@ import { Gateway, ChatMessage, StreamHandlers } from '../service/Gateway';
 import { store, DEFAULT_BASE_URL, DEFAULT_MODEL } from '../service/Store';
 import { auth } from '../service/Auth';
 import { apiKeys, GatewayAccess } from '../service/ApiKeys';
+import { sessions, SessionData, SessionMeta, StoredMessage, titleFrom } from '../service/Sessions';
 import { Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
 import { Theme, prettyModel, safe } from '../common/Theme';
 import { MarkdownView } from '../view/MarkdownView';
@@ -48,6 +49,8 @@ struct Index {
   @State gatewayAccess: GatewayAccess = { key: '', baseUrl: '', model: '', source: 'none' };
   @State gatewayNotice: string = '';
   @State currentCloudId: string = '';
+  @State localSessions: SessionMeta[] = [];
+  @State currentSessionId: string = '';
   @State gatewayModels: string[] = [];
   @State conversations: Conversation[] = [];
   @State drawerOpen: boolean = false;
@@ -73,6 +76,12 @@ struct Index {
     this.gatewayModel = store.getModel();
     this.draftKey = this.apiKey;
     this.draftUrl = this.baseUrl;
+    sessions.init(getContext(this) as common.UIAbilityContext);
+    this.localSessions = sessions.list();
+    hilog.info(0x0000, TAG, 'sessions on start: %{public}d', this.localSessions.length);
+    if (this.localSessions.length > 0) {
+      this.openLocal(this.localSessions[0]);
+    }
     this.loadCloud();
   }
 
@@ -134,6 +143,59 @@ struct Index {
       }
     }
     return list.length > 0 ? list[0] : preferred;
+  }
+
+  /** 打开本地会话。 */
+  private openLocal(meta: SessionMeta): void {
+    const data: SessionData | null = sessions.load(meta.id);
+    if (data === null) {
+      return;
+    }
+    const restored: RenderMsg[] = [];
+    for (let i = 0; i < data.messages.length; i++) {
+      restored.push(msg(data.messages[i].role, data.messages[i].content));
+    }
+    this.messages = restored;
+    this.currentSessionId = data.id;
+    this.currentCloudId = '';
+    this.errorMsg = '';
+    this.drawerOpen = false;
+    setTimeout(() => this.scrollToEnd(), 80);
+  }
+
+  /** 把当前 messages 落盘（首条消息时顺便起标题）。 */
+  private persistSession(): void {
+    if (this.messages.length === 0) {
+      return;
+    }
+    const stored: StoredMessage[] = this.messages.map((m: RenderMsg): StoredMessage => {
+      const item: StoredMessage = { role: m.role, content: m.content };
+      return item;
+    });
+    if (this.currentSessionId.length === 0) {
+      this.currentSessionId = sessions.newId();
+    }
+    const data: SessionData = {
+      id: this.currentSessionId,
+      title: titleFrom(stored),
+      model: this.gatewayModel,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: stored
+    };
+    sessions.save(data);
+    this.localSessions = sessions.list();
+    hilog.info(0x0000, TAG, 'session saved id=%{public}s msgs=%{public}d list=%{public}d',
+      data.id, stored.length, this.localSessions.length);
+  }
+
+  private removeLocal(meta: SessionMeta): void {
+    sessions.remove(meta.id);
+    if (meta.id === this.currentSessionId) {
+      this.messages = [];
+      this.currentSessionId = '';
+    }
+    this.localSessions = sessions.list();
   }
 
   private async openConversation(item: Conversation): Promise<void> {
@@ -206,6 +268,7 @@ struct Index {
     this.streaming = '';
     this.progressText = '';
     this.busy = false;
+    this.persistSession();
     setTimeout(() => this.scrollToEnd(), 50);
   }
 
@@ -221,6 +284,7 @@ struct Index {
     this.busy = true;
     this.currentCloudId = '';
     this.messages = this.messages.concat([msg('user', text)]);
+    this.persistSession();
     this.scrollToEnd();
 
     const handlers: StreamHandlers = {
@@ -271,6 +335,7 @@ struct Index {
     this.streaming = '';
     this.errorMsg = '';
     this.currentCloudId = '';
+    this.currentSessionId = '';
     this.drawerOpen = false;
   }
 
@@ -649,6 +714,40 @@ struct Index {
   }
 
   @Builder
+  localItem(meta: SessionMeta) {
+    Row({ space: 6 }) {
+      Column({ space: 3 }) {
+        Text(meta.title.length > 0 ? meta.title : '新对话')
+          .fontSize(Theme.fSmall)
+          .fontColor(meta.id === this.currentSessionId ? Theme.accent : Theme.text)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(`${meta.count} 条 · ${prettyModel(meta.model)}`)
+          .fontSize(10)
+          .fontColor(Theme.textFaint)
+          .maxLines(1)
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      Text('✕')
+        .fontSize(11)
+        .fontColor(Theme.textFaint)
+        .width(22)
+        .height(22)
+        .textAlign(TextAlign.Center)
+        .borderRadius(11)
+        .onClick(() => {
+          this.removeLocal(meta);
+        })
+    }
+    .width('100%')
+    .padding({ left: 10, right: 6, top: 9, bottom: 9 })
+    .backgroundColor(meta.id === this.currentSessionId ? Theme.accentGhost : Color.Transparent)
+    .borderRadius(Theme.rSm)
+  }
+
+  @Builder
   drawer() {
     Column() {
       Row({ space: 10 }) {
@@ -698,7 +797,41 @@ struct Index {
       })
 
       Row({ space: 6 }) {
-        Text('历史会话')
+        Text('本机会话')
+          .fontSize(Theme.fTiny)
+          .fontColor(Theme.textFaint)
+          .layoutWeight(1)
+        Text(`${this.localSessions.length}`)
+          .fontSize(Theme.fTiny)
+          .fontColor(Theme.textFaint)
+      }
+      .width('100%')
+      .padding({ top: 14, bottom: 4, left: 2, right: 2 })
+
+      if (this.localSessions.length === 0) {
+        Text('还没有本机会话，发一条消息就会自动保存')
+          .fontSize(10)
+          .fontColor(Theme.textFaint)
+          .width('100%')
+          .padding({ left: 10, top: 2, bottom: 6 })
+      } else {
+        List() {
+          ForEach(this.localSessions, (meta: SessionMeta) => {
+            ListItem() {
+              this.localItem(meta)
+            }
+            .onClick(() => {
+              this.openLocal(meta);
+            })
+          }, (meta: SessionMeta) => meta.id)
+        }
+        .width('100%')
+        .constraintSize({ maxHeight: 190 })
+        .scrollBar(BarState.Off)
+      }
+
+      Row({ space: 6 }) {
+        Text('平台历史')
           .fontSize(Theme.fTiny)
           .fontColor(Theme.textFaint)
           .layoutWeight(1)
