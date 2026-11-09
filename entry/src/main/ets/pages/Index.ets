@@ -460,7 +460,8 @@ struct Index {
       .width('100%')
       .padding({ top: 10, bottom: 10 })
 
-      Text(`云端会话 ${this.conversations.length}`).fontSize(11).fontColor('#A8ADB6')
+      // 这些是平台侧的历史会话（chatbot 接口），当前只能看；发消息走的是网关，不会续写它们
+      Text(`历史会话 ${this.conversations.length}（只读）`).fontSize(11).fontColor('#A8ADB6')
         .width('100%').padding({ bottom: 4 })
 
       List({ space: 2 }) {

@@ -140,54 +140,72 @@ export class Gateway {
     let serverError: string = '';
     let gotDelta: boolean = false;
 
+    /**
+     * 处理一行。⚠️ 网关的错误体（402/401）是**单行 JSON 且不带换行**，
+     * 所以流结束时必须把残留 buffer 再冲一遍（见 dataEnd），否则永远解析不到。
+     */
+    const handleLine = (rawLine: string): void => {
+      const line: string = rawLine.trim();
+      if (line.length === 0) {
+        return;
+      }
+      if (!line.startsWith('data:')) {
+        // 非 SSE：普通 JSON 错误体
+        if (line.startsWith('{') && line.indexOf('"error"') >= 0) {
+          try {
+            const errBody: GatewayErrorBody = JSON.parse(line) as GatewayErrorBody;
+            serverError = describeGatewayError(errBody, 0);
+            hilog.warn(0x0000, TAG, 'gateway error body: %{public}s', serverError);
+          } catch (e) {
+            hilog.warn(0x0000, TAG, 'unparsable gateway error body');
+          }
+        }
+        return;
+      }
+      const payload: string = line.substring(5).trim();
+      if (payload === '[DONE]') {
+        finish('');
+        return;
+      }
+      try {
+        const chunkObj: StreamChunk = JSON.parse(payload) as StreamChunk;
+        const delta: DeltaBody | null = readDelta(chunkObj);
+        if (delta !== null) {
+          const content: string = delta.content === undefined ? '' : delta.content;
+          const reasoning: string = delta.reasoning_content === undefined ? '' : delta.reasoning_content;
+          if (content.length > 0 || reasoning.length > 0) {
+            gotDelta = true;
+            handlers.onDelta(content, reasoning);
+          }
+        }
+      } catch (e) {
+        hilog.warn(0x0000, TAG, 'skip unparsable SSE payload');
+      }
+    };
+
     request.on('dataReceive', (chunk: ArrayBuffer) => {
       buffer += decoder.decodeToString(new Uint8Array(chunk), { stream: true });
       let index: number = buffer.indexOf('\n');
       while (index >= 0) {
-        const line: string = buffer.substring(0, index).trim();
+        const line: string = buffer.substring(0, index);
         buffer = buffer.substring(index + 1);
+        handleLine(line);
         index = buffer.indexOf('\n');
-        if (!line.startsWith('data:')) {
-          // 非 SSE：网关的错误体（402/401）是普通 JSON，必须捞出来，否则前端只会看到空回答
-          if (line.startsWith('{') && line.indexOf('"error"') >= 0) {
-            try {
-              const errBody: GatewayErrorBody = JSON.parse(line) as GatewayErrorBody;
-              serverError = describeGatewayError(errBody, 0);
-            } catch (e) {
-              hilog.warn(0x0000, TAG, 'unparsable gateway error body');
-            }
-          }
-          continue;
-        }
-        const payload: string = line.substring(5).trim();
-        if (payload === '[DONE]') {
-          finish('');
-          return;
-        }
-        try {
-          const chunkObj: StreamChunk = JSON.parse(payload) as StreamChunk;
-          const delta: DeltaBody | null = readDelta(chunkObj);
-          if (delta !== null) {
-            const content: string = delta.content === undefined ? '' : delta.content;
-            const reasoning: string = delta.reasoning_content === undefined ? '' : delta.reasoning_content;
-            if (content.length > 0 || reasoning.length > 0) {
-              gotDelta = true;
-              handlers.onDelta(content, reasoning);
-            }
-          }
-        } catch (e) {
-          hilog.warn(0x0000, TAG, 'skip unparsable SSE payload');
-        }
       }
     });
 
     request.on('dataEnd', () => {
+      // 冲刷残留：单行 JSON 错误体没有换行，只会在 buffer 里
+      if (buffer.length > 0) {
+        handleLine(buffer);
+        buffer = '';
+      }
       if (serverError.length > 0) {
         finish(serverError);
         return;
       }
       if (!gotDelta) {
-        finish('网关没有返回任何内容（检查模型是否可用 / 是否欠费）');
+        finish('网关没有返回内容，也没给错误体：换个模型或检查 Base URL');
         return;
       }
       finish('');
