@@ -99,40 +99,50 @@ export struct MarkdownView {
     .padding({ left: 4 + block.level * 14, top: 1, bottom: 1 })
   }
 
-  /** 表格：首行加粗做表头，其余按列平分；窄屏允许横向滚动。 */
+  /**
+   * 表格在手机上不该横向滚（实测嵌套滚动抢手势，第三列会被截断）。
+   * 改成「每行一张卡」：首列做标题，其余按表头做 键:值 行 —— 窄屏可读性最好。
+   */
   @Builder
   table(block: MdBlock) {
-    Scroll() {
-      Column() {
-        ForEach(block.rows, (row: string[], rowIndex: number) => {
-          Row() {
-            ForEach(row, (cell: string, cellIndex: number) => {
-              Column() {
-                this.inline(cell, Theme.mdBody - 2, Theme.mdLine - 8,
-                  rowIndex === 0 ? Theme.text : Theme.textSub)
+    Column({ space: 8 }) {
+      ForEach(block.rows, (row: string[], rowIndex: number) => {
+        if (rowIndex > 0) {
+          Column({ space: 5 }) {
+            if (row.length > 0) {
+              this.inline(row[0], Theme.mdBody - 1, Theme.mdLine - 6, Theme.text)
+            }
+            ForEach(block.rows[0], (header: string, cellIndex: number) => {
+              if (cellIndex > 0 && cellIndex < row.length) {
+                Row({ space: 6 }) {
+                  Text(header)
+                    .fontSize(Theme.fTiny - 1)
+                    .fontColor(Theme.textFaint)
+                    .constraintSize({ maxWidth: 96 })
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Column() {
+                    this.inline(row[cellIndex], Theme.mdBody - 2, Theme.mdLine - 8, Theme.textSub)
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                }
+                .width('100%')
+                .alignItems(VerticalAlign.Top)
               }
-              .constraintSize({ minWidth: 90 })
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
-              .padding({ left: 10, right: 10, top: 7, bottom: 7 })
-              .backgroundColor(rowIndex === 0 ? Theme.surfaceAlt : Color.Transparent)
-              .border({ width: { right: cellIndex < row.length - 1 ? 1 : 0 }, color: Theme.hairline })
-            }, (cell: string, cellIndex: number) => `${rowIndex}-${cellIndex}`)
+            }, (header: string, cellIndex: number) => `h-${rowIndex}-${cellIndex}`)
           }
           .width('100%')
-          .alignItems(VerticalAlign.Top)
-          if (rowIndex === 0) {
-            Divider().color(Theme.hairline)
-          }
-        }, (row: string[], rowIndex: number) => `row-${rowIndex}`)
-      }
+          .alignItems(HorizontalAlign.Start)
+          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .backgroundColor(Theme.surface)
+          .borderRadius(Theme.rMd)
+          .border({ width: 1, color: Theme.hairline })
+        }
+      }, (row: string[], rowIndex: number) => `t-${rowIndex}`)
     }
-    .scrollable(ScrollDirection.Horizontal)
-    .scrollBar(BarState.Off)
     .width('100%')
     .margin({ top: 4, bottom: 4 })
-    .borderRadius(Theme.rSm)
-    .border({ width: 1, color: Theme.hairline })
   }
 
   @Builder

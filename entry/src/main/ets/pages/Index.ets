@@ -747,9 +747,7 @@ struct Index {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding({ top: 6, bottom: 10 })
-    .gesture(LongPressGesture({ repeat: false }).onAction(() => {
-      this.copyMessage(content);
-    }))
+    .bindContextMenu(this.messageMenu(content), ResponseType.LongPress)
   }
 
   @Builder
@@ -767,9 +765,7 @@ struct Index {
     .width('100%')
     .justifyContent(FlexAlign.End)
     .padding({ top: 5, bottom: 5 })
-    .gesture(LongPressGesture({ repeat: false }).onAction(() => {
-      this.copyMessage(content);
-    }))
+    .bindContextMenu(this.messageMenu(content), ResponseType.LongPress)
   }
 
   @Builder
@@ -1311,6 +1307,17 @@ struct Index {
       out.push(item);
     }
     return out;
+  }
+
+  /** 长按消息的上下文菜单：复制（原生菜单，不会被列表滚动手势吃掉）。 */
+  @Builder
+  messageMenu(text: string) {
+    Menu() {
+      MenuItem({ content: L.t('复制', 'Copy') })
+        .onClick(() => {
+          this.copyMessage(text);
+        })
+    }
   }
 
   /** 长按消息复制全文。 */
