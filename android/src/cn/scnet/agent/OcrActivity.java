@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
 import cn.scnet.agent.core.Task;
 import cn.scnet.agent.svc.Ocr;
@@ -51,6 +52,7 @@ public class OcrActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Store.init(this);
+        Crash.install(this);
         applyAppearance();
         buildUi();
     }
@@ -152,6 +154,17 @@ public class OcrActivity extends Activity {
                     }
                 }), new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView selfTest = Widgets.ghostButton(this, Ui.t("自检", "Self-test"),
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        runSelfTest();
+                    }
+                });
+        LinearLayout.LayoutParams selfLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        selfLp.leftMargin = Ui.dpInt(this, 6);
+        actions.addView(selfTest, selfLp);
         TextView run = Widgets.primaryButton(this, Ui.t("开始", "Run"), 42, new Widgets.Action() {
             @Override
             public void run() {
@@ -322,6 +335,61 @@ public class OcrActivity extends Activity {
         int slash = name.lastIndexOf('/');
         return slash >= 0 ? name.substring(slash + 1) : name;
     }
+
+    /** 自检：用内置小图跑一次通用识别，验证 multipart 链路（对齐 HAP 的自检）。 */
+    private void runSelfTest() {
+        if (busy) {
+            return;
+        }
+        final String key = Store.get().getApiKey().length() > 0
+                ? Store.get().getApiKey() : Store.get().getAutoKey();
+        if (key.length() == 0) {
+            Widgets.tip(this, Ui.t("还没有网关 key，请重新登录", "No gateway key — sign in again"));
+            return;
+        }
+        busy = true;
+        resultText = "";
+        refreshResult();
+        statusView.setText(Ui.t("自检中：内置样图 → 通用识别…",
+                "Self-test: bundled image → general OCR…"));
+        Task.run(new Task.Work<String>() {
+            @Override
+            public String run() throws Exception {
+                InputStream in = getResources().openRawResource(
+                        getResources().getIdentifier("ocr_selftest", "raw", getPackageName()));
+                byte[] bytes = Upload.readAll(in);
+                in.close();
+                mode = 0;
+                ocrType = "GENERAL";
+                Ocr.Result r = Ocr.get().recognize(key, bytes, "ocr-selftest.png", "image/png",
+                        "GENERAL");
+                StringBuilder sb = new StringBuilder();
+                for (String line : r.lines) {
+                    sb.append(line).append('\n');
+                }
+                return sb.toString().trim();
+            }
+        }, new Task.Call<String>() {
+            @Override
+            public void ok(String value) {
+                busy = false;
+                resultText = value.length() > 0 ? value
+                        : Ui.t("自检通过：请求成功但没有识别到文字（样图可能太简单）",
+                        "Self-test OK: request succeeded, no text detected");
+                statusView.setText(Ui.t("自检完成", "Self-test done"));
+                refreshResult();
+            }
+
+            @Override
+            public void fail(String message) {
+                busy = false;
+                statusText = Ui.t("自检失败：", "Self-test failed: ") + message;
+                statusView.setText(statusText);
+            }
+        });
+    }
+
+    private String statusText = "";
 
     private void run() {
         if (busy) {

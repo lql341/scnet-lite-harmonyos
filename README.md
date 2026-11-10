@@ -16,6 +16,7 @@
 | [`docs/VERIFY.md`](docs/VERIFY.md) | **真机回归清单**：设备接上后照着走一遍 |
 | [`docs/APK-ASSESSMENT.md`](docs/APK-ASSESSMENT.md) | **打 Android APK 的难度评估**（含已跑通的 WebView 壳实测 + §8 工作量复核） |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | 发版流程：一条命令出未签名/已签名 HAP + APK + SHA256SUMS |
+| [`docs/PARITY-ANDROID.md`](docs/PARITY-ANDROID.md) | **HAP ↔ Android 功能对齐表**（逐条、带验证状态） |
 | [`docs/ANDROID-DEV.md`](docs/ANDROID-DEV.md) | Android 原生版：构建、模拟器、无账号验 UI、已知坑 |
 | [`docs/TODO.md`](docs/TODO.md) | 待办全表（分 A~I 段，带阻塞项与已完成项） |
 | [`docs/SIGNING.md`](docs/SIGNING.md) | 签名材料清单、换机迁移、重新签发、失败对照 |
@@ -68,21 +69,21 @@
 > 调试提示：协议问题不必装机。`scripts/probe.sh` 用桌面客户端里的活体 `accessToken`
 > 直接打平台与网关接口，几秒一轮。
 
-## 产物与发布（v0.4.0）
+## 产物与发布（v0.4.1）
 
-Bundle name：`cn.scnet.hmos`（**v0.4.0**，versionCode 5，minAPI 26）。
+Bundle name：`cn.scnet.hmos`（**v0.4.1**，versionCode 6，minAPI 26）。
 
 产物（`scripts/make-release.sh` 一次全出，落到 `dist/release/v<version>/`）：
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `scnet-agent-0.4.0-release-signed.hap` | 830 KB | **推荐**，release 构建 + 调试证书签名 |
-| `scnet-agent-0.4.0-release-unsigned.hap` | 781 KB | 自签用 |
-| `scnet-agent-0.4.0-debug-signed.hap` / `-debug-unsigned.hap` | 1.8 MB | debug 构建（带符号） |
-| `scnet-agent-android-0.4.0.apk` | 165 KB | **Android 原生版**（见下） |
+| `scnet-agent-0.4.1-release-signed.hap` | 830 KB | **推荐**，release 构建 + 调试证书签名 |
+| `scnet-agent-0.4.1-release-unsigned.hap` | 781 KB | 自签用 |
+| `scnet-agent-0.4.1-debug-signed.hap` / `-debug-unsigned.hap` | 1.8 MB | debug 构建（带符号） |
+| `scnet-agent-android-0.4.1.apk` | 177 KB | **Android 原生版**（功能对齐 HAP） |
 | `SHA256SUMS.txt` | — | `sha256sum -c` 校验 |
 
-已发布：[`v0.4.0` Releases](https://github.com/lql341/scnet-lite-harmonyos/releases/tag/v0.4.0)
+已发布：[`v0.4.1` Releases](https://github.com/lql341/scnet-lite-harmonyos/releases/tag/v0.4.1)
 （HAP 为 debug 证书签名，profile 的 `device-ids` 只含作者设备，别人装不上 —— 自己构建+签名）。
 
 ### Android（原生版，功能对齐）
@@ -94,8 +95,8 @@ Bundle name：`cn.scnet.hmos`（**v0.4.0**，versionCode 5，minAPI 26）。
 
 | 项 | 值 |
 | --- | --- |
-| 产物 | `dist/android/scnet-agent-android-0.4.0.apk` |
-| 体积 | 165 KB（dex 239 KB，无三方运行时） |
+| 产物 | `dist/android/scnet-agent-android-0.4.1.apk` |
+| 体积 | 177 KB（dex 约 250 KB，无三方运行时） |
 | minSdk / target | 24 / 34 |
 | 构建 | `ANDROID_HOME=~/android-sdk scripts/build-apk.sh`（aapt2 → javac → d8 → zipalign → apksigner，约 8 s） |
 | 自检 | `scripts/test-android.sh` 43/43（Markdown / SSE / 上下文裁剪 / HMAC） |

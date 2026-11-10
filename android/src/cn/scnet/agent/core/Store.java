@@ -248,6 +248,15 @@ public class Store {
         write("modelProvider", "platform");
     }
 
+    /** 调试用：把平台域名换成自建 mock（空 = 用 https://www.scnet.cn）。 */
+    public String getDebugBase() {
+        return read("debugApiBase", "");
+    }
+
+    public void setDebugBase(String v) {
+        write("debugApiBase", v);
+    }
+
     // ---- HPC（AK/SK） ----
     public String getHpcAk() {
         return read("hpcAk", "");

@@ -6,6 +6,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.util.Log;
 import cn.scnet.agent.core.Http;
 import cn.scnet.agent.core.J;
 import cn.scnet.agent.core.Store;
@@ -85,6 +86,7 @@ public class ApiKeys {
     private Access activityKey() {
         Access empty = new Access();
         try {
+            Log.d("SCNetDbg", "activityKey: POST begin base=" + Http.base());
             Http.Response raw = Http.postRaw("/acx/llm/api-key/createActivityApiKey", "{}");
             String text = raw.body == null ? "" : raw.body;
             if (text.length() == 0) {
@@ -104,8 +106,12 @@ public class ApiKeys {
             access.baseUrl = J.trimSlash(J.str(obj, "baseUrl"));
             access.model = J.str(obj, "model");
             access.source = "activity";
+            Log.d("SCNetDbg", "activityKey ok keyLen=" + access.key.length()
+                    + " baseUrl=" + access.baseUrl);
             return access;
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            Log.w("SCNetDbg", "activityKey failed: " + e);
+            lastBlocked = "取 key 异常: " + e;
             return empty;
         }
     }
@@ -140,6 +146,8 @@ public class ApiKeys {
     /** 全链路：缓存 → status/authorize → activity key → query。 */
     public Access ensureAccess(Auth.Identity identity) {
         lastBlocked = "";
+        Log.d("SCNetDbg", "ensureAccess: accountId=" + identity.accountId
+                + " cached=" + Store.get().getAutoKey().length());
         String cached = Store.get().getAutoKey();
         if (cached.length() >= 20) {
             Access hit = new Access();
@@ -154,6 +162,8 @@ public class ApiKeys {
             return new Access();
         }
         Status status = accountStatus(identity.accountId);
+        Log.d("SCNetDbg", "status=" + (status == null ? "null"
+                : ("enabled=" + status.modelServiceEnabled + " unpaid=" + status.unpaidStatus)));
         if (status != null) {
             if (status.modelServiceEnabled != 1) {
                 if (status.unpaidStatus == 1) {

@@ -20,8 +20,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/android
 OUT=${OUT:-$ROOT/dist/android}
 PKG=cn.scnet.agent
-VER_NAME=${VER_NAME:-0.4.0}
-VER_CODE=${VER_CODE:-5}
+VER_NAME=${VER_NAME:-0.4.1}
+VER_CODE=${VER_CODE:-6}
 # DEBUG=1 出可调试包（仅本机联调用：aapt2 --debug-mode → android:debuggable=true）
 DEBUG=${DEBUG:-0}
 ENTRY=${ENTRY:-https://www.scnet.cn/ui/chatbot/index.html}
@@ -77,7 +77,10 @@ note "1/6 aapt2 compile（资源）"
 
 # ---- 2) 链接（生成未签名 apk + AndroidManifest） ----
 note "2/6 aapt2 link（manifest + 资源）"
+CLEARTEXT=false
+[[ $DEBUG -eq 1 ]] && CLEARTEXT=true   # 联调 mock 用 http
 sed -e "s|@VER_NAME@|$VER_NAME|g" -e "s|@VER_CODE@|$VER_CODE|g" \
+  -e "s|@CLEARTEXT@|$CLEARTEXT|g" \
   "$SRC/AndroidManifest.xml" > "$OUT/work/AndroidManifest.xml"
 AAPT_DEBUG=""
 [[ $DEBUG -eq 1 ]] && AAPT_DEBUG="--debug-mode"

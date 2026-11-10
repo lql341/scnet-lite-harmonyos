@@ -17,6 +17,7 @@ import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.List;
 
+import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
 import cn.scnet.agent.core.Task;
 import cn.scnet.agent.svc.Market;
@@ -33,6 +34,10 @@ public class MarketActivity extends Activity {
     private String kind = "mcp";
     private String sort = Market.SORT_HOT;
     private String keyword = "";
+    private boolean onlyFeatured;
+    private int page = 1;
+    private final java.util.List<Market.Item> loaded = new java.util.ArrayList<>();
+    private int total;
     private Market.Result result;
     private boolean loading;
 
@@ -40,6 +45,7 @@ public class MarketActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Store.init(this);
+        Crash.install(this);
         applyAppearance();
         buildUi();
         load();
@@ -100,6 +106,22 @@ public class MarketActivity extends Activity {
             });
             filters.addView(chip, lp);
         }
+        TextView featuredChip = Widgets.chip(this, Ui.t("精选", "Featured"),
+                onlyFeatured ? 0xFFFFFFFF : Ui.textSub,
+                onlyFeatured ? Ui.accent : Ui.surface);
+        LinearLayout.LayoutParams featuredLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        featuredLp.rightMargin = Ui.dpInt(this, 6);
+        featuredChip.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                onlyFeatured = !onlyFeatured;
+                buildUi();
+                load();
+            }
+        });
+        filters.addView(featuredChip, featuredLp);
+
         TextView sortChip = Widgets.chip(this,
                 sort.equals(Market.SORT_HOT) ? Ui.t("最热", "Hot")
                         : (sort.equals(Market.SORT_NEW) ? Ui.t("最新", "New")
@@ -171,6 +193,12 @@ public class MarketActivity extends Activity {
     }
 
     private void load() {
+        loaded.clear();
+        page = 1;
+        fetch(1, false);
+    }
+
+    private void fetch(final int pageToLoad, final boolean append) {
         if (loading) {
             return;
         }
@@ -183,14 +211,22 @@ public class MarketActivity extends Activity {
             @Override
             public Market.Result run() {
                 return "skills".equals(currentKind)
-                        ? Market.get().skills(currentKeyword, 1, currentSort)
-                        : Market.get().connectors(currentKeyword, 1, currentSort);
+                        ? Market.get().skills(currentKeyword, pageToLoad, currentSort)
+                        : Market.get().connectors(currentKeyword, pageToLoad, currentSort);
             }
         }, new Task.Call<Market.Result>() {
             @Override
             public void ok(Market.Result value) {
                 loading = false;
                 result = value;
+                total = value.total;
+                page = pageToLoad;
+                if (append) {
+                    loaded.addAll(value.items);
+                } else {
+                    loaded.clear();
+                    loaded.addAll(value.items);
+                }
                 render();
             }
 
@@ -207,14 +243,21 @@ public class MarketActivity extends Activity {
         if (result == null) {
             return;
         }
-        statusView.setText(Ui.t("共 " + result.total + " 条", result.total + " items"));
-        if (result.items.isEmpty()) {
+        statusView.setText(Ui.t("共 " + total + " 条", total + " items")
+                + (onlyFeatured ? Ui.t(" · 只看精选", " · featured only") : "")
+                + Ui.t(" · 已加载 " + loaded.size(), " · loaded " + loaded.size()));
+        if (loaded.isEmpty()) {
             LinearLayout card = Widgets.card(this);
             card.addView(Ui.label(this, Ui.t("没有结果", "No results"), 12f, Ui.textFaint));
             addCard(card);
             return;
         }
-        for (final Market.Item item : result.items) {
+        int shown = 0;
+        for (final Market.Item item : loaded) {
+            if (onlyFeatured && !"1".equals(item.recommend)) {
+                continue;
+            }
+            shown++;
             LinearLayout card = Widgets.card(this);
             LinearLayout head = new LinearLayout(this);
             head.setOrientation(LinearLayout.HORIZONTAL);
@@ -249,6 +292,22 @@ public class MarketActivity extends Activity {
                 }
             });
             addCard(card);
+        }
+        if (shown == 0) {
+            LinearLayout empty = Widgets.card(this);
+            empty.addView(Ui.label(this, Ui.t("没有结果", "No results"), 12f, Ui.textFaint));
+            addCard(empty);
+            return;
+        }
+        if (loaded.size() < total) {
+            TextView more = Widgets.ghostButton(this, Ui.t("加载更多", "Load more"),
+                    new Widgets.Action() {
+                        @Override
+                        public void run() {
+                            fetch(page + 1, true);
+                        }
+                    });
+            addCard(more);
         }
     }
 

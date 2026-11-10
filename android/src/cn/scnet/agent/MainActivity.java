@@ -29,6 +29,7 @@ import java.util.List;
 
 import cn.scnet.agent.core.ChatText;
 import cn.scnet.agent.core.Http;
+import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
 import cn.scnet.agent.core.Task;
 import cn.scnet.agent.svc.AgentChat;
@@ -129,11 +130,26 @@ public class MainActivity extends Activity {
     private TextView streamingMeta;
     private TextView progressLabel;
     private long attachBusyAt;
+    /** 长会话只渲染最近这么多条，更早的点按钮再加载（对齐 HAP 的 LazyForEach 体验） */
+    private static final int WINDOW = 40;
+    private int windowStart = 0;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Store.init(this);
+        Crash.install(this);
+        Crash.showIfAny(this);
+        // 整段启动逻辑兜住：出异常就把堆栈铺在屏幕上（容器里没有 adb，只能这样取信息）
+        Crash.guard(this, new Runnable() {
+            @Override
+            public void run() {
+                boot();
+            }
+        });
+    }
+
+    private void boot() {
         applyAppearance();
         Http.setUnauthorizedHandler(new Http.UnauthorizedHandler() {
             @Override
@@ -143,9 +159,11 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         Auth.get().noteSessionExpired();
-                        startActivity(new Intent(MainActivity.this, LoginActivity.class)
-                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                        | Intent.FLAG_ACTIVITY_NEW_TASK));
+                        try {
+                            startActivity(new Intent(MainActivity.this, LoginActivity.class)
+                                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
+                        } catch (Throwable ignored) {
+                        }
                         finish();
                     }
                 });
@@ -291,9 +309,8 @@ public class MainActivity extends Activity {
         root.removeAllViews();
         boolean wasDrawer = drawerOpen;
         buildUi();
-        for (Msg m : messages) {
-            addBubble(m);
-        }
+        windowStart = Math.max(0, messages.size() - WINDOW);
+        renderMessages();
         if (streamingBubble != null) {
             streamingBubble = null;
         }
@@ -416,7 +433,8 @@ public class MainActivity extends Activity {
     }
 
     private void toggleDrawer(boolean open) {
-        View layer = root.findViewWithTag("drawerLayer");
+        android.util.Log.d("SCNetDbg", "toggleDrawer(" + open + ")");
+        View layer = root == null ? null : root.findViewWithTag("drawerLayer");
         if (layer == null) {
             return;
         }
@@ -477,12 +495,53 @@ public class MainActivity extends Activity {
         history.setOrientation(LinearLayout.VERTICAL);
         for (final Auth.Conversation c : conversations) {
             final String title = c.title.length() > 0 ? c.title : Ui.t("（无标题）", "(untitled)");
-            history.addView(Widgets.row(this, title, c.createTime, "", new Widgets.Action() {
+            LinearLayout row = Widgets.row(this, title, c.createTime, "",
+                    new Widgets.Action() {
+                        @Override
+                        public void run() {
+                            openCloudConversation(c.id);
+                        }
+                    });
+            row.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
-                public void run() {
-                    openCloudConversation(c.id);
+                public boolean onLongClick(View v) {
+                    Widgets.prompt(MainActivity.this,
+                            Ui.t("重命名平台会话", "Rename platform session"), title, "", false,
+                            new Widgets.OnText() {
+                                @Override
+                                public void onText(String value) {
+                                    final String next = value.trim();
+                                    if (next.length() == 0) {
+                                        return;
+                                    }
+                                    Task.run(new Task.Work<Boolean>() {
+                                        @Override
+                                        public Boolean run() {
+                                            return Auth.get().renameConversation(c.id, next);
+                                        }
+                                    }, new Task.Call<Boolean>() {
+                                        @Override
+                                        public void ok(Boolean done) {
+                                            Widgets.tip(MainActivity.this, done
+                                                    ? Ui.t("已改名", "Renamed")
+                                                    : Ui.t("平台不支持改名或失败", "Rename failed"));
+                                            if (done) {
+                                                c.title = next;
+                                                refreshDrawer();
+                                            }
+                                        }
+
+                                        @Override
+                                        public void fail(String message) {
+                                            Widgets.tip(MainActivity.this, message);
+                                        }
+                                    });
+                                }
+                            });
+                    return true;
                 }
-            }));
+            });
+            history.addView(row);
         }
         drawerPanel.addView(history);
 
@@ -582,16 +641,43 @@ public class MainActivity extends Activity {
             row.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
-                    Widgets.prompt(MainActivity.this, Ui.t("重命名会话", "Rename session"),
-                            meta.title, "", false, new Widgets.OnText() {
-                                @Override
-                                public void onText(String value) {
-                                    if (value.trim().length() > 0) {
-                                        Sessions.get().rename(meta.id, value.trim());
-                                        refreshLocalSessions();
-                                    }
-                                }
-                            });
+                    final String[] options = {Ui.t("重命名", "Rename"), Ui.t("删除", "Delete")};
+                    Sheet.pick(MainActivity.this, meta.title, options, new Sheet.OnPick() {
+                        @Override
+                        public void onPick(Sheet.Item picked) {
+                            if (Ui.t("重命名", "Rename").equals(picked.key)) {
+                                Widgets.prompt(MainActivity.this,
+                                        Ui.t("重命名会话", "Rename session"), meta.title, "",
+                                        false, new Widgets.OnText() {
+                                            @Override
+                                            public void onText(String value) {
+                                                if (value.trim().length() > 0) {
+                                                    Sessions.get().rename(meta.id, value.trim());
+                                                    refreshLocalSessions();
+                                                    if (meta.id.equals(currentSessionId)) {
+                                                        sessionTitle = value.trim();
+                                                    }
+                                                }
+                                            }
+                                        });
+                            } else {
+                                Widgets.confirm(MainActivity.this,
+                                        Ui.t("删除会话", "Delete session"),
+                                        Ui.t("删除后无法恢复，确定吗？",
+                                                "This cannot be undone. Continue?"),
+                                        Ui.t("删除", "Delete"), new Widgets.Action() {
+                                            @Override
+                                            public void run() {
+                                                Sessions.get().remove(meta.id);
+                                                if (meta.id.equals(currentSessionId)) {
+                                                    newChat();
+                                                }
+                                                refreshLocalSessions();
+                                            }
+                                        });
+                            }
+                        }
+                    });
                     return true;
                 }
             });
@@ -684,11 +770,21 @@ public class MainActivity extends Activity {
         }, new Task.Call<Void>() {
             @Override
             public void ok(Void value) {
-                applySelection();
-                refreshStatus();
-                renderEmptyState();
-                refreshDrawer();
-                renderBanner();
+                try {
+                    applySelection();
+                    refreshStatus();
+                    refreshIdentity();
+                    renderEmptyState();
+                    refreshDrawer();
+                    renderBanner();
+                } catch (Throwable error) {
+                    errorMsg = Ui.t("界面渲染出错：", "Render error: ") + error;
+                    try {
+                        renderBanner();
+                    } catch (Throwable ignored) {
+                    }
+                    Crash.fatal(MainActivity.this, error);
+                }
             }
 
             @Override
@@ -696,6 +792,56 @@ public class MainActivity extends Activity {
                 refreshStatus();
             }
         });
+    }
+
+    /** 拿到用户信息后刷新顶栏头像（登录时还不知道显示名）。 */
+    private void refreshIdentity() {
+        String name = Store.get().getPlatformUserName();
+        String avatar = Store.get().getAvatar();
+        if (name.equals(userName) && avatar.equals(avatarSpec)) {
+            return;
+        }
+        userName = name;
+        avatarSpec = avatar;
+        if (root == null || root.getChildCount() == 0) {
+            return;
+        }
+        View content = root.getChildAt(0);
+        if (!(content instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout column = (LinearLayout) content;
+        View oldBar = column.getChildAt(0);
+        LinearLayout newBar = Widgets.topBar(this,
+                Ui.t("超级计算智能体", "SCNet Supercomputing"), "", "☰",
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        toggleDrawer(true);
+                    }
+                }, Widgets.avatar(this, userName, avatarSpec, 32, new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        startActivity(new Intent(MainActivity.this, ProfileActivity.class));
+                    }
+                }));
+        column.removeView(oldBar);
+        column.addView(newBar, 0);
+        titleLabel = (TextView) ((LinearLayout) newBar.getChildAt(1)).getChildAt(0);
+        statusLabel = (TextView) ((LinearLayout) newBar.getChildAt(1)).getChildAt(1);
+        statusLabel.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showModelSheet();
+            }
+        });
+        titleLabel.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showModelSheet();
+            }
+        });
+        refreshStatus();
     }
 
     private void applySelection() {
@@ -785,23 +931,41 @@ public class MainActivity extends Activity {
         sub.setPadding(0, Ui.dpInt(this, 4), 0, Ui.dpInt(this, 10));
         emptyState.addView(sub);
 
-        // 场景分类 chips
-        if (!scenarios.list().isEmpty()) {
+        // 场景 tab（服务端 config 的 vibeCodingScenes × router 推荐问题）+ 领域场景入口
+        boolean hasSceneTabs = !sceneTabs.isEmpty();
+        if (hasSceneTabs || !scenarios.list().isEmpty()) {
             LinearLayout cats = new LinearLayout(this);
             cats.setOrientation(LinearLayout.HORIZONTAL);
             cats.setPadding(0, 0, 0, Ui.dpInt(this, 8));
-            for (final Scenarios.Category category : scenarios.list()) {
-                TextView chip = Widgets.chip(this, category.title, Ui.textSub, Ui.surface);
+            for (final Scenes.Tab tab : sceneTabs) {
+                boolean active = tab.id.equals(sceneTabId);
+                TextView chip = Widgets.chip(this, tab.title,
+                        active ? 0xFFFFFFFF : Ui.textSub, active ? Ui.accent : Ui.surface);
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 lp.rightMargin = Ui.dpInt(this, 6);
                 chip.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        showScenarios(category);
+                        sceneTabId = tab.id;
+                        sceneOffset = 0;
+                        renderEmptyState();
                     }
                 });
                 cats.addView(chip, lp);
+            }
+            // 领域场景（scenarios.json 的 7 类 32 项）
+            if (!scenarios.list().isEmpty()) {
+                final Scenarios.Category first = scenarios.list().get(0);
+                TextView more = Widgets.chip(this, Ui.t("领域场景 ›", "Scenarios ›"),
+                        Ui.accent, Ui.accentSoft);
+                more.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        showScenarios(first);
+                    }
+                });
+                cats.addView(more);
             }
             android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
             hsv.setHorizontalScrollBarEnabled(false);
@@ -811,6 +975,26 @@ public class MainActivity extends Activity {
 
         // 推荐问题 / 场景问题
         List<String> questions = visibleQuestions();
+        if (questions.size() > 3) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setPadding(0, 0, 0, Ui.dpInt(this, 6));
+            TextView hint = Ui.label(this, Ui.t("换一批试试", "Try another batch"), 11.5f,
+                    Ui.textFaint);
+            row.addView(hint, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            TextView shuffle = Widgets.ghostButton(this, Ui.t("换一批", "Shuffle"),
+                    new Widgets.Action() {
+                        @Override
+                        public void run() {
+                            sceneOffset = (sceneOffset + 3) % Math.max(1,
+                                    currentQuestionCount());
+                            renderEmptyState();
+                        }
+                    });
+            row.addView(shuffle);
+            emptyState.addView(row);
+        }
         for (final String question : questions) {
             LinearLayout card = Widgets.card(this);
             TextView tv = Ui.label(this, question, 13.5f, Ui.text);
@@ -829,6 +1013,15 @@ public class MainActivity extends Activity {
             emptyState.addView(card, lp);
         }
         messagesBox.addView(emptyState);
+    }
+
+    private int currentQuestionCount() {
+        for (Scenes.Tab tab : sceneTabs) {
+            if (tab.id.equals(sceneTabId)) {
+                return tab.questions.size();
+            }
+        }
+        return suggest.size();
     }
 
     private List<String> visibleQuestions() {
@@ -1071,7 +1264,12 @@ public class MainActivity extends Activity {
         currentCloudId = "";
         final String via = currentLabel();
         messages.add(new Msg("user", text, ""));
-        addBubble(messages.get(messages.size() - 1));
+        if (windowStart > 0 && messages.size() - windowStart > WINDOW) {
+            windowStart = messages.size() - 1;
+            renderMessages();
+        } else {
+            addBubble(messages.get(messages.size() - 1));
+        }
         persistSession();
         scrollToEnd();
         updateSendButton();
@@ -1232,17 +1430,57 @@ public class MainActivity extends Activity {
         currentCloudId = "";
         sessionTitle = data.title;
         agentChat.conversationId = "";
-        messagesBox.removeAllViews();
-        clearStreamingBubble();
         streaming = "";
-        for (Msg m : messages) {
-            addBubble(m);
-        }
-        if (messages.isEmpty()) {
-            renderEmptyState();
-        }
+        windowStart = Math.max(0, messages.size() - WINDOW);
+        renderMessages();
         toggleDrawer(false);
         scrollToEnd();
+    }
+
+    /** 按窗口重画消息区（首条是「加载更早」）。 */
+    private void renderMessages() {
+        if (messagesBox == null) {
+            return;
+        }
+        messagesBox.removeAllViews();
+        clearStreamingBubble();
+        if (messages.isEmpty()) {
+            renderEmptyState();
+            return;
+        }
+        if (windowStart > 0) {
+            TextView earlier = Widgets.ghostButton(this,
+                    Ui.t("加载更早（还有 " + windowStart + " 条）",
+                            "Load earlier (" + windowStart + " more)"),
+                    new Widgets.Action() {
+                        @Override
+                        public void run() {
+                            int from = Math.max(0, windowStart - WINDOW);
+                            int keep = messages.size() - windowStart;
+                            windowStart = from;
+                            renderMessages();
+                            if (from == 0) {
+                                scrollToEnd();
+                            } else {
+                                // 保持阅读位置：滚到"加载更早"附近
+                                messageScroll.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        messageScroll.scrollTo(0,
+                                                0);
+                                    }
+                                });
+                            }
+                        }
+                    });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.bottomMargin = Ui.dpInt(this, 10);
+            messagesBox.addView(earlier, lp);
+        }
+        for (int i = windowStart; i < messages.size(); i++) {
+            addBubble(messages.get(i));
+        }
     }
 
     private void openCloudConversation(final String id) {
@@ -1261,14 +1499,8 @@ public class MainActivity extends Activity {
                 }
                 currentCloudId = id;
                 currentSessionId = "";
-                messagesBox.removeAllViews();
-                clearStreamingBubble();
-                for (Msg m : messages) {
-                    addBubble(m);
-                }
-                if (messages.isEmpty()) {
-                    renderEmptyState();
-                }
+                windowStart = Math.max(0, messages.size() - WINDOW);
+                renderMessages();
                 scrollToEnd();
             }
 
@@ -1309,6 +1541,7 @@ public class MainActivity extends Activity {
 
     private void newChat() {
         messages.clear();
+        windowStart = 0;
         messagesBox.removeAllViews();
         clearStreamingBubble();
         streaming = "";

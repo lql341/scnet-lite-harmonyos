@@ -15,6 +15,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import cn.scnet.agent.core.Http;
+import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
 import cn.scnet.agent.core.Task;
 import cn.scnet.agent.svc.Auth;
@@ -45,8 +46,15 @@ public class LoginActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Store.init(this);
-        applyAppearance();
-        buildUi();
+        Crash.install(this);
+        Crash.showIfAny(this);
+        Crash.guard(this, new Runnable() {
+            @Override
+            public void run() {
+                applyAppearance();
+                buildUi();
+            }
+        });
     }
 
     private void applyAppearance() {
@@ -288,9 +296,13 @@ public class LoginActivity extends Activity {
             @Override
             public void ok(Void value) {
                 setBusy(false);
-                startActivity(new Intent(LoginActivity.this, MainActivity.class)
-                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK));
-                finish();
+                try {
+                    // 不带 NEW_TASK：容器类环境里跨任务启动最容易出问题
+                    startActivity(new Intent(LoginActivity.this, MainActivity.class));
+                    finish();
+                } catch (Throwable error) {
+                    Crash.fatal(LoginActivity.this, error);
+                }
             }
 
             @Override

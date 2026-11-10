@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Stack;
 
+import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
 import cn.scnet.agent.core.Task;
 import cn.scnet.agent.svc.Hpc;
@@ -34,6 +35,7 @@ public class FilesActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Store.init(this);
+        Crash.install(this);
         applyAppearance();
         buildUi();
         open("");

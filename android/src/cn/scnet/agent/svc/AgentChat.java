@@ -22,7 +22,9 @@ import cn.scnet.agent.core.Task;
  */
 public class AgentChat {
 
-    private static final String BASE = Http.CLOUD;
+    private static String base() {
+        return Http.base();
+    }
     private static final String STREAM_PATH = "/acx/chatbot/v2/agent/stream";
     private static final String STOP_PATH = "/acx/chatbot/v2/agent/stop";
 
@@ -60,7 +62,7 @@ public class AgentChat {
                     body.put("modelId", modelId);
                     java.util.Map<String, String> head = agentHeaders();
                     head.put("Content-Type", "application/json");
-                    Http.send("POST", BASE + STOP_PATH, head, body.toString().getBytes("UTF-8"));
+                    Http.send("POST", base() + STOP_PATH, head, body.toString().getBytes("UTF-8"));
                 } catch (Exception ignored) {
                 }
             }
@@ -129,7 +131,7 @@ public class AgentChat {
                 body.put("conversationId", conversationId);
             }
 
-            c = (HttpURLConnection) new URL(BASE + STREAM_PATH).openConnection();
+            c = (HttpURLConnection) new URL(base() + STREAM_PATH).openConnection();
             conn = c;
             c.setRequestMethod("POST");
             c.setConnectTimeout(20000);

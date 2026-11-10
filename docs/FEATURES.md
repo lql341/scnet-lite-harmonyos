@@ -1,7 +1,7 @@
 # FEATURES — 功能清单
 
 > 本文件是「这个 App 到底能做什么」的权威清单。每条都标注**是否真机验证**。
-> 最后更新：2026-11-11（0.4.0）。代码规模 **12 468 行 ArkTS**（40 个 `.ets`）+ **约 7 900 行 Java**（Android 原生版，`android/src`）。
+> 最后更新：2026-11-11（0.4.1）。**Android 版已与本文功能对齐**，逐条状态见 [`PARITY-ANDROID.md`](PARITY-ANDROID.md)。代码规模 **12 468 行 ArkTS**（40 个 `.ets`）+ **约 7 900 行 Java**（Android 原生版，`android/src`）。
 
 图例：✅ 真机验证过 · 🟡 已实现但只做过主机侧/部分验证 · ⛔ 平台不支持或按需求去掉
 
@@ -141,7 +141,7 @@
 | 环境自检 `scripts/dev-check.sh` | ✅ 工具链/设备/签名/文档 |
 | 日志分级 | ✅ 高频 info → debug，签名明文已移除 |
 | 发版物料 `scripts/make-release.sh` | ✅ 一次出 debug/release × 未签名/已签名 HAP + APK + SHA256SUMS，含 `verify-app` 验签 |
-| Android 原生版 `scripts/build-apk.sh` | ✅ 不用 Gradle，165 KB / 8 s；功能对齐（登录/双通道对话/会话/场景/附件/市场/社区/OCR/作业面/外观） |
+| Android 原生版 `scripts/build-apk.sh` | ✅ 不用 Gradle，177 KB / 8 s；功能对齐（见 `PARITY-ANDROID.md`），带崩溃自诊断 |
 | Android 逻辑自检 `scripts/test-android.sh` | ✅ 43/43（Markdown / SSE / 裁剪 / HMAC，向量与 ArkTS 版一致） |
 
 ---

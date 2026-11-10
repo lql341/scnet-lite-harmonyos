@@ -15,6 +15,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import cn.scnet.agent.core.Http;
+import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
 import cn.scnet.agent.ui.Ui;
 import cn.scnet.agent.ui.Widgets;
@@ -29,6 +30,7 @@ public class WebActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Store.init(this);
+        Crash.install(this);
         applyAppearance();
         url = getIntent() == null ? "" : getIntent().getStringExtra("url");
         String title = getIntent() == null ? "" : getIntent().getStringExtra("title");

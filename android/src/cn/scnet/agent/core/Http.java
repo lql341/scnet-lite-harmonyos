@@ -58,6 +58,18 @@ public class Http {
         public Map<String, List<String>> headers = new LinkedHashMap<>();
     }
 
+    /** 实际使用的平台基地址：设置了 debugApiBase 就用它（联调用，正式包默认空）。 */
+    public static String base() {
+        try {
+            String override = Store.get().getDebugBase();
+            if (override != null && override.trim().length() > 0) {
+                return J.trimSlash(override.trim());
+            }
+        } catch (Exception ignored) {
+        }
+        return CLOUD;
+    }
+
     public static Map<String, String> baseHeaders(boolean json) {
         Map<String, String> head = new LinkedHashMap<>();
         head.put("Content-Type", json ? "application/json" : "application/x-www-form-urlencoded");
@@ -217,20 +229,20 @@ public class Http {
     }
 
     public static org.json.JSONObject get(String path) throws ApiError {
-        Response resp = send("GET", CLOUD + path, baseHeaders(true), null);
+        Response resp = send("GET", base() + path, baseHeaders(true), null);
         org.json.JSONObject env = envelope(resp);
         return J.jo(env, "data");
     }
 
     /** 有些接口 data 是数组，单独给一个。 */
     public static org.json.JSONArray getArray(String path) throws ApiError {
-        Response resp = send("GET", CLOUD + path, baseHeaders(true), null);
+        Response resp = send("GET", base() + path, baseHeaders(true), null);
         org.json.JSONObject env = envelope(resp);
         return J.ja(env, "data");
     }
 
     public static org.json.JSONObject postJson(String path, String json) throws ApiError {
-        Response resp = send("POST", CLOUD + path, baseHeaders(true),
+        Response resp = send("POST", base() + path, baseHeaders(true),
                 json.getBytes(java.nio.charset.Charset.forName("UTF-8")));
         org.json.JSONObject env = envelope(resp);
         return J.jo(env, "data");
@@ -240,13 +252,13 @@ public class Http {
     public static Response postForm(String path, String form) throws ApiError {
         Map<String, String> head = baseHeaders(false);
         head.put("Accept", "application/json, text/plain, */*");
-        return send("POST", CLOUD + path, head,
+        return send("POST", base() + path, head,
                 form.getBytes(java.nio.charset.Charset.forName("UTF-8")));
     }
 
     /** 登录类接口要拿 Set-Cookie，所以返回原始响应。 */
     public static Response postRaw(String path, String json) throws ApiError {
-        return send("POST", CLOUD + path, baseHeaders(true),
+        return send("POST", base() + path, baseHeaders(true),
                 json.getBytes(java.nio.charset.Charset.forName("UTF-8")));
     }
 

@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import cn.scnet.agent.core.J;
+import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
 import cn.scnet.agent.core.Task;
 import cn.scnet.agent.svc.Hpc;
@@ -49,6 +50,7 @@ public class JobDetailActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Store.init(this);
+        Crash.install(this);
         applyAppearance();
         jobId = getIntent() == null ? "" : getIntent().getStringExtra("jobId");
         buildUi();

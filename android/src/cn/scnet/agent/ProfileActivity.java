@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
 import cn.scnet.agent.core.Task;
 import cn.scnet.agent.svc.Auth;
@@ -36,15 +37,19 @@ import cn.scnet.agent.ui.Widgets;
 public class ProfileActivity extends Activity {
 
     private static final String[] PRESET_AVATARS = {"🐼", "🦊", "🐳", "🦉", "🐙", "🌵",
-            "🌇", "🌊", "🏔", "🌌"};
+            "🌇", "🌊", "🏔", "🌌", "A", "S"};
 
     private LinearLayout root;
     private TextView versionView;
+    private TextView accountValue;
+    private TextView clusterValue;
+    private TextView schedulerValue;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         Store.init(this);
+        Crash.install(this);
         applyAppearance();
         buildUi();
     }
@@ -161,6 +166,25 @@ public class ProfileActivity extends Activity {
                 }));
         addCard(look);
 
+        // 身份（对齐 HAP 设置页的账号/集群信息）
+        root.addView(Widgets.section(this, Ui.t("身份", "Identity")));
+        LinearLayout identityCard = Widgets.card(this);
+        identityCard.setPadding(0, 0, 0, 0);
+        String user = Store.get().getPlatformUserName();
+        identityCard.addView(Widgets.row(this, Ui.t("平台账号", "Platform account"),
+                user.length() > 0 ? user : Ui.t("未登录", "Not signed in"), "", null));
+        identityCard.addView(divider());
+        accountValue = Ui.label(this, "…", 12.5f, Ui.textSub);
+        identityCard.addView(labeledRow(Ui.t("集群账号", "Cluster account"), accountValue));
+        identityCard.addView(divider());
+        clusterValue = Ui.label(this, "…", 12.5f, Ui.textSub);
+        identityCard.addView(labeledRow(Ui.t("当前集群", "Cluster"), clusterValue));
+        identityCard.addView(divider());
+        schedulerValue = Ui.label(this, "…", 12.5f, Ui.textSub);
+        identityCard.addView(labeledRow(Ui.t("调度器", "Scheduler"), schedulerValue));
+        addCard(identityCard);
+        loadIdentity();
+
         // 通道
         root.addView(Widgets.section(this, Ui.t("通道", "Channel")));
         LinearLayout channelCard = Widgets.card(this);
@@ -197,6 +221,56 @@ public class ProfileActivity extends Activity {
                 }));
         addCard(hpcCard);
 
+        // 调试（联调用：把平台域名指向自建 mock）
+        root.addView(Widgets.section(this, Ui.t("调试", "Debug")));
+        LinearLayout debugCard = Widgets.card(this);
+        debugCard.setPadding(0, 0, 0, 0);
+        String debugBase = Store.get().getDebugBase();
+        debugCard.addView(Widgets.row(this, Ui.t("API 基地址（mock）", "API base (mock)"),
+                debugBase.length() > 0 ? debugBase : Ui.t("官方（www.scnet.cn）", "Official"),
+                "", new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        Widgets.prompt(ProfileActivity.this,
+                                Ui.t("API 基地址（留空=官方）", "API base (empty = official)"),
+                                Store.get().getDebugBase(), "http://127.0.0.1:8080", false,
+                                new Widgets.OnText() {
+                                    @Override
+                                    public void onText(String value) {
+                                        Store.get().setDebugBase(value.trim());
+                                        Widgets.tip(ProfileActivity.this, Ui.t(
+                                                "已保存，重启 App 生效", "Saved, restart the app"));
+                                    }
+                                });
+                    }
+                }));
+        debugCard.addView(divider());
+        debugCard.addView(Widgets.row(this, Ui.t("上次崩溃堆栈", "Last crash"), "",
+                cn.scnet.agent.core.Crash.last(this).length() > 0
+                        ? Ui.t("有", "Yes") : Ui.t("无", "None"),
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        cn.scnet.agent.core.Crash.showIfAny(ProfileActivity.this);
+                    }
+                }));
+        debugCard.addView(divider());
+        debugCard.addView(Widgets.row(this, Ui.t("复制诊断信息", "Copy diagnostics"),
+                Ui.t("版本/网络/配置 + 上次崩溃", "Version/network/config + last crash"), "",
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        String text = cn.scnet.agent.core.Crash.diagnostics(ProfileActivity.this);
+                        android.content.ClipboardManager cm =
+                                (android.content.ClipboardManager)
+                                        getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("diag", text));
+                        Widgets.tip(ProfileActivity.this, Ui.t("已复制，发给开发者即可",
+                                "Copied — send it to the developer"));
+                    }
+                }));
+        addCard(debugCard);
+
         // 关于
         root.addView(Widgets.section(this, Ui.t("关于", "About")));
         LinearLayout about = Widgets.card(this);
@@ -205,6 +279,24 @@ public class ProfileActivity extends Activity {
         versionView.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 12), Ui.dpInt(this, 14),
                 Ui.dpInt(this, 12));
         about.addView(versionView);
+        about.addView(divider());
+        about.addView(Widgets.row(this, Ui.t("检查更新", "Check for updates"),
+                Ui.t("当前版本 ", "Current ") + newVersionName() + Ui.t(" · 内嵌打开 Releases",
+                        " · opens Releases"), "",
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        openUrl("https://github.com/lql341/scnet-lite-harmonyos/releases");
+                    }
+                }));
+        about.addView(divider());
+        about.addView(Widgets.row(this, Ui.t("作者", "Author"), "lql341", "",
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        openUrl("https://github.com/lql341");
+                    }
+                }));
         about.addView(divider());
         about.addView(Widgets.row(this, Ui.t("GitHub 仓库", "GitHub repository"),
                 "lql341/scnet-lite-harmonyos", "", new Widgets.Action() {
@@ -265,6 +357,70 @@ public class ProfileActivity extends Activity {
         root.addView(logout, logoutLp);
 
         setContentView(scroll);
+    }
+
+    /** 一行：左侧标题（可点击不做事）+ 右侧可变的 TextView。 */
+    private LinearLayout labeledRow(String title, TextView value) {
+        LinearLayout line = new LinearLayout(this);
+        line.setOrientation(LinearLayout.HORIZONTAL);
+        line.setGravity(Gravity.CENTER_VERTICAL);
+        line.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 12), Ui.dpInt(this, 14),
+                Ui.dpInt(this, 12));
+        line.addView(Ui.label(this, title, 14f, Ui.text), new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        line.addView(value);
+        return line;
+    }
+
+    /** 异步补上集群账号 / 集群 / 调度器（和 HAP 设置页一致）。 */
+    private void loadIdentity() {
+        Task.run(new Task.Work<String[]>() {
+            @Override
+            public String[] run() {
+                String[] out = new String[]{"-", "-", "-"};
+                try {
+                    Auth.Identity identity = Auth.get().clusterIdentity();
+                    out[0] = identity.accountId.length() > 0 ? identity.accountId : "-";
+                    out[1] = identity.clusterName.length() > 0 ? identity.clusterName : "-";
+                } catch (Throwable ignored) {
+                }
+                try {
+                    if (cn.scnet.agent.svc.Hpc.get().hasCredentials()) {
+                        cn.scnet.agent.svc.Hpc.Context ctx = cn.scnet.agent.svc.Hpc.get()
+                                .context(String.valueOf(Store.get().getClusterId()), false);
+                        out[1] = ctx.clusterName;
+                        out[2] = ctx.schedulerId.length() > 0 ? ctx.schedulerId : "-";
+                    }
+                } catch (Throwable ignored) {
+                }
+                return out;
+            }
+        }, new Task.Call<String[]>() {
+            @Override
+            public void ok(String[] value) {
+                if (accountValue != null) {
+                    accountValue.setText(value[0]);
+                }
+                if (clusterValue != null) {
+                    clusterValue.setText(value[1]);
+                }
+                if (schedulerValue != null) {
+                    schedulerValue.setText(value[2]);
+                }
+            }
+
+            @Override
+            public void fail(String message) {
+            }
+        });
+    }
+
+    private String newVersionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Throwable e) {
+            return "?";
+        }
     }
 
     private void addCard(View card) {
@@ -417,9 +573,12 @@ public class ProfileActivity extends Activity {
         List<Sheet.Item> items = new ArrayList<>();
         items.add(new Sheet.Item("", "reset", Ui.t("默认首字", "Initial"), "", false, false));
         items.add(new Sheet.Item("", "photo", Ui.t("从相册选择", "Choose photo"), "", false, false));
+        items.add(new Sheet.Item("", "ai", Ui.t("让智能体生成", "Ask the agent"), "", false, false));
         for (String emoji : PRESET_AVATARS) {
-            items.add(new Sheet.Item(Ui.t("内置", "Presets"), "preset:" + emoji, emoji, "",
-                    false, ("preset:" + emoji).equals(Store.get().getAvatar())));
+            boolean letter = emoji.length() == 1 && emoji.charAt(0) < 0x2000;
+            items.add(new Sheet.Item(Ui.t(letter ? "字母" : "内置", letter ? "Letters" : "Presets"),
+                    "preset:" + emoji, emoji, "", false,
+                    ("preset:" + emoji).equals(Store.get().getAvatar())));
         }
         Sheet.show(this, Ui.t("更换头像", "Change avatar"), items, new Sheet.OnPick() {
             @Override
@@ -427,6 +586,15 @@ public class ProfileActivity extends Activity {
                 if ("reset".equals(item.key)) {
                     Store.get().setAvatar("");
                     rebuild();
+                } else if ("ai".equals(item.key)) {
+                    // 对齐 HAP：把生成头像的提示词带回对话页
+                    startActivity(new Intent(ProfileActivity.this, MainActivity.class)
+                            .putExtra("prefill", Ui.t(
+                                    "帮我设计一个头像：科幻风、超算主题、简洁，给出可用的图片提示词",
+                                    "Design an avatar for me: sci-fi, supercomputing, minimal — "
+                                            + "give me a usable image prompt"))
+                            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
+                    finish();
                 } else if ("photo".equals(item.key)) {
                     Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
                     intent.setType("image/*");
@@ -473,14 +641,44 @@ public class ProfileActivity extends Activity {
         final EditText url = input("Base URL", Store.get().getCustomBaseUrl());
         final EditText key = input("API Key", Store.get().getCustomApiKey());
         final EditText model = input(Ui.t("模型 id", "Model id"), Store.get().getCustomModel());
-        TextView presets = Ui.label(this, Ui.t("常用：DeepSeek / Moonshot / 通义 / 智谱 / OpenAI",
-                "Common: DeepSeek / Moonshot / Qwen / Zhipu / OpenAI"), 11f, Ui.textFaint);
-        presets.setPadding(0, Ui.dpInt(this, 4), 0, Ui.dpInt(this, 6));
+        final String[][] presets = {
+                {"DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"},
+                {"Moonshot", "https://api.moonshot.cn/v1", "moonshot-v1-8k"},
+                {Ui.t("通义千问", "Qwen"), "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                        "qwen-plus"},
+                {Ui.t("智谱 GLM", "Zhipu GLM"), "https://open.bigmodel.cn/api/paas/v4",
+                        "glm-4-plus"},
+                {"OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"},
+                {"SiliconFlow", "https://api.siliconflow.cn/v1", "Qwen/Qwen2.5-7B-Instruct"},
+                {"Ollama", "http://127.0.0.1:11434/v1", "llama3.1"}
+        };
+        LinearLayout presetRow = new LinearLayout(this);
+        presetRow.setOrientation(LinearLayout.HORIZONTAL);
+        presetRow.setPadding(0, Ui.dpInt(this, 2), 0, Ui.dpInt(this, 8));
+        for (final String[] preset : presets) {
+            TextView chip = Widgets.chip(this, preset[0], Ui.accent, Ui.accentSoft);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.rightMargin = Ui.dpInt(this, 6);
+            chip.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    name.setText(preset[0]);
+                    url.setText(preset[1]);
+                    model.setText(preset[2]);
+                }
+            });
+            presetRow.addView(chip, lp);
+        }
+        android.widget.HorizontalScrollView presetScroll =
+                new android.widget.HorizontalScrollView(this);
+        presetScroll.setHorizontalScrollBarEnabled(false);
+        presetScroll.addView(presetRow);
+        box.addView(presetScroll);
         box.addView(name);
         box.addView(url);
         box.addView(key);
         box.addView(model);
-        box.addView(presets);
         TextView clear = Widgets.ghostButton(this, Ui.t("恢复平台网关", "Back to platform gateway"),
                 null);
         box.addView(clear);
