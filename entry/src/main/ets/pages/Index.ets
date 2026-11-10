@@ -312,7 +312,7 @@ struct Index {
   }
 
   /** 选附件：系统文件选择器 → 上传到 OSS → 变成待发送的 chip。 */
-  private showAttachSheet: boolean = false;
+  @State showAttachSheet: boolean = false;
 
   /** 从相册选图片（图片走 PhotoViewPicker，权限模型与文件选择器不同）。 */
   private async pickImage(): Promise<void> {
@@ -1543,6 +1543,7 @@ struct Index {
       }
       .width('100%')
       .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+      .margin({ top: 12 })
       .backgroundColor(Theme.surfaceAlt)
       .borderRadius(Theme.rSm)
       .onClick(() => {

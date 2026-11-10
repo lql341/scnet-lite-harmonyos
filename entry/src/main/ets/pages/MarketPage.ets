@@ -23,6 +23,8 @@ struct MarketPage {
   @State pages: number = 0;
   @State loading: boolean = false;
   @State errorMsg: string = '';
+  /** 精选（suggestType=1）单独取，不依赖当前排序 */
+  @State featuredItems: MarketItem[] = [];
 
   aboutToAppear(): void {
     this.load(true);
@@ -38,6 +40,20 @@ struct MarketPage {
     const result: MarketResult = this.kind === 'mcp'
       ? await market.connectors(this.keyword, page, this.sortField)
       : await market.skills(this.keyword, page, this.sortField);
+    if (reset) {
+      // 精选单独取：按 favorityCount 拉 64 条，再筛 suggestType=1
+      const hot: MarketResult = this.kind === 'mcp'
+        ? await market.connectors(this.keyword, 1, 'favoriteCount')
+        : await market.skills(this.keyword, 1, 'favoriteCount');
+      const picked: MarketItem[] = [];
+      for (let i = 0; i < hot.items.length; i++) {
+        if (hot.items[i].recommend === '1') {
+          picked.push(hot.items[i]);
+        }
+      }
+      this.featuredItems = picked;
+      hilog.info(0x0000, TAG, 'featured picked: %{public}d', picked.length);
+    }
     if (result.items.length === 0 && page === 1) {
       this.errorMsg = L.t('没有结果（换个关键词试试）', 'No results (try another keyword)');
     }
@@ -51,15 +67,24 @@ struct MarketPage {
   }
 
   private featured(): MarketItem[] {
-    return this.items.filter((item: MarketItem) => item.recommend === '1');
+    return this.featuredItems;
+  }
+
+  /** 主列表里排除已出现在精选区的条目 */
+  private rest(): MarketItem[] {
+    const ids: string[] = [];
+    for (let i = 0; i < this.featuredItems.length; i++) {
+      ids.push(this.featuredItems[i].id);
+    }
+    return this.items.filter((item: MarketItem) => ids.indexOf(item.id) < 0);
   }
 
   private recommended(): MarketItem[] {
-    return this.items.filter((item: MarketItem) => item.recommend === '2');
+    return this.rest().filter((item: MarketItem) => item.recommend === '2');
   }
 
   private community(): MarketItem[] {
-    return this.items.filter((item: MarketItem) => item.recommend !== '1' && item.recommend !== '2');
+    return this.rest().filter((item: MarketItem) => item.recommend !== '2');
   }
 
   private switchKind(kind: string): void {

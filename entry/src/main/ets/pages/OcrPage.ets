@@ -252,6 +252,9 @@ recognition enums. Opening the platform page inside the app instead of faking a 
               .justifyContent(FlexAlign.Center)
               .backgroundColor(Theme.surfaceAlt)
               .borderRadius(Theme.rMd)
+              .onClick(() => {
+                this.pickImage();
+              })
             }
             Row({ space: 8 }) {
               Text(L.t('换一张', 'Change'))

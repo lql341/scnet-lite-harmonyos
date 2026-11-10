@@ -10,7 +10,7 @@ import { store } from '../service/Store';
 import { auth, ClusterIdentity, ClusterInfo } from '../service/Auth';
 import { UserInfo } from '../model/Types';
 import { ThemeSheet } from '../view/ThemeSheet';
-import { AVATAR_PRESETS, Avatar, AvatarPreset } from '../view/Avatar';
+import { AVATAR_PRESETS, Avatar, AvatarPreset, presetsOf, AvatarStyle } from '../view/Avatar';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 
 const TAG: string = 'SCNetLite';
@@ -68,6 +68,14 @@ struct Profile {
     this.fontLevel = store.getFontLevel();
     this.lang = store.getLang();
     this.load();
+  }
+
+  /** 选中内置头像（面板里点任何一处都走这里，避免手势被内层吃掉）。 */
+  private applyPreset(id: string): void {
+    this.avatar = `preset:${id}`;
+    store.setAvatar(this.avatar);
+    Theme.bumpRev();
+    hilog.info(0x0000, TAG, 'avatar preset applied id=%{public}s', id);
   }
 
   private async pickAvatarPhoto(): Promise<void> {
@@ -577,30 +585,38 @@ struct Profile {
               .fontColor(Theme.textFaint)
               .width('100%')
 
-            Flex({ wrap: FlexWrap.Wrap }) {
-              ForEach(AVATAR_PRESETS, (preset: AvatarPreset) => {
-                Column({ space: 4 }) {
-                  Avatar({
-                    avatarSize: 48,
-                    fontSize: 18,
-                    name: this.userName,
-                    avatar: `preset:${preset.id}`
-                  })
-                  if (this.avatar === `preset:${preset.id}`) {
-                    Text('✓').fontSize(10).fontColor(Theme.accent)
-                  }
+            ForEach(['cartoon', 'scene', 'mono'], (style: string) => {
+              Column({ space: 6 }) {
+                Text(style === 'cartoon' ? L.t('卡通', 'Cartoon')
+                  : (style === 'scene' ? L.t('风景', 'Scenery') : L.t('字母', 'Letter')))
+                  .fontSize(10)
+                  .fontColor(Theme.textFaint)
+                  .width('100%')
+                Flex({ wrap: FlexWrap.Wrap }) {
+                  ForEach(presetsOf(style as AvatarStyle), (preset: AvatarPreset) => {
+                    Column({ space: 3 }) {
+                      Avatar({
+                        avatarSize: 46,
+                        fontSize: 18,
+                        name: this.userName,
+                        avatar: `preset:${preset.id}`,
+                        onTap: () => {
+                          this.applyPreset(preset.id);
+                        }
+                      })
+                      if (this.avatar === `preset:${preset.id}`) {
+                        Text('✓').fontSize(9).fontColor(Theme.accent)
+                      }
+                    }
+                    .width('16.6%')
+                    .padding({ top: 4, bottom: 4 })
+                  }, (preset: AvatarPreset) => preset.id)
                 }
-                .width('25%')
-                .padding({ top: 6, bottom: 6 })
-                .onClick(() => {
-                  hilog.info(0x0000, TAG, 'avatar preset tap id=%{public}s', preset.id);
-                  this.avatar = `preset:${preset.id}`;
-                  store.setAvatar(this.avatar);
-                  Theme.bumpRev();
-                })
-              }, (preset: AvatarPreset) => preset.id)
-            }
-            .width('100%')
+                .width('100%')
+              }
+              .width('100%')
+              .alignItems(HorizontalAlign.Start)
+            }, (style: string) => style)
 
             Row({ space: 8 }) {
               Text(L.t('从相册选', 'From gallery'))
