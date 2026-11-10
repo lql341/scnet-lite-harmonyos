@@ -184,6 +184,10 @@ hdc shell aa start -a EntryAbility -b cn.scnet.hmos
 
 MIME 表在 `service/Upload.ets:mimeOf()`，新增格式在那里加一行即可。
 
+> 2026-11-10 复验：附件面板文案已更新为「相册图片 / PDF/Office/文本/代码/图片」；
+> 头像改动后顶栏与抽屉会同步（`Index.onPageShow()` 重读 `store.getAvatar()`，
+> 实测 🐼→🦊 切换后右上角立即变化，hilog `avatar preset applied id=1`）。
+
 ## 环境问题（会挡住后来者）
 
 `hdc` 需要 udev 规则才能以普通用户访问 USB 设备，否则 `hdc list targets` 一直是 `[Empty]`：

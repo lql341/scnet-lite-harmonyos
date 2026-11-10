@@ -125,6 +125,8 @@ struct Index {
   private scroller: Scroller = new Scroller();
 
   onPageShow(): void {
+    // 从设置页返回时刷新头像（顶栏与抽屉共用 this.avatar，改完要重新读一次）
+    this.avatar = store.getAvatar();
     // OCR 页「发送到对话」会把文字带回来
     const params = router.getParams() as Record<string, string> | undefined;
     if (params !== undefined && params !== null && params['prefill'] !== undefined) {
@@ -1874,7 +1876,7 @@ struct Index {
               Column({ space: 6 }) {
                 Text('🖼').fontSize(22)
                 Text(L.t('图片', 'Photo')).fontSize(Theme.fSmall).fontColor(Theme.text)
-                Text(L.t('从相册选', 'From gallery')).fontSize(9).fontColor(Theme.textFaint)
+                Text(L.t('相册图片', 'Gallery photos')).fontSize(9).fontColor(Theme.textFaint)
               }
               .layoutWeight(1)
               .padding({ top: 14, bottom: 14 })
@@ -1886,7 +1888,10 @@ struct Index {
               Column({ space: 6 }) {
                 Text('📄').fontSize(22)
                 Text(L.t('文件', 'File')).fontSize(Theme.fSmall).fontColor(Theme.text)
-                Text('CSV / PDF / DOCX').fontSize(9).fontColor(Theme.textFaint)
+                Text(L.t('PDF/Office/文本/代码/图片', 'PDF, Office, text, code, images'))
+                  .fontSize(9)
+                  .fontColor(Theme.textFaint)
+                  .textAlign(TextAlign.Center)
               }
               .layoutWeight(1)
               .padding({ top: 14, bottom: 14 })
