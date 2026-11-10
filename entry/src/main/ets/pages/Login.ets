@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { router } from '@kit.ArkUI';
 import { auth, describeAuthError } from '../service/Auth';
+import { L } from '../common/I18n';
 import { ApiError } from '../service/Http';
 import { store } from '../service/Store';
 import { Theme } from '../common/Theme';
@@ -22,9 +23,19 @@ struct Login {
   @State busy: boolean = false;
   @State errorMsg: string = '';
   @State tip: string = '';
+  /** 'expired' → 顶部显示「登录已过期」而不是让用户莫名回到登录页 */
+  @State reason: string = '';
 
   aboutToAppear(): void {
     store.init(getContext(this) as common.UIAbilityContext);
+    this.reason = auth.loginReason;
+    // 过期/重登时带出上次账号，用户只需要输密码
+    if (this.userName.length === 0) {
+      this.userName = store.getPlatformUserName();
+    }
+    if (this.reason === 'expired') {
+      this.tip = '';
+    }
   }
 
   private guard(): boolean {
@@ -97,6 +108,7 @@ struct Login {
   }
 
   private enterApp(): void {
+    this.reason = '';
     router.replaceUrl({ url: 'pages/Index' }).catch((err: Error) => {
       hilog.error(0x0000, 'SCNetLite', 'router failed: %{public}s', err.message);
     });
@@ -231,6 +243,31 @@ struct Login {
       }
       .width('100%')
       .padding({ top: 24, bottom: 28 })
+
+      if (this.reason === 'expired') {
+        Row({ space: 8 }) {
+          Text('ⓘ').fontSize(12).fontColor(Theme.warn)
+          Column({ space: 2 }) {
+            Text(L.t('登录已过期', 'Session expired'))
+              .fontSize(Theme.fSmall)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(Theme.warn)
+            Text(L.t('为保护账号，长时间未使用需要重新登录；密码 / 短信验证码都可以',
+              'Please sign in again; password or SMS code both work'))
+              .fontSize(10)
+              .lineHeight(15)
+              .fontColor(Theme.textSub)
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+        }
+        .width('100%')
+        .padding(12)
+        .backgroundColor('#FFF8EC')
+        .borderRadius(Theme.rMd)
+        .border({ width: 1, color: '#F3D9A4' })
+        .margin({ bottom: 12 })
+      }
 
       // 卡片
       Column({ space: 16 }) {

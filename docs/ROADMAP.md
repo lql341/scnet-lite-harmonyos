@@ -291,6 +291,17 @@ router 的 94 条问题里 `scene` 分布 general 83 / industry 4 / bioinformati
 - 依赖：先有 P1/P2，否则装上插件也无法执行
 - UI：市场列表 / 详情 / 安装到本地 = 写 `filesDir/skills/<slug>/SKILL.md` + `.scnet-marketplace.json`
 
+### 登录态过期体验（2026-11-10）
+
+以前 token 过期只是「打开 App 就是登录页」，用户不知道是过期还是被登出；会话中途 401 也只变成
+一条普通报错。现在：
+
+- `Auth.loginReason`：`expired` / `unauthenticated` / `manual`，由 `restore()` 依据
+  `store.hadSession()` 判定 —— 有历史登录但凭据没了 = 过期，否则 = 首次使用
+- 登录页顶部黄色提示卡「登录已过期 · 长时间未使用需要重新登录」，并**自动带出上次账号**
+- `Http` 的 401 回调在 `EntryAbility` 里注册：清凭据 → 回登录页（带 1.5s 去重，避免连击）
+- 主动退出（`logout`）标记 `manual`，不误报「已过期」
+
 ### P5 OCR — ✅ 已完成（2026-11-09）｜语音输入按需求取消
 
 契约（与本机实测一致，**不是 JSON 接口**）：

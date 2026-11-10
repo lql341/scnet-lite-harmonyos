@@ -15,6 +15,7 @@ export const DEFAULT_MODEL: string = 'SCNet-Max';
 const KEY_THEME: string = 'themePalette';
 const KEY_CLUSTER: string = 'clusterId';
 const KEY_USER_NAME: string = 'platformUserName';
+const KEY_HAD_SESSION: string = 'hadSession';
 const KEY_HPC_AK: string = 'hpcAk';
 const KEY_HPC_SK: string = 'hpcSk';
 const KEY_HPC_USER: string = 'hpcUser';
@@ -87,6 +88,15 @@ class Store {
     } catch (e) {
       // 忽略
     }
+  }
+
+  /** 曾经成功登录过（用于区分「首次使用」和「登录已过期」）。 */
+  hadSession(): boolean {
+    return this.readString(KEY_HAD_SESSION, '') === '1';
+  }
+
+  setHadSession(value: boolean): void {
+    this.writeString(KEY_HAD_SESSION, value ? '1' : '');
   }
 
   getPlatformUserName(): string {

@@ -121,6 +121,7 @@ struct Index {
   aboutToAppear(): void {
     store.init(getContext(this) as common.UIAbilityContext);
     if (!auth.isLoggedIn()) {
+      // 原因已在 auth.loginReason 里（expired / unauthenticated），登录页会据此提示
       router.replaceUrl({ url: 'pages/Login' });
       return;
     }

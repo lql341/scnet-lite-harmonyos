@@ -63,14 +63,47 @@ class Auth {
   /** 最近一次成功登录走的是哪条路径（排查用）。 */
   lastLoginRoute: string = '';
 
+  /**
+   * 为什么会停在登录页——登录页据此给出说明，而不是让用户莫名回到登录。
+   * 'expired' 登录过期 / 'unauthenticated' 需要登录 / 'manual' 主动退出
+   */
+  loginReason: string = 'unauthenticated';
+
+  /** 标记登录态失效（token 过期 / 401 / cookie 失效都走这里）。 */
+  noteSessionExpired(): void {
+    credentials.token = '';
+    credentials.cookie = '';
+    store.clearCloudAuth();
+    this.loginReason = 'expired';
+    hilog.info(0x0000, 'SCNetLite', 'session expired, back to login');
+  }
+
+  /** 主动退出：不提示「已过期」。 */
+  noteManualLogout(): void {
+    store.setHadSession(false);
+    this.loginReason = 'manual';
+  }
+
+  /** 首次使用（没有历史登录）。 */
+  noteFirstRun(): void {
+    this.loginReason = 'unauthenticated';
+  }
+
   /** 启动时恢复登录态。 */
   restore(context: common.UIAbilityContext): boolean {
     store.init(context);
     credentials.token = store.getCloudToken();
     credentials.cookie = store.getCloudCookie();
-    hilog.info(0x0000, 'SCNetLite', 'restore: token=%{public}d cookie=%{public}d',
-      credentials.token.length, credentials.cookie.length);
-    return credentials.token.length > 0;
+    hilog.info(0x0000, 'SCNetLite', 'restore: token=%{public}d cookie=%{public}d hadSession=%{public}s',
+      credentials.token.length, credentials.cookie.length, String(store.hadSession()));
+    if (credentials.token.length > 0) {
+      store.setHadSession(true);
+      this.loginReason = '';
+      return true;
+    }
+    // 有历史登录但凭据没了 → 明确告诉用户是"过期"，而不是当作首次使用
+    this.loginReason = store.hadSession() ? 'expired' : 'unauthenticated';
+    return false;
   }
 
   isLoggedIn(): boolean {
@@ -93,6 +126,7 @@ class Auth {
       const raw = await httpClient.postForm('/ac/api/auth/loginDesktopClient.action', form);
       this.consumeResponse(raw);
       this.lastLoginRoute = 'loginDesktopClient';
+      this.markLoggedIn(userName.trim());
       return;
     } catch (e) {
       const err = e as ApiError;
@@ -109,6 +143,7 @@ class Auth {
       const raw = await httpClient.postForm('/sso/login', form);
       this.consumeResponse(raw);
       this.lastLoginRoute = 'sso/login';
+      this.markLoggedIn(userName.trim());
       return;
     } catch (e) {
       const err = e as ApiError;
@@ -140,6 +175,7 @@ class Auth {
     const raw = await httpClient.postForm('/ac/api/auth/loginDesktopClientByPhoneCode.action',
       `phoneNum=${encodeURIComponent(body.phoneNum)}&messageCode=${encodeURIComponent(body.messageCode)}`);
     this.consumeResponse(raw);
+    this.markLoggedIn('');
   }
 
   /** 拉用户信息，同时刷新 token（includeToken=true&refresh=true）。 */
@@ -271,6 +307,7 @@ class Auth {
     credentials.token = '';
     credentials.cookie = '';
     store.clearCloudAuth();
+    this.noteManualLogout();
   }
 
   /**
@@ -326,6 +363,15 @@ class Auth {
       credentials.cookie = cookie;
       store.setCloudCookie(cookie);
     }
+  }
+
+  /** 登录成功后统一收口：记住账号、标记曾登录、清掉登录页提示。 */
+  private markLoggedIn(userName: string): void {
+    if (userName.length > 0) {
+      store.setPlatformUserName(userName);
+    }
+    store.setHadSession(true);
+    this.loginReason = '';
   }
 
   private consumeResponse(raw: http.HttpResponse): void {
