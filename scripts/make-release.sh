@@ -77,11 +77,11 @@ if [[ $SKIP_APK -eq 0 ]]; then
   if [[ -n ${ANDROID_HOME:-}${ANDROID_SDK_ROOT:-} ]] \
      || [[ -d $HOME/Android/Sdk/platforms/android-34 ]] \
      || [[ -d /tmp/asdk/sdk/platforms/android-34 ]]; then
-    note "Android APK（WebView 壳）"
+    note "Android 原生 APK"
     OUT="$ROOT/dist/android" \
       ANDROID_HOME=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$( [[ -d /tmp/asdk/sdk ]] && echo /tmp/asdk/sdk || echo "$HOME/Android/Sdk" )}} \
       "$ROOT/scripts/build-apk.sh" | tail -4
-    cp "$ROOT"/dist/android/scnet-agent-webview-*.apk "$OUT"/ 2>/dev/null || true
+    cp "$ROOT"/dist/android/scnet-agent-android-*.apk "$OUT"/ 2>/dev/null || true
   else
     note "跳过 APK：没有 Android SDK（ANDROID_HOME 未设）"
   fi

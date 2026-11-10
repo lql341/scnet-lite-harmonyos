@@ -15,7 +15,7 @@ scripts/make-release.sh --upload         # 顺带 gh release create/upload
 2. 对 `MODES`（默认 `debug release`）逐个 `hvigorw clean` + `assembleHap`，
    留一份未签名 HAP，再 `scripts/sign.sh` 出已签名 HAP；
 3. 用 `hap-sign-tool verify-app` 验签（Digest + 证书链 + profile）；
-4. 有 Android SDK 时跑 `scripts/build-apk.sh` 出 APK（`SKIP_APK=1` 可跳过）；
+4. 有 Android SDK 时跑 `scripts/build-apk.sh` 出**原生 APK**（`SKIP_APK=1` 可跳过）；
 5. 生成 `SHA256SUMS.txt`。
 
 产物命名：
@@ -23,7 +23,7 @@ scripts/make-release.sh --upload         # 顺带 gh release create/upload
 ```
 scnet-agent-<ver>-<buildMode>-unsigned.hap
 scnet-agent-<ver>-<buildMode>-signed.hap
-scnet-agent-webview-<apkVer>-webview.apk
+scnet-agent-android-<ver>.apk
 SHA256SUMS.txt
 ```
 

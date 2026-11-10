@@ -242,3 +242,62 @@ apksigner sign --ks debug.keystore …                     # 签名
 3. 想做功能对齐的原生版：§8.3 的 19.5 天；MVP 8-10 天。
 4. 不建议把 ArkTS 硬转 Kotlin —— `@Builder`/`@State` 与 Compose 语义不一一对应，
    转换产物可维护性差；用 `docs/PROTOCOL.md` + 4 个纯逻辑文件 + 51 条单测当规格书重写更划算。
+
+
+---
+
+## 9. 原生版已落地（2026-11-11）
+
+> 结论更新：**路线 B（Java + 框架控件，不用 Gradle）已经实现功能对齐的原生 APK**，
+> 不再是「只有 WebView 壳」。产物 `dist/android/scnet-agent-android-<ver>.apk`（约 165 KB）。
+
+为什么不走 Compose/Flutter：本机只能保证 Android SDK 自带工具链（aapt2/javac/d8/apksigner）可用，
+Gradle + AndroidX 依赖解析会把构建绑死在网络上；直接用框架控件 + 自绘 Markdown 反而更可控，
+且产物只有 165 KB（dex 239 KB），无任何三方运行时。
+
+### 9.1 代码映射（ArkTS → Java）
+
+| ArkTS | Java | 说明 |
+| --- | --- | --- |
+| `common/Markdown.ets` | `core/Md.java` | 块级/行内解析，逐条照搬（含流式半截容错） |
+| `common/Sse.ets` | `core/Sse.java` | 流式 UTF-8 解码 + 无换行残尾 flush |
+| `common/Chat.ets` | `core/ChatText.java` | 24k 上下文裁剪 / token 粗估 / 自动标题 |
+| `common/Hmac.ets` | `core/Hmac.java` | 改用 javax.crypto（标准实现） |
+| `common/Theme.ets` + `I18n.ets` | `ui/Ui.java` | 8 套配色 + 深色 + 三档字号 + 中英 |
+| `service/Http.ets` | `core/Http.java` | Token+Cookie 双头、Set-Cookie 抓取、401 回调 |
+| `service/Auth.ets` | `svc/Auth.java` | 密码/短信登录、集群身份、会话与历史 |
+| `service/ApiKeys.ets` | `svc/ApiKeys.java` | status → authorize → activity key → query |
+| `service/Gateway.ets` | `svc/Gateway.java` | OpenAI 兼容 SSE + 402/401 文案 |
+| `service/AgentChat.ets` | `svc/AgentChat.java` | v2 帧分派、stop、多轮 conversationId |
+| `service/Sessions.ets` | `svc/Sessions.java` | `filesDir/sessions/*.json` + index |
+| `service/Upload.ets` | `svc/Upload.java` | OSS 预签名直传（50+ 扩展名 MIME 表） |
+| `service/Ocr.ets` + `DocAi.ets` | `svc/Ocr.java` | OCR 12 类 + DOC_PARING + 格式转换 |
+| `service/Hpc.ets` | `svc/Hpc.java` | AK/SK 签名、13 集群、队列/配额/作业/日志/提交/取消 |
+| `service/Market.ets` / `AiHub.ets` / `Scenes.ets` | `svc/Market.java` / `AiHub.java` / `Scenes.java` | 市场搜索、社区智能体、首页场景 tab |
+| `service/Scenarios.ets` | `svc/Scenarios.java` | 同一份 `scenarios.json` 打进 `res/raw` |
+| `view/MarkdownView.ets` | `ui/MdView.java` | 原生控件渲染（代码块复制、表格横向滚动） |
+| `pages/*.ets`（11 页） | `MainActivity` `LoginActivity` `ProfileActivity` `JobsActivity` `JobDetailActivity` `JobSubmitActivity` `FilesActivity` `OcrActivity` `MarketActivity` `AiHubActivity` `WebActivity` | 一页一 Activity |
+
+### 9.2 已验证 / 未验证
+
+| 项 | 状态 |
+| --- | --- |
+| 构建（无须 Gradle，约 8 s） | ✅ `scripts/build-apk.sh` |
+| 签名 / 结构 | ✅ `apksigner verify`、`aapt2 dump badging`（minSdk 24 / target 34） |
+| 核心逻辑单测 | ✅ `scripts/test-android.sh` **43/43**（Markdown / SSE / 裁剪 / HMAC） |
+| 装机运行 | ❌ 本机无 Android 设备；模拟器镜像下载太慢（未完成） |
+| 真机功能回归 | ❌ 待做（登录 / 出字 / 停止 / 作业 / OCR） |
+
+### 9.3 剩下的活（真机回归 + 打磨，约 3-5 天）
+
+1. **真机跑一遍**（最高优先级）：登录 → 出字 → 停止 → 附件 → 作业 → OCR → 主题切换。
+2. 长会话列表性能：目前用 `ScrollView + LinearLayout` 增量追加，几百条消息会吃内存，
+   建议换 `ListView`/自建复用（1 天）。
+3. 通知与后台：作业完成提醒（2 天，见 §8.2）。
+4. 应用内更新（0.5 天）。
+5. 图片输入（网关多模态 `image_url`，0.5 天）。
+6. 上架准备：正式 keystore、隐私政策、目标商店（1-2 天，不含审核）。
+
+> 与 §8.3 的 19.5 天估算对比：实际完成（协议层 + 11 页 UI + 平台能力）用了约 1 个工作日的密集实现，
+> 原因是所有接口契约、字段名、错误码、渲染规则都已在 HarmonyOS 版里验证过，
+> 移植过程中只发现 2 个真实 bug（SSE 跨块解码、提示列表 off-by-one），都由自检脚本抓出来。

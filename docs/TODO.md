@@ -98,21 +98,24 @@
 
 ---
 
-## J. Android（附加产物）
+## J. Android（原生版）
 
-- [x] WebView 壳可装（49 KB，不用 Gradle）：`android/` + `scripts/build-apk.sh`
-- [x] 登录态持久化（`CookieManager.flush()`）
-- [x] 附件上传（`onShowFileChooser`）/ 下载（DownloadManager 带 cookie）/ 进度条 / 返回键
-- [ ] 真机装一次回归（本机无 Android 设备）
-- [ ] 预置离线包 + 首屏骨架（1 天）
-- [ ] 应用内更新（检查 GitHub Releases + 下载安装，0.5 天）
+- [x] 协议层移植（Http/Auth/ApiKeys/Gateway/AgentChat/Sessions/Upload/Ocr/Hpc/Market/AiHub/Scenes/Scenarios）
+- [x] 纯逻辑移植 + 自检 43/43（`scripts/test-android.sh`）
+- [x] 11 个页面：对话 / 登录 / 设置 / 作业 / 作业详情 / 提交 / 文件 / OCR / 市场 / 社区 / 内嵌 Web
+- [x] 8 套配色 + 深色 + 三档字号 + 中英 + 头像
+- [x] 出包 165 KB（不用 Gradle，8 s）
+- [ ] **真机回归**（本机无 Android 设备，模拟器镜像下载未完成）
+- [ ] 长会话列表换复用控件（现在 ScrollView 增量追加，几百条会吃内存）
 - [ ] 作业完成通知（原生轮询 + 通知，2 天）
-- [ ] 原生入口（底部 Tab：对话 / 作业 / 我的，3-5 天）
-- [ ] 决策：是否做原生 Android 版（约 19.5 天，见 `docs/APK-ASSESSMENT.md` §8.3）
+- [ ] 应用内更新（0.5 天）
+- [ ] 图片输入（网关多模态 `image_url`，0.5 天）
+- [ ] 上架准备（正式 keystore / 隐私政策 / 目标商店）
 
 ## K. 发版
 
 - [x] `scripts/make-release.sh`：debug/release × 未签名/已签名 HAP + APK + SHA256SUMS
 - [x] `docs/RELEASE.md`：发版流程与发版前检查
 - [x] v0.3.1 物料（release 构建首次产出：830 KB 已签名 / 781 KB 未签名）
-- [ ] 0.3.1 真机回归（`hdc list targets` 当前为 `[Empty]`）
+- [x] v0.4.0 物料（HarmonyOS 4 个 HAP + Android 原生 APK + SHA256SUMS）
+- [ ] 0.4.0 真机回归（`hdc list targets` 当前为 `[Empty]`）

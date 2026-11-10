@@ -13,6 +13,7 @@
         android:usesCleartextTraffic="false"
         android:hardwareAccelerated="true"
         android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -23,5 +24,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name=".LoginActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ProfileActivity" android:exported="false" />
+        <activity android:name=".JobsActivity" android:exported="false" />
+        <activity android:name=".JobDetailActivity" android:exported="false" />
+        <activity android:name=".JobSubmitActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".FilesActivity" android:exported="false" />
+        <activity android:name=".OcrActivity" android:exported="false" />
+        <activity android:name=".MarketActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".AiHubActivity" android:exported="false" />
+        <activity android:name=".WebActivity" android:exported="false" />
     </application>
 </manifest>

@@ -67,32 +67,39 @@
 > 调试提示：协议问题不必装机。`scripts/probe.sh` 用桌面客户端里的活体 `accessToken`
 > 直接打平台与网关接口，几秒一轮。
 
-## 产物与发布（v0.3.1）
+## 产物与发布（v0.4.0）
 
-Bundle name：`cn.scnet.hmos`（**v0.3.1**，versionCode 4，minAPI 26）。
+Bundle name：`cn.scnet.hmos`（**v0.4.0**，versionCode 5，minAPI 26）。
 
 产物（`scripts/make-release.sh` 一次全出，落到 `dist/release/v<version>/`）：
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
-| `scnet-agent-0.3.1-release-signed.hap` | 830 KB | **推荐**，release 构建 + 调试证书签名 |
-| `scnet-agent-0.3.1-release-unsigned.hap` | 781 KB | 自签用 |
-| `scnet-agent-0.3.1-debug-signed.hap` / `-debug-unsigned.hap` | 1.8 MB | debug 构建（带符号） |
-| `scnet-agent-webview-0.2.0-webview.apk` | 49 KB | **Android WebView 壳**（见下） |
+| `scnet-agent-0.4.0-release-signed.hap` | 830 KB | **推荐**，release 构建 + 调试证书签名 |
+| `scnet-agent-0.4.0-release-unsigned.hap` | 781 KB | 自签用 |
+| `scnet-agent-0.4.0-debug-signed.hap` / `-debug-unsigned.hap` | 1.8 MB | debug 构建（带符号） |
+| `scnet-agent-android-0.4.0.apk` | 165 KB | **Android 原生版**（见下） |
 | `SHA256SUMS.txt` | — | `sha256sum -c` 校验 |
 
-已发布：[`v0.3.1` Releases](https://github.com/lql341/scnet-lite-harmonyos/releases/tag/v0.3.1)
+已发布：[`v0.4.0` Releases](https://github.com/lql341/scnet-lite-harmonyos/releases/tag/v0.4.0)
 （HAP 为 debug 证书签名，profile 的 `device-ids` 只含作者设备，别人装不上 —— 自己构建+签名）。
 
-### Android（附加产物）
+### Android（原生版，功能对齐）
 
-`android/` 是一个 290 行的 WebView 壳（不用 Gradle，`scripts/build-apk.sh` 用
-aapt2 → javac → d8 → zipalign → apksigner 直接打包，约 6 s / 49 KB），加载平台自带的
-移动适配 Web 端：登录态持久化、附件上传（系统文件选择器）、下载（DownloadManager 带 cookie）、
-进度条、返回键回退。
+`android/` 是**原生 Android 实现**（Java + 框架控件，不用 Gradle / AndroidX / Compose），
+把 HarmonyOS 版的业务逻辑与 11 个页面重写了一遍：登录、双通道流式对话、Markdown、本地会话、
+场景、附件上传、插件市场、AI 社区、OCR/文档解析、作业面（列表/详情/日志/文件/提交/取消）、
+8 套配色 + 深色 + 中英。
 
-**它不是** ArkTS 那 1.2 万行的原生重写：作业面 / OCR / 插件市场 / 本地多会话都没有原生入口
-（Web 端里有）。各方案工作量见 [`docs/APK-ASSESSMENT.md` §8](docs/APK-ASSESSMENT.md)。
+| 项 | 值 |
+| --- | --- |
+| 产物 | `dist/android/scnet-agent-android-0.4.0.apk` |
+| 体积 | 165 KB（dex 239 KB，无三方运行时） |
+| minSdk / target | 24 / 34 |
+| 构建 | `ANDROID_HOME=~/android-sdk scripts/build-apk.sh`（aapt2 → javac → d8 → zipalign → apksigner，约 8 s） |
+| 自检 | `scripts/test-android.sh` 43/43（Markdown / SSE / 上下文裁剪 / HMAC） |
+
+实现映射（ArkTS → Java）与剩余工作见 [`docs/APK-ASSESSMENT.md` §9](docs/APK-ASSESSMENT.md)。
 
 ## 旧版说明（v0.1.0 MVP，已被上面取代）
 

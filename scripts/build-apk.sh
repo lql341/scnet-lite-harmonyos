@@ -20,8 +20,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/android
 OUT=${OUT:-$ROOT/dist/android}
 PKG=cn.scnet.agent
-VER_NAME=${VER_NAME:-0.2.0-webview}
-VER_CODE=${VER_CODE:-2}
+VER_NAME=${VER_NAME:-0.4.0}
+VER_CODE=${VER_CODE:-5}
 ENTRY=${ENTRY:-https://www.scnet.cn/ui/chatbot/index.html}
 
 die() { printf '[err] %s\n' "$1" >&2; exit 1; }
@@ -108,7 +108,7 @@ if [[ ! -f $KS ]]; then
     -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
     -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
 fi
-APK=$OUT/scnet-agent-webview-$VER_NAME.apk
+APK=$OUT/scnet-agent-android-$VER_NAME.apk
 "$BT/apksigner" sign \
   --ks "$KS" --ks-pass pass:android --key-pass pass:android \
   --ks-key-alias androiddebugkey --min-sdk-version 24 \
@@ -119,5 +119,3 @@ unzip -p "$APK" classes.dex >/dev/null 2>&1 || die "APK 里没有 classes.dex"
 
 rm -rf "$OUT/work"
 printf '\n[done] %s  (%s bytes)\n' "$APK" "$(stat -c %s "$APK")"
-printf '       entry = %s\n' "$ENTRY"
-printf '       注意：这是 WebView 壳（加载平台 Web 前端），不是 ArkTS 界的重写\n'
