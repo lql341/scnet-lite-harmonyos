@@ -593,6 +593,7 @@ struct Profile {
                 .width('25%')
                 .padding({ top: 6, bottom: 6 })
                 .onClick(() => {
+                  hilog.info(0x0000, TAG, 'avatar preset tap id=%{public}s', preset.id);
                   this.avatar = `preset:${preset.id}`;
                   store.setAvatar(this.avatar);
                   Theme.bumpRev();

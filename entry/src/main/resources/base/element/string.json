@@ -1,7 +1,16 @@
 {
   "string": [
-    { "name": "module_desc", "value": "SCNet Lite" },
-    { "name": "EntryAbility_desc", "value": "SCNet Lite" },
-    { "name": "EntryAbility_label", "value": "SCNet Lite" }
+    {
+      "name": "module_desc",
+      "value": "SCNet 智能体（非官方）"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "超级计算智能体"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "超级计算智能体"
+    }
   ]
 }
