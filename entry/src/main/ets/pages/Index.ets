@@ -347,6 +347,16 @@ struct Index {
     try {
       const options = new picker.DocumentSelectOptions();
       options.maxSelectNumber = 3;
+      // 常见办公/科研文档 + 文本 + 压缩包（不限死，未识别的类型也能传，由服务端判定）
+      options.fileSuffixFilters = [
+        '文档 (.pdf, .doc, .docx)|.pdf,.doc,.docx',
+        '表格 (.xls, .xlsx, .csv, .tsv)|.xls,.xlsx,.csv,.tsv',
+        '演示 (.ppt, .pptx)|.ppt,.pptx',
+        '文本 (.txt, .md, .json, .log, .xml, .yaml)|.txt,.md,.markdown,.json,.log,.xml,.yaml,.yml',
+        '代码 (.py, .js, .ts, .sh, .c, .h, .cpp, .rs, .go, .java, .f90, .inp)|.py,.js,.ts,.sh,.c,.h,.cpp,.hpp,.rs,.go,.java,.f90,.f,.inp',
+        '图片 (.png, .jpg, .jpeg, .webp, .gif, .bmp)|.png,.jpg,.jpeg,.webp,.gif,.bmp',
+        '压缩包 (.zip, .tar, .gz)|.zip,.tar,.gz'
+      ];
       const documentPicker = new picker.DocumentViewPicker();
       uris = await documentPicker.select(options);
     } catch (e) {

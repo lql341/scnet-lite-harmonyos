@@ -50,43 +50,88 @@ interface ApiEnvelope {
   data?: object;
 }
 
-/** 按扩展名推断 MIME（与桌面端同一张表）。 */
+/**
+ * 按扩展名推断 MIME。
+ * 覆盖面按「常见办公/科研文档 + 图片 + 代码文本」来，未知类型退回 octet-stream
+ * （服务端会拒，但至少能上传成功让智能体提示，而不是客户端先拦）。
+ */
 export function mimeOf(name: string): string {
   const dot: number = name.lastIndexOf('.');
   const ext: string = dot >= 0 ? name.substring(dot).toLowerCase() : '';
-  if (ext === '.csv') {
-    return 'text/csv';
-  }
-  if (ext === '.txt' || ext === '.log' || ext === '.out' || ext === '.sh' || ext === '.py'
-    || ext === '.js' || ext === '.ts' || ext === '.c' || ext === '.cpp' || ext === '.rs'
-    || ext === '.yaml' || ext === '.yml' || ext === '.toml' || ext === '.html' || ext === '.htm') {
-    return 'text/plain';
-  }
-  if (ext === '.md') {
-    return 'text/markdown';
-  }
-  if (ext === '.json') {
-    return 'application/json';
-  }
-  if (ext === '.pdf') {
-    return 'application/pdf';
-  }
-  if (ext === '.png') {
-    return 'image/png';
-  }
-  if (ext === '.jpg' || ext === '.jpeg') {
-    return 'image/jpeg';
-  }
-  if (ext === '.gif') {
-    return 'image/gif';
-  }
-  if (ext === '.webp') {
-    return 'image/webp';
-  }
-  if (ext === '.docx') {
-    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  }
-  return 'application/octet-stream';
+  const table: Map<string, string> = new Map<string, string>();
+  // 文本 / 数据
+  table.set('.txt', 'text/plain');
+  table.set('.log', 'text/plain');
+  table.set('.out', 'text/plain');
+  table.set('.md', 'text/markdown');
+  table.set('.markdown', 'text/markdown');
+  table.set('.csv', 'text/csv');
+  table.set('.tsv', 'text/tab-separated-values');
+  table.set('.json', 'application/json');
+  table.set('.xml', 'application/xml');
+  table.set('.yaml', 'text/plain');
+  table.set('.yml', 'text/plain');
+  table.set('.toml', 'text/plain');
+  table.set('.html', 'text/html');
+  table.set('.htm', 'text/html');
+  table.set('.tex', 'text/plain');
+  table.set('.bib', 'text/plain');
+  table.set('.srt', 'text/plain');
+  // 代码
+  table.set('.py', 'text/plain');
+  table.set('.js', 'text/plain');
+  table.set('.ts', 'text/plain');
+  table.set('.sh', 'text/plain');
+  table.set('.c', 'text/plain');
+  table.set('.h', 'text/plain');
+  table.set('.cpp', 'text/plain');
+  table.set('.hpp', 'text/plain');
+  table.set('.rs', 'text/plain');
+  table.set('.go', 'text/plain');
+  table.set('.java', 'text/plain');
+  table.set('.r', 'text/plain');
+  table.set('.m', 'text/plain');
+  table.set('.f90', 'text/plain');
+  table.set('.f', 'text/plain');
+  table.set('.inp', 'text/plain');
+  // 文档
+  table.set('.pdf', 'application/pdf');
+  table.set('.doc', 'application/msword');
+  table.set('.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  table.set('.xls', 'application/vnd.ms-excel');
+  table.set('.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  table.set('.ppt', 'application/vnd.ms-powerpoint');
+  table.set('.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+  table.set('.rtf', 'application/rtf');
+  table.set('.epub', 'application/epub+zip');
+  // 图片
+  table.set('.png', 'image/png');
+  table.set('.jpg', 'image/jpeg');
+  table.set('.jpeg', 'image/jpeg');
+  table.set('.gif', 'image/gif');
+  table.set('.webp', 'image/webp');
+  table.set('.bmp', 'image/bmp');
+  table.set('.svg', 'image/svg+xml');
+  table.set('.heic', 'image/heic');
+  table.set('.tif', 'image/tiff');
+  table.set('.tiff', 'image/tiff');
+  // 音视频 / 压缩包
+  table.set('.mp3', 'audio/mpeg');
+  table.set('.wav', 'audio/wav');
+  table.set('.m4a', 'audio/mp4');
+  table.set('.mp4', 'video/mp4');
+  table.set('.mov', 'video/quicktime');
+  table.set('.zip', 'application/zip');
+  table.set('.tar', 'application/x-tar');
+  table.set('.gz', 'application/gzip');
+  const hit: string | undefined = table.get(ext);
+  return hit !== undefined ? hit : 'application/octet-stream';
+}
+
+/** OCR 端点实测只接受「图片 + PDF」（docx/xlsx/pptx/md/csv 会报 File type cannot be supported）。 */
+export function isOcrSupported(name: string): boolean {
+  const mime: string = mimeOf(name);
+  return mime.indexOf('image/') === 0 || mime === 'application/pdf';
 }
 
 class Uploader {

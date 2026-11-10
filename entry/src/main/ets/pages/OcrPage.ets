@@ -12,7 +12,8 @@ import { store } from '../service/Store';
 import { apiKeys, GatewayAccess } from '../service/ApiKeys';
 import { auth } from '../service/Auth';
 import { ocr, OCR_TYPES, OcrType, OcrResult } from '../service/Ocr';
-import { mimeOf } from '../service/Upload';
+import { isOcrSupported, mimeOf } from '../service/Upload';
+import { picker } from '@kit.CoreFileKit';
 
 const TAG: string = 'SCNetLite';
 
@@ -51,6 +52,38 @@ struct OcrPage {
     }
   }
 
+  /** 选 PDF（实测 OCR 端点支持 PDF：服务端会先转 PNG 再识别）。 */
+  private async pickPdf(): Promise<void> {
+    try {
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = 1;
+      options.fileSuffixFilters = ['PDF|.pdf'];
+      const documentPicker = new picker.DocumentViewPicker();
+      const uris: string[] = await documentPicker.select(options);
+      if (uris.length === 0) {
+        return;
+      }
+      const uri: string = uris[0];
+      const slash: number = uri.lastIndexOf('/');
+      let name: string = slash >= 0 ? uri.substring(slash + 1) : 'document.pdf';
+      if (name.indexOf('?') >= 0) {
+        name = name.substring(0, name.indexOf('?'));
+      }
+      if (!isOcrSupported(name)) {
+        this.errorMsg = L.t('这个格式 OCR 不支持，请用「文档解析」',
+          'This format is not supported by OCR; use Parse');
+        return;
+      }
+      this.previewUri = uri;
+      this.fileName = name;
+      this.lines = [];
+      this.traceId = '';
+      this.errorMsg = '';
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'pdf picker failed');
+    }
+  }
+
   private async run(): Promise<void> {
     if (this.previewUri.length === 0) {
       this.errorMsg = L.t('先选一张图片', 'Pick an image first');
@@ -79,6 +112,12 @@ struct OcrPage {
       fs.closeSync(file);
       const bytes: Uint8Array = new Uint8Array(buffer);
       const mime: string = mimeOf(this.fileName.length > 0 ? this.fileName : 'image.jpg');
+      if (!isOcrSupported(this.fileName)) {
+        this.errorMsg = L.t('OCR 只支持图片和 PDF；word/excel/ppt/md 请用「文档解析」',
+          'OCR supports images and PDF only; use Parse for Office/Markdown');
+        this.busy = false;
+        return;
+      }
       const result: OcrResult = await ocr.recognize(key, bytes, this.fileName.length > 0 ? this.fileName : 'image.jpg',
         mime.length > 0 ? mime : 'image/jpeg', this.ocrType);
       this.lines = result.lines;
@@ -149,7 +188,7 @@ struct OcrPage {
             .fontSize(Theme.fTitle)
             .fontFamily(Theme.fontDisplay)
             .fontColor(Theme.text)
-          Text(L.t('图片转文字，支持证照/票据/手写', 'Image to text: cards, invoices, handwriting'))
+          Text(L.t('支持图片与 PDF（证照/票据/手写）', 'Images and PDF: cards, invoices, handwriting'))
             .fontSize(10)
             .fontColor(Theme.textFaint)
         }
@@ -233,7 +272,24 @@ recognition enums. Opening the platform page inside the app instead of faking a 
 
           // 图片选择
           Column({ space: 10 }) {
-            if (this.previewUri.length > 0) {
+            if (this.previewUri.length > 0 && this.fileName.toLowerCase().endsWith('.pdf')) {
+              Column({ space: 6 }) {
+                Text('📄').fontSize(34)
+                Text(this.fileName)
+                  .fontSize(Theme.fSmall)
+                  .fontColor(Theme.text)
+                  .maxLines(2)
+                  .textAlign(TextAlign.Center)
+                Text(L.t('PDF（服务端会先转成图片再识别）', 'Server converts PDF pages first'))
+                  .fontSize(10)
+                  .fontColor(Theme.textFaint)
+              }
+              .width('100%')
+              .height(190)
+              .justifyContent(FlexAlign.Center)
+              .backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rMd)
+            } else if (this.previewUri.length > 0) {
               Image(this.previewUri)
                 .width('100%')
                 .height(190)
@@ -257,7 +313,7 @@ recognition enums. Opening the platform page inside the app instead of faking a 
               })
             }
             Row({ space: 8 }) {
-              Text(L.t('换一张', 'Change'))
+              Text(L.t('选图片', 'Image'))
                 .fontSize(Theme.fSmall)
                 .fontColor(Theme.accent)
                 .layoutWeight(1)
@@ -267,6 +323,17 @@ recognition enums. Opening the platform page inside the app instead of faking a 
                 .borderRadius(Theme.rSm)
                 .onClick(() => {
                   this.pickImage();
+                })
+              Text(L.t('选 PDF', 'PDF'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.accent)
+                .layoutWeight(1)
+                .textAlign(TextAlign.Center)
+                .padding({ top: 10, bottom: 10 })
+                .backgroundColor(Theme.accentGhost)
+                .borderRadius(Theme.rSm)
+                .onClick(() => {
+                  this.pickPdf();
                 })
               Text(this.busy ? L.t('识别中…', 'Working…') : L.t('开始识别', 'Recognize'))
                 .fontSize(Theme.fSmall)

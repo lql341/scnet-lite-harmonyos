@@ -173,6 +173,17 @@ hdc shell aa start -a EntryAbility -b cn.scnet.hmos
 | 4 | 算力服务离新对话太近 | 缺 `margin` | `.margin({ top: 12 })` |
 | 5 | 会话输入区 ＋ 唤不起 | `showAttachSheet` 声明成普通字段，不是 `@State`（改状态不刷新 UI） | 改成 `@State` |
 
+## 文件格式支持（2026-11-10 实测）
+
+| 入口 | 支持 |
+| --- | --- |
+| 对话附件 ＋（文件） | pdf / doc / docx / xls / xlsx / ppt / pptx / txt / md / json / xml / yaml / csv / tsv / log / 常见代码 / 图片 / zip、tar、gz |
+| 对话附件 ＋（图片） | 相册里的 png/jpg/webp/gif/bmp |
+| OCR | **图片 + PDF**（PDF 由服务端转图）；docx/xlsx/pptx/md/csv 会报 `File type cannot be supported` |
+| 文档解析 / 格式转换 | 走平台应用页（网关无对应枚举） |
+
+MIME 表在 `service/Upload.ets:mimeOf()`，新增格式在那里加一行即可。
+
 ## 环境问题（会挡住后来者）
 
 `hdc` 需要 udev 规则才能以普通用户访问 USB 设备，否则 `hdc list targets` 一直是 `[Empty]`：
