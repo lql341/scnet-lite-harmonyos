@@ -12,6 +12,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [`docs/NEXT.md`](docs/NEXT.md) | **接手先看这个**：当前卡点、下一步、换机器要带什么 |
+| [`docs/VERIFY.md`](docs/VERIFY.md) | **真机待验清单**：设备接上后照着走一遍 |
 | [`docs/TODO.md`](docs/TODO.md) | 待办全表（分 A~I 段，带阻塞项与已完成项） |
 | [`docs/SIGNING.md`](docs/SIGNING.md) | 签名材料清单、换机迁移、重新签发、失败对照 |
 | [`docs/PLAN.md`](docs/PLAN.md) | 对标手机 APK 的分阶段开发计划（P0~P6，约 11 天） |

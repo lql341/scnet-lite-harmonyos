@@ -28,16 +28,40 @@
 
 ## 2. 当前状态
 
-- bundleName **`cn.scnet.hmos`**（v0.1.0，minAPI 26，已据此重构验过 `assembleHap`）。
-  **改包名要趁签名之前**：证书/ profile 一旦签发就绑定这个 bundleName，改了就重签。
-- 分支 `main`。
-- 构建产物：`entry/build/default/outputs/default/entry-default-unsigned.hap`（约 78 KB，**未签名**）。
-- 已实现：SSE 流式对话（含 `reasoning_content`）、11 个网关模型切换、API Key/Base URL 设置
-  + preferences 持久化、停止生成。
-- 未实现：账号登录、作业/队列/文件、多会话、PDF 预览、消息 Markdown 渲染、流式 token 计数。
+> 最后更新 **2026-11-10**。详细协议/坑见 [`docs/PROTOCOL.md`](docs/PROTOCOL.md)、
+> 阶段与证据见 [`docs/ROADMAP.md`](docs/ROADMAP.md)、待办全表 [`docs/TODO.md`](docs/TODO.md)。
 
-代码规模：`ets` 共 555 行 —— `pages/Index.ets` 259、`service/Gateway.ets` 170、
-`service/Store.ets` 72、`model/Models.ets` 33、`entryability/EntryAbility.ets` 21。
+- bundleName **`cn.scnet.hmos`**，minAPI 26；签名走 `scripts/sign.sh`（`signingConfigs` 留空）。
+- 分支 `main`；代码规模约 **10300 行 ArkTS**（27 个文件）。
+- 两条**并存**的对话通道（同一套 UI，选择器分组）：
+  - 网关 LLM：`POST {baseUrl}/chat/completions`，33 个模型，`SCNet-Max` 免费
+  - 平台智能体：`POST /acx/chatbot/v2/agent/stream`，**只接受 `aiagent-router`(600)**
+    （其余 `aiagent-*` 服务实测全部「系统繁忙」，桌面端源码同此断言）
+
+能力面（都已真机验证，除标注）：
+
+| 能力 | 状态 |
+| --- | --- |
+| 登录（账号密码 / 短信）、过期友好提示 | ✅ |
+| 多会话本地持久化（文件存储）、Markdown 渲染 | ✅ |
+| 主题 6 套（默认暖砂）+ 三档字号 + 中英切换 | ✅ |
+| 领域场景（同步桌面端 `home-scenarios` 7 类 32 项） | ✅ |
+| 插件市场（连接器 13617 / 技能 17792，精选/推荐/社区） | ✅ |
+| AI 社区（AIHub 第三方智能体，ArkWeb + cookie 注入） | ✅ |
+| 附件上传（OSS 直传，智能体可调 `download_oss_files` 读取） | ✅ |
+| OCR（`/api/llm/v1/ocr/recognize`，12 种类型） | ✅ |
+| 作业面：集群/队列/配额/运行中作业 | ✅ |
+| 作业详情 / 取消 / 日志读取 | 🟡 契约已 curl 验，页面待真机 |
+| 作业提交（校验 + sbatch 预览，**默认 dry-run**） | 🟡 同上 |
+| 文件浏览（efile） | 🟡 同上 |
+| 语音输入 | ⛔ 按需求取消 |
+
+```
+ets 结构：common/{Theme,I18n,Markdown} · service/{Http,Auth,Store,ApiKeys,Gateway,AgentChat,
+Sessions,Scenes,Scenarios,AiHub,Market,Ocr,Upload,Hpc} · view/{MarkdownView,ModelSheet,
+ScenarioSheet,ThemeSheet} · pages/{Index,Login,Profile,Jobs,JobDetail,JobSubmit,Files,
+OcrPage,AiHubPage,MarketPage,WebPage}
+```
 
 ---
 
@@ -105,15 +129,23 @@ scripts/sign.sh --install    # 再 hdc install -r
 
 | 文件 | 职责 | 接手要点 |
 | --- | --- | --- |
-| `entry/src/main/ets/service/Gateway.ets` | OpenAI 兼容 SSE 客户端 | `http.requestInStream` + `on('dataReceive')` 手写行缓冲；`util.TextDecoder.create('utf-8',{ignoreBOM:true}).decodeToString(u8,{stream:true})` 处理跨块多字节；`cancel()` 走 `request.destroy()` |
-| `entry/src/main/ets/service/Store.ets` | preferences 持久化 | `preferences.getPreferencesSync(context,{name})` + `getSync/putSync/flush`；单例 `store` |
-| `entry/src/main/ets/pages/Index.ets` | 单页 UI（会话气泡 + 设置面板 + 输入区） | `@State messages: RenderMsg[]` 用 `concat` 换引用触发刷新；`Scroller.scrollEdge(Edge.Bottom)` 滚到底；设置面板是条件渲染，不是路由 |
-| `entry/src/main/ets/model/Models.ets` | 内置模型目录（11 个） | 来源：桌面客户端 `~/.sclaw/agent/models.json` 的 `visibleModelIds`（32 个），按需加 |
-| `entry/src/main/ets/entryability/EntryAbility.ets` | 入口 Ability | `windowStage.loadContent('pages/Index')` |
-| `entry/src/main/module.json5` | 权限 | 已声明 `ohos.permission.INTERNET`、`ohos.permission.GET_NETWORK_INFO` |
-| `build-profile.json5` | 产品配置 | `compatibleSdkVersion`/`targetSdkVersion` 都是 `"26.0.0"`（见坑 2）；`signingConfigs` 故意留空，签名走 `scripts/sign.sh` |
-| `scripts/sign.sh` | 用 SDK 的 `hap-sign-tool.jar` 做 localSign | 读 `signing/signing.env`；`-compatibleVersion 26`、`-signCode 1`；`--install` 顺带安装 |
-| `scripts/check-signing.sh` | 签前自检：keystore ↔ .cer ↔ .p7b 公钥是否一致 | 走「从 keystore 现生成一份临时 CSR 比公钥」的路子，因为 p12 里没有证书链；用 python 从 p7b 里抽 profile JSON 与内嵌 `development-certificate` |
+| `service/Http.ets` | 平台 4 头（`Token`/`Cookie`/`source`/`version`）+ 信封 + 401 | 401 会清凭据并触发回调（在 `EntryAbility` 注册 → 跳登录） |
+| `service/Auth.ets` | 登录 / 集群身份 / 集群列表 / 历史 | `loginReason` 区分 expired/unauthenticated/manual |
+| `service/ApiKeys.ets` | 模型服务授权 + 取网关 key | `authorize` 必须用**集群** accountId（用 user id 会 `API010006`） |
+| `service/Gateway.ets` | 网关 SSE（OpenAI 兼容） | 错误体是**单行无换行 JSON**，`dataEnd` 必须冲残留 buffer |
+| `service/AgentChat.ets` | 平台智能体 v2 stream | 帧按 `type` 分派；只有 `text-delta` 是正文；`finish` 终态 |
+| `service/Sessions.ets` | 本地会话（`filesDir/sessions/*.json`） | 不用 preferences：字符串值有长度上限 |
+| `service/Scenes.ets` / `Scenarios.ets` | 首页场景 | 前者的算法是桌面端 `tp()`；后者是 `home-scenarios` 目录（rawfile） |
+| `service/Hpc.ets` | HPC OpenAPI（AK/SK） | **HMAC 手写**：`createMac('SHA256')` 与标准不一致 |
+| `service/Upload.ets` | 附件 OSS 直传 | 三段式：ticket → PUT → v2 `inputs[]` |
+| `service/Ocr.ets` | OCR | **multipart**，`ocrType` 必须是大写枚举的表单字段 |
+| `service/Market.ets` | AIHub 市场 | `sort` 必须是对象；字段驼峰；不带 sort 直接 400 |
+| `view/MarkdownView.ets` | Markdown 渲染 | 块级原生组件 + 行内 `Span`（`ForEach` in `Text` 可用） |
+| `pages/Index.ets` | 对话主页 | 主题切换靠 `Theme.bumpRev()` + 根节点 `.key()` 重建 |
+| `pages/Jobs.ets` / `JobDetail.ets` / `JobSubmit.ets` / `Files.ets` | 作业面 | 提交默认 dry-run，红色开关才真提交 |
+| `scripts/probe.sh` | 脱机探针（account/authorize/models/chat/raw） | 凭据取自桌面客户端配置 |
+| `scripts/shot.sh` | 真机截图 | UI 迭代用 |
+| `scripts/sign.sh` / `check-signing.sh` | 签名 / 签前自检 | p12 里没有证书链，用 CSR 比公钥 |
 
 ---
 
