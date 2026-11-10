@@ -35,6 +35,8 @@ struct Jobs {
   @State jobsUnavailable: boolean = false;
   @State regions: HpcRegion[] = [];
   @State clusterId: string = '';
+  /** 从详情/提交页带回来的作业号：列表里高亮 */
+  @State highlightId: string = '';
   @State needCreds: boolean = false;
   @State showCreds: boolean = false;
   @State ak: string = '';
@@ -49,6 +51,10 @@ struct Jobs {
     this.sk = store.getHpcSk();
     this.user = store.getHpcUser();
     this.clusterId = `${store.getClusterId()}`;
+    const params = router.getParams() as Record<string, string> | undefined;
+    if (params !== undefined && params !== null && params['highlight'] !== undefined) {
+      this.highlightId = params['highlight'];
+    }
     cryptoSelfCheck();
     this.refresh();
   }
@@ -570,7 +576,8 @@ struct Jobs {
                       Column({ space: 2 }) {
                         Text(job.name.length > 0 ? job.name : job.id)
                           .fontSize(Theme.fSmall)
-                          .fontColor(Theme.text)
+                          .fontColor(job.id === this.highlightId ? Theme.accent : Theme.text)
+                          .fontWeight(job.id === this.highlightId ? FontWeight.Medium : FontWeight.Normal)
                           .maxLines(1)
                         Text(`${job.id} · ${job.queue}`).fontSize(10).fontColor(Theme.textFaint)
                       }

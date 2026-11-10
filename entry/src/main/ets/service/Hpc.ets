@@ -283,7 +283,7 @@ class Hpc {
     // 注意：key 顺序必须是 accessKey,timestamp,user（JSON.stringify 保持插入顺序）
     const message: string = `{"accessKey":"${ak}","timestamp":"${ts}","user":"${user}"}`;
     const signature: string = hmacHex(sk, message);
-    hilog.info(0x0000, TAG, 'hpc sign msg=%{public}s sig=%{public}s', message, signature);
+    
     const head: Record<string, string> = {
       'user': user,
       'accessKey': ak,
@@ -304,8 +304,7 @@ class Hpc {
       if (resp.responseCode !== 200) {
         throw new HpcError(`${resp.responseCode}`, `签名/凭据被拒：${text.substring(0, 120)}`);
       }
-      hilog.info(0x0000, TAG, 'hpc token http=%{public}d len=%{public}d head=%{public}s',
-        resp.responseCode, text.length, text.substring(0, 120));
+      hilog.debug(0x0000, TAG, 'hpc token http=%{public}d len=%{public}d', resp.responseCode, text.length);
       const parsed: Envelope | HpcRegion[] = JSON.parse(text) as Envelope | HpcRegion[];
       const list: HpcRegion[] = Array.isArray(parsed) ? parsed as HpcRegion[] : (parsed as Envelope).data as HpcRegion[];
       this.regionCache = Array.isArray(list) ? list : [];
@@ -550,7 +549,7 @@ class Hpc {
       out.push(entry);
     }
     out.sort((a: RemoteEntry, b: RemoteEntry) => a.name.localeCompare(b.name));
-    hilog.info(0x0000, TAG, 'efile list %{public}s: %{public}d', path, out.length);
+    hilog.debug(0x0000, TAG, 'efile list %{public}s: %{public}d', path, out.length);
     return out;
   }
 

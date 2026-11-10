@@ -13,6 +13,7 @@ import { AgentService, KIND_AGENT, PickItem, agentItems, llmItems } from '../mod
 import { Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
 import { Theme, prettyModel, safe } from '../common/Theme';
 import { L } from '../common/I18n';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { MarkdownView } from '../view/MarkdownView';
 import { ModelSheet } from '../view/ModelSheet';
 import { ScenarioSheet } from '../view/ScenarioSheet';
@@ -102,6 +103,13 @@ struct Index {
   @State sceneTabId: string = 'featured';
   @State sceneQuestions: string[] = [];
   @State sceneOffset: number = 0;
+  /** 重命名弹层：target 为 'local' 或 'cloud' */
+  @State renameTarget: string = '';
+  @State renameId: string = '';
+  @State renameDraft: string = '';
+  /** 本次请求被裁掉的历史条数（>0 时提示用户） */
+  private trimmedCount: number = 0;
+  @State showRename: boolean = false;
   /** 订阅主题版本：换主题后本页重建，读到新的 Theme 颜色 */
   @StorageLink('themeVersion') themeVersion: number = 0;
   /** 外观（主题/字号/语言）版本：变化时整棵子树重建，静态色值与字号才会重算 */
@@ -213,7 +221,7 @@ struct Index {
       merged.push(models[i]);
     }
     this.pickItems = merged;
-    hilog.info(0x0000, TAG, 'pick items: agents=%{public}d llm=%{public}d',
+    hilog.debug(0x0000, TAG, 'pick items: agents=%{public}d llm=%{public}d',
       agentItems(this.agentServices).length, models.length);
   }
 
@@ -267,8 +275,7 @@ struct Index {
       store.setChannel('llm');
       store.setModel(item.key);
     }
-    hilog.info(0x0000, TAG, 'channel=%{public}s key=%{public}s modelId=%{public}d',
-      this.channel, item.key, item.modelId);
+    hilog.debug(0x0000, TAG, 'channel=%{public}s key=%{public}s', this.channel, item.key);
   }
 
   /** 当前选中项的展示名（输入框左侧 chip）。 */
@@ -428,8 +435,8 @@ struct Index {
     };
     sessions.save(data);
     this.localSessions = sessions.list();
-    hilog.info(0x0000, TAG, 'session saved id=%{public}s msgs=%{public}d list=%{public}d',
-      data.id, stored.length, this.localSessions.length);
+    hilog.debug(0x0000, TAG, 'session saved msgs=%{public}d list=%{public}d',
+      stored.length, this.localSessions.length);
   }
 
   private removeLocal(meta: SessionMeta): void {
@@ -602,11 +609,12 @@ struct Index {
       }
     };
 
-    const history: ChatMessage[] = this.messages.map((m: RenderMsg): ChatMessage => {
-      const item: ChatMessage = { role: m.role, content: m.content };
-      return item;
-    });
+    const history: ChatMessage[] = this.trimHistory(this.messages);
 
+    if (this.trimmedCount > 0) {
+      this.notice = L.t(`上下文较长，已省略最近 ${this.trimmedCount} 条之前的历史`,
+        `Long context: omitted history before the last ${this.trimmedCount} messages`);
+    }
     if (this.channel === 'agent' && this.agentModelId > 0) {
       agentChat.conversationId = this.agentConversationId;
       agentChat.stream(this.agentModelId, text, this.attachments, handlers);
@@ -738,6 +746,9 @@ struct Index {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .padding({ top: 6, bottom: 10 })
+    .gesture(LongPressGesture({ repeat: false }).onAction(() => {
+      this.copyMessage(content);
+    }))
   }
 
   @Builder
@@ -755,6 +766,9 @@ struct Index {
     .width('100%')
     .justifyContent(FlexAlign.End)
     .padding({ top: 5, bottom: 5 })
+    .gesture(LongPressGesture({ repeat: false }).onAction(() => {
+      this.copyMessage(content);
+    }))
   }
 
   @Builder
@@ -1273,6 +1287,80 @@ struct Index {
     .padding({ left: 10, right: 6, top: 9, bottom: 9 })
     .backgroundColor(meta.id === this.currentSessionId ? Theme.accentGhost : Color.Transparent)
     .borderRadius(Theme.rSm)
+    .gesture(LongPressGesture({ repeat: false }).onAction(() => {
+      this.openRename('local', meta.id, meta.title);
+    }))
+  }
+
+  /**
+   * 上下文裁剪：网关/智能体都不接受无限长的历史。
+   * 规则（保守，不改变最近语义）：从最新往前累计字符数，超过 24000 就停，
+   * 但**至少保留最近 6 条**；被裁掉时提示用户（避免"它怎么忘了"）。
+   */
+  private trimHistory(messages: RenderMsg[]): ChatMessage[] {
+    const LIMIT: number = 24000;
+    const MIN_KEEP: number = 6;
+    const out: ChatMessage[] = [];
+    let chars: number = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const item: ChatMessage = { role: messages[i].role, content: messages[i].content };
+      const cost: number = item.content.length;
+      const enough: boolean = out.length >= MIN_KEEP && chars + cost > LIMIT;
+      if (enough) {
+        this.trimmedCount = i + 1;
+        break;
+      }
+      out.unshift(item);
+      chars += cost;
+    }
+    if (out.length === messages.length) {
+      this.trimmedCount = 0;
+    }
+    return out;
+  }
+
+  /** 长按消息复制全文。 */
+  private async copyMessage(text: string): Promise<void> {
+    try {
+      const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      await pasteboard.getSystemPasteboard().setData(data);
+      this.notice = L.t('已复制', 'Copied');
+      setTimeout(() => {
+        this.notice = '';
+      }, 1500);
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'copy failed');
+    }
+  }
+
+  /** 打开重命名弹层（本地会话 / 平台历史都走这里）。 */
+  private openRename(target: string, id: string, current: string): void {
+    this.renameTarget = target;
+    this.renameId = id;
+    this.renameDraft = current;
+    this.showRename = true;
+  }
+
+  private async applyRename(): Promise<void> {
+    const title: string = this.renameDraft.trim();
+    if (title.length === 0) {
+      return;
+    }
+    if (this.renameTarget === 'local') {
+      sessions.rename(this.renameId, title);
+      if (this.renameId === this.currentSessionId) {
+        this.sessionTitle = title;
+      }
+      this.localSessions = sessions.list();
+    } else {
+      const ok: boolean = await auth.renameConversation(this.renameId, title);
+      if (ok) {
+        await this.reloadConversations();
+      } else {
+        this.errorMsg = L.t('重命名失败（平台接口）', 'Rename failed');
+      }
+    }
+    this.showRename = false;
   }
 
   @Builder
@@ -1513,6 +1601,9 @@ struct Index {
           .onClick(() => {
             this.openConversation(item);
           })
+          .gesture(LongPressGesture({ repeat: false }).onAction(() => {
+            this.openRename('cloud', item.id ?? '', safe(item.title));
+          }))
         }, (item: Conversation) => `${item.id}`)
       }
       .layoutWeight(1)
@@ -1707,6 +1798,62 @@ struct Index {
         }
         .width('100%')
         .height('100%')
+      }
+
+      if (this.showRename) {
+        Column() {
+          Blank().layoutWeight(1).width('100%').onClick(() => {
+            this.showRename = false;
+          })
+          Column({ space: 12 }) {
+            Text(L.t('重命名会话', 'Rename chat'))
+              .fontSize(Theme.fTitle)
+              .fontFamily(Theme.fontDisplay)
+              .fontColor(Theme.text)
+            TextInput({ text: this.renameDraft, placeholder: L.t('会话标题', 'Title') })
+              .height(42)
+              .fontSize(Theme.fSmall)
+              .backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rSm)
+              .padding({ left: 12, right: 12 })
+              .onChange((v: string) => {
+                this.renameDraft = v;
+              })
+            Row({ space: 8 }) {
+              Text(L.t('取消', 'Cancel'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.textSub)
+                .layoutWeight(1)
+                .textAlign(TextAlign.Center)
+                .padding({ top: 10, bottom: 10 })
+                .backgroundColor(Theme.surfaceAlt)
+                .borderRadius(Theme.rSm)
+                .onClick(() => {
+                  this.showRename = false;
+                })
+              Text(L.t('保存', 'Save'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.textOnAccent)
+                .layoutWeight(1)
+                .textAlign(TextAlign.Center)
+                .padding({ top: 10, bottom: 10 })
+                .backgroundColor(Theme.accent)
+                .borderRadius(Theme.rSm)
+                .onClick(() => {
+                  this.applyRename();
+                })
+            }
+            .width('100%')
+          }
+          .width('100%')
+          .padding({ left: 20, right: 20, top: 18, bottom: 24 })
+          .backgroundColor(Theme.surface)
+          .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl })
+          .shadow(Theme.shadowSheet)
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#0B1F3355')
       }
 
       if (this.showScenarioSheet) {

@@ -273,7 +273,7 @@ export class AgentChat {
 
     try {
       request.requestInStream(BASE + STREAM_PATH, options).then((code: number) => {
-        hilog.info(0x0000, TAG, 'agent stream http %{public}d', code);
+        hilog.debug(0x0000, TAG, 'agent stream http %{public}d', code);
       }).catch((err: BusinessError) => {
         finish(`智能体请求失败：${err.code} ${err.message}`);
       });

@@ -167,6 +167,24 @@ class Sessions {
     this.writeText(this.indexPath(), JSON.stringify(list));
   }
 
+  /** 只改标题（会话内容不动）。 */
+  rename(id: string, title: string): boolean {
+    const data: SessionData | null = this.load(id);
+    if (data === null) {
+      return false;
+    }
+    const updated: SessionData = {
+      id: data.id,
+      title: title,
+      model: data.model,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+      messages: data.messages
+    };
+    this.save(updated);
+    return true;
+  }
+
   remove(id: string): void {
     try {
       if (fs.accessSync(this.filePath(id))) {

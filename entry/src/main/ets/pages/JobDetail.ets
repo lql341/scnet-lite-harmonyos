@@ -112,7 +112,7 @@ struct JobDetail {
       this.errorMsg = err.message ?? L.t('读取日志失败', 'Failed to read log');
     }
     this.logLoading = false;
-    hilog.info(0x0000, TAG, 'job log %{public}s len=%{public}d', this.logPath, this.logText.length);
+    hilog.debug(0x0000, TAG, 'job log %{public}s len=%{public}d', this.logPath, this.logText.length);
   }
 
   private async doCancel(): Promise<void> {

@@ -33,6 +33,11 @@ export interface ClusterInfo {
   status: string;
 }
 
+interface RenameBody {
+  conversationId: string;
+  title: string;
+}
+
 interface ClusterRow {
   clusterId?: number;
   accountId?: string;
@@ -286,6 +291,18 @@ class Auth {
     const data = await httpClient.getData(
       `/acx/chatbot/v2/agent/conversation/${conversationId}/history?page=1&size=50`);
     return data as HistoryPage;
+  }
+
+  /** 平台会话重命名（`PUT /acx/chatbot/conversation/rename`）。 */
+  async renameConversation(conversationId: string, title: string): Promise<boolean> {
+    try {
+      const body: RenameBody = { conversationId: conversationId, title: title };
+      await httpClient.postJson('/acx/chatbot/conversation/rename', JSON.stringify(body));
+      return true;
+    } catch (e) {
+      hilog.warn(0x0000, 'SCNetLite', 'rename conversation failed');
+      return false;
+    }
   }
 
   async conversationList(): Promise<ConversationPage> {

@@ -140,12 +140,34 @@ struct JobSubmit {
       this.showConfirm = false;
       this.errorMsg = '';
       hilog.info(0x0000, TAG, 'submitted job %{public}s', jobId);
+      // 回读：1.5s 后再查一次详情，确认服务端真的受理了（提交返回和实际入队有延迟）
+      setTimeout(() => {
+        this.verifySubmitted(jobId);
+      }, 1500);
     } catch (e) {
       const err = e as Error;
       this.errorMsg = err.message ?? L.t('提交失败', 'Submit failed');
       hilog.warn(0x0000, TAG, 'submit failed: %{public}s', this.errorMsg);
     }
     this.submitting = false;
+  }
+
+  /** 提交后回读详情，把状态贴到页面（失败不阻塞，只提示）。 */
+  private async verifySubmitted(jobId: string): Promise<void> {
+    if (this.ctx === null) {
+      return;
+    }
+    try {
+      const detail: Record<string, Object> | null = await hpc.jobDetail(this.ctx, jobId);
+      const status: string = detail === null ? '' : String(detail['jobStatus'] ?? '');
+      if (status.length > 0) {
+        this.errorMsg = L.t(`作业 ${jobId} 已受理，当前状态：${status}`,
+          `Job ${jobId} accepted, status: ${status}`);
+        hilog.info(0x0000, TAG, 'submitted job status=%{public}s', status);
+      }
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'verify submitted failed');
+    }
   }
 
   @Builder
