@@ -78,8 +78,11 @@
 | 作业/队列/文件 | ❌ |
 | 多会话、PDF 预览 | ❌ |
 
-Bundle name：`cn.scnet.hmos`（v0.1.0，minAPI 26）。
-产物：`entry/build/default/outputs/default/entry-default-unsigned.hap`（约 78 KB）。
+Bundle name：`cn.scnet.hmos`（**v0.3.0**，minAPI 26）。
+产物：`entry/build/default/outputs/default/entry-default-signed.hap`（约 1.8 MB）。
+
+已发布：[`v0.3.0` Releases](https://github.com/lql341/scnet-lite-harmonyos/releases/tag/v0.3.0)
+（debug 签名，profile 的 `device-ids` 只含作者设备，别人装不上 —— 自己构建+签名）。
 
 ## 构建
 
