@@ -16,6 +16,12 @@ const KEY_THEME: string = 'themePalette';
 const KEY_CLUSTER: string = 'clusterId';
 const KEY_USER_NAME: string = 'platformUserName';
 const KEY_HAD_SESSION: string = 'hadSession';
+const KEY_AVATAR: string = 'avatar';
+const KEY_CP_NAME: string = 'customProviderName';
+const KEY_CP_URL: string = 'customProviderUrl';
+const KEY_CP_KEY: string = 'customProviderKey';
+const KEY_CP_MODEL: string = 'customProviderModel';
+const KEY_MODEL_PROVIDER: string = 'modelProvider';
 const KEY_HPC_AK: string = 'hpcAk';
 const KEY_HPC_SK: string = 'hpcSk';
 const KEY_HPC_USER: string = 'hpcUser';
@@ -88,6 +94,55 @@ class Store {
     } catch (e) {
       // 忽略
     }
+  }
+
+  /** 选中的 provider：'platform'（平台网关）或 'custom'（用户自配）。 */
+  getModelProvider(): string {
+    return this.readString(KEY_MODEL_PROVIDER, 'platform');
+  }
+
+  setModelProvider(value: string): void {
+    this.writeString(KEY_MODEL_PROVIDER, value);
+  }
+
+  getCustomName(): string {
+    return this.readString(KEY_CP_NAME, '');
+  }
+
+  getCustomBaseUrl(): string {
+    return this.readString(KEY_CP_URL, '');
+  }
+
+  getCustomApiKey(): string {
+    return this.readString(KEY_CP_KEY, '');
+  }
+
+  getCustomModel(): string {
+    return this.readString(KEY_CP_MODEL, '');
+  }
+
+  setCustomProvider(name: string, baseUrl: string, apiKey: string, model: string): void {
+    this.writeString(KEY_CP_NAME, name);
+    this.writeString(KEY_CP_URL, baseUrl);
+    this.writeString(KEY_CP_KEY, apiKey);
+    this.writeString(KEY_CP_MODEL, model);
+  }
+
+  clearCustomProvider(): void {
+    this.writeString(KEY_CP_NAME, '');
+    this.writeString(KEY_CP_URL, '');
+    this.writeString(KEY_CP_KEY, '');
+    this.writeString(KEY_CP_MODEL, '');
+    this.writeString(KEY_MODEL_PROVIDER, 'platform');
+  }
+
+  /** 头像：'' = 用姓名首字；'preset:<id>' = 内置；'file:<uri>' = 用户选的图片 */
+  getAvatar(): string {
+    return this.readString(KEY_AVATAR, '');
+  }
+
+  setAvatar(value: string): void {
+    this.writeString(KEY_AVATAR, value);
   }
 
   /** 曾经成功登录过（用于区分「首次使用」和「登录已过期」）。 */

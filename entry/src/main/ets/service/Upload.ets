@@ -128,10 +128,12 @@ class Uploader {
         return list[0];
       }
       hilog.warn(0x0000, TAG, 'upload ticket empty: %{public}s', env.msg ?? '');
+      this.lastError = `申请上传地址失败：${env.msg ?? '空响应'}`;
       return null;
     } catch (e) {
       const err = e as BusinessError;
       hilog.warn(0x0000, TAG, 'upload ticket failed: %{public}s', err.message ?? '');
+      this.lastError = `申请上传地址异常：${err.message ?? ''}`;
       return null;
     } finally {
       client.destroy();
@@ -157,6 +159,9 @@ class Uploader {
     try {
       const resp = await client.request(url, options);
       hilog.info(0x0000, TAG, 'oss put http %{public}d', resp.responseCode);
+      if (resp.responseCode !== 200) {
+        this.lastError = `OSS 上传返回 HTTP ${resp.responseCode}`;
+      }
       return resp.responseCode === 200;
     } catch (e) {
       const err = e as BusinessError;
@@ -167,23 +172,53 @@ class Uploader {
     }
   }
 
+  /** 最近一次失败原因（UI 直接展示，避免"上传失败"四个字说不清）。 */
+  lastError: string = '';
+
   /** 读本地文件（picker 给的 uri）并上传。 */
   async uploadFile(uri: string, displayName: string): Promise<UploadedFile | null> {
+    this.lastError = '';
     let size: number = 0;
     let data: ArrayBuffer | null = null;
+    let file: fs.File | null = null;
     try {
-      const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+      file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
       const stat = fs.statSync(file.fd);
       size = stat.size;
+      if (size <= 0) {
+        this.lastError = `文件为空（0 字节）：${displayName}`;
+        return null;
+      }
+      if (size > 40 * 1024 * 1024) {
+        this.lastError = `文件超过 40MB：${Math.round(size / 1048576)}MB`;
+        return null;
+      }
       const buffer = new ArrayBuffer(size);
       fs.readSync(file.fd, buffer);
-      fs.closeSync(file);
       data = buffer;
     } catch (e) {
-      hilog.warn(0x0000, TAG, 'read file failed');
+      const err = e as BusinessError;
+      // picker 返回的 uri 拿不到读权限时最常见；把 code 带出来便于判断
+      this.lastError = `读取失败(${err.code ?? '?'})：${err.message ?? displayName}`;
+      hilog.warn(0x0000, TAG, 'read file failed code=%{public}s', String(err.code ?? '?'));
+      return null;
+    } finally {
+      if (file !== null) {
+        try {
+          fs.closeSync(file);
+        } catch (e) {
+          // 忽略
+        }
+      }
+    }
+    if (data === null) {
       return null;
     }
-    return await this.uploadBytes(data, displayName, size);
+    const uploaded: UploadedFile | null = await this.uploadBytes(data, displayName, size);
+    if (uploaded === null && this.lastError.length === 0) {
+      this.lastError = '上传到平台失败（检查网络或登录态）';
+    }
+    return uploaded;
   }
 
   /** 直接上传内存里的字节（自检/粘贴文本用）。 */

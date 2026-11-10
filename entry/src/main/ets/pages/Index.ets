@@ -9,6 +9,8 @@ import { sessions, SessionData, SessionMeta, StoredMessage, titleFrom } from '..
 import { agentChat } from '../service/AgentChat';
 import { uploader, UploadedFile } from '../service/Upload';
 import { picker } from '@kit.CoreFileKit';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { AgentService, KIND_AGENT, PickItem, agentItems, llmItems } from '../model/Pick';
 import { Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
 import { Theme, prettyModel, safe } from '../common/Theme';
@@ -18,8 +20,9 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import { MarkdownView } from '../view/MarkdownView';
 import { ModelSheet } from '../view/ModelSheet';
 import { ScenarioSheet } from '../view/ScenarioSheet';
+import { Avatar } from '../view/Avatar';
 import { scenarios, ScenarioCategory, ScenarioItem } from '../service/Scenarios';
-import { scenes, SceneBoard, SceneTab } from '../service/Scenes';
+import { scenes, SceneBoard, SceneTab, AdItem } from '../service/Scenes';
 
 const TAG: string = 'SCNetLite';
 
@@ -88,7 +91,6 @@ struct Index {
   private pendingVia: string = '';
   @State conversations: Conversation[] = [];
   @State drawerOpen: boolean = false;
-  @State showSettings: boolean = false;
   @State apiKey: string = '';
   @State baseUrl: string = DEFAULT_BASE_URL;
   @State gatewayModel: string = DEFAULT_MODEL;
@@ -104,6 +106,9 @@ struct Index {
   @State sceneTabId: string = 'featured';
   @State sceneQuestions: string[] = [];
   @State sceneOffset: number = 0;
+  /** 首页 banner（平台推荐位，config/list.recommendAD） */
+  @State ads: AdItem[] = [];
+  @State avatar: string = '';
   /** 重命名弹层：target 为 'local' 或 'cloud' */
   @State renameTarget: string = '';
   @State renameId: string = '';
@@ -139,6 +144,7 @@ struct Index {
     this.gatewayModel = store.getModel();
     this.channel = store.getChannel();
     this.agentKey = store.getAgent();
+    this.avatar = store.getAvatar();
     this.draftKey = this.apiKey;
     this.draftUrl = this.baseUrl;
     const context = getContext(this) as common.UIAbilityContext;
@@ -196,7 +202,8 @@ struct Index {
       if (this.gatewayAccess.key.length > 0) {
         this.apiKey = this.gatewayAccess.key;
         this.baseUrl = this.gatewayAccess.baseUrl;
-        this.draftKey = this.apiKey;
+        this.avatar = store.getAvatar();
+    this.draftKey = this.apiKey;
         this.draftUrl = this.baseUrl;
         this.gatewayModels = await apiKeys.listModels(this.baseUrl, this.apiKey);
         this.gatewayModel = this.pickModel(this.gatewayModels, this.gatewayModel);
@@ -305,7 +312,34 @@ struct Index {
   }
 
   /** 选附件：系统文件选择器 → 上传到 OSS → 变成待发送的 chip。 */
-  private async pickAttachment(): Promise<void> {
+  private showAttachSheet: boolean = false;
+
+  /** 从相册选图片（图片走 PhotoViewPicker，权限模型与文件选择器不同）。 */
+  private async pickImage(): Promise<void> {
+    this.showAttachSheet = false;
+    if (this.uploading) {
+      return;
+    }
+    let uris: string[] = [];
+    try {
+      const options = new photoAccessHelper.PhotoSelectOptions();
+      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+      options.maxSelectNumber = 3;
+      const photoPicker = new photoAccessHelper.PhotoViewPicker();
+      const result: photoAccessHelper.PhotoSelectResult = await photoPicker.select(options);
+      uris = result.photoUris;
+    } catch (e) {
+      const err = e as BusinessError;
+      hilog.warn(0x0000, TAG, 'photo picker failed code=%{public}s', String(err.code ?? '?'));
+      this.errorMsg = L.t(`相册选择失败(${err.code ?? '?'})`, `Photo picker failed (${err.code ?? '?'})`);
+      return;
+    }
+    await this.uploadUris(uris);
+  }
+
+  /** 从文件管理器选文件（csv/pdf/docx 等）。 */
+  private async pickFile(): Promise<void> {
+    this.showAttachSheet = false;
     if (this.uploading) {
       return;
     }
@@ -316,13 +350,21 @@ struct Index {
       const documentPicker = new picker.DocumentViewPicker();
       uris = await documentPicker.select(options);
     } catch (e) {
-      hilog.warn(0x0000, TAG, 'picker failed');
+      const err = e as BusinessError;
+      hilog.warn(0x0000, TAG, 'document picker failed code=%{public}s', String(err.code ?? '?'));
+      this.errorMsg = L.t(`文件选择失败(${err.code ?? '?'})`, `File picker failed (${err.code ?? '?'})`);
       return;
     }
+    await this.uploadUris(uris);
+  }
+
+  private async uploadUris(uris: string[]): Promise<void> {
     if (uris.length === 0) {
       return;
     }
     this.uploading = true;
+    this.errorMsg = '';
+    let ok: number = 0;
     for (let i = 0; i < uris.length; i++) {
       const uri: string = uris[i];
       const slash: number = uri.lastIndexOf('/');
@@ -330,14 +372,25 @@ struct Index {
       if (name.indexOf('?') >= 0) {
         name = name.substring(0, name.indexOf('?'));
       }
+      if (name.indexOf('.') < 0) {
+        name = `${name}.dat`;
+      }
       const uploaded: UploadedFile | null = await uploader.uploadFile(uri, name);
       if (uploaded !== null) {
         this.attachments = this.attachments.concat([uploaded]);
+        ok++;
       } else {
-        this.errorMsg = `附件上传失败：${name}`;
+        // 直接展示底层原因（0 字节 / 权限 / OSS 状态码），不要只写"上传失败"
+        this.errorMsg = uploader.lastError.length > 0
+          ? uploader.lastError
+          : L.t(`附件上传失败：${name}`, `Upload failed: ${name}`);
+        hilog.warn(0x0000, TAG, 'attach failed: %{public}s', this.errorMsg);
       }
     }
     this.uploading = false;
+    if (ok > 0) {
+      this.notice = L.t(`已添加 ${ok} 个附件`, `${ok} attachment(s) added`);
+    }
   }
 
   private removeAttachment(name: string): void {
@@ -489,6 +542,7 @@ struct Index {
   /** 拉服务端场景分类；拿不到就回落到本地场景目录。 */
   private async loadScenes(): Promise<void> {
     const board: SceneBoard = await scenes.load();
+    this.ads = board.ads;
     this.sceneTabs = board.tabs;
     if (board.tabs.length > 0) {
       this.sceneTabId = board.tabs[0].id;
@@ -616,6 +670,13 @@ struct Index {
       this.notice = L.t(`上下文较长，已省略最近 ${this.trimmedCount} 条之前的历史`,
         `Long context: omitted history before the last ${this.trimmedCount} messages`);
     }
+    // 自定义 provider：走 OpenAI 兼容端点，模型/baseUrl/key 全部来自用户配置
+    if (store.getModelProvider() === 'custom' && store.getCustomBaseUrl().length > 0) {
+      const customModel: string = store.getCustomModel();
+      this.gateway.stream(store.getCustomBaseUrl(), store.getCustomApiKey(),
+        customModel.length > 0 ? customModel : 'gpt-4o-mini', history, handlers);
+      return;
+    }
     if (this.channel === 'agent' && this.agentModelId > 0) {
       agentChat.conversationId = this.agentConversationId;
       agentChat.stream(this.agentModelId, text, this.attachments, handlers);
@@ -663,18 +724,16 @@ struct Index {
   }
 
   @Builder
-  avatar(size: number, fontSize: number) {
-    Text(this.userName.length > 0 ? this.userName.substring(0, 1) : '我')
-      .fontSize(fontSize)
-      .fontColor(Theme.textOnAccent)
-      .width(size)
-      .height(size)
-      .textAlign(TextAlign.Center)
-      .borderRadius(size / 2)
-      .backgroundColor(Theme.accent)
-      .onClick(() => {
+  avatarBox(boxSize: number, fontSize: number) {
+    Avatar({
+      avatarSize: boxSize,
+      fontSize: fontSize,
+      name: this.userName,
+      avatar: this.avatar,
+      onTap: () => {
         this.openProfile();
-      })
+      }
+    })
   }
 
   private openProfile(): void {
@@ -702,8 +761,13 @@ struct Index {
             .width(5)
             .height(5)
             .borderRadius(3)
-            .backgroundColor(this.apiKey.length > 0 ? Theme.ok : Theme.textFaint)
-          Text(this.apiKey.length > 0 ? L.t('网关已就绪', 'Gateway ready') : L.t('未就绪', 'Not ready'))
+            .backgroundColor(store.getModelProvider() === 'custom'
+              ? (store.getCustomBaseUrl().length > 0 ? Theme.ok : Theme.danger)
+              : (this.apiKey.length > 0 ? Theme.ok : Theme.textFaint))
+          Text(store.getModelProvider() === 'custom'
+            ? L.t(`自定义 · ${store.getCustomName().length > 0 ? store.getCustomName() : '未配置'}`,
+              `Custom · ${store.getCustomName().length > 0 ? store.getCustomName() : 'unset'}`)
+            : (this.apiKey.length > 0 ? L.t('网关已就绪', 'Gateway ready') : L.t('未就绪', 'Not ready')))
             .fontSize(10)
             .fontColor(Theme.textFaint)
         }
@@ -711,7 +775,7 @@ struct Index {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
-      this.avatar(32, 13)
+      this.avatarBox(32, 13)
     }
     .width('100%')
     .height(56)
@@ -849,6 +913,48 @@ struct Index {
             .textAlign(TextAlign.Center)
         }
         .padding({ top: 12, bottom: 18 })
+
+        if (this.ads.length > 0) {
+          Scroll() {
+            Row({ space: 10 }) {
+              ForEach(this.ads, (ad: AdItem) => {
+                Row({ space: 8 }) {
+                  if (ad.logo.length > 0) {
+                    Image(ad.logo)
+                      .width(28)
+                      .height(28)
+                      .borderRadius(7)
+                      .objectFit(ImageFit.Cover)
+                      .backgroundColor(Theme.surface)
+                  }
+                  Text(ad.name)
+                    .fontSize(Theme.fTiny)
+                    .fontColor(Theme.text)
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .layoutWeight(1)
+                }
+                .width(230)
+                .alignItems(VerticalAlign.Center)
+                .padding({ left: 10, right: 10, top: 10, bottom: 10 })
+                .backgroundColor(Theme.accentGhost)
+                .borderRadius(Theme.rMd)
+                .border({ width: 1, color: Theme.accentSoft })
+                .onClick(() => {
+                  router.pushUrl({
+                    url: 'pages/WebPage',
+                    params: { url: ad.url, title: ad.name }
+                  });
+                })
+              }, (ad: AdItem) => ad.url)
+            }
+            .padding({ left: 2, right: 2 })
+          }
+          .scrollable(ScrollDirection.Horizontal)
+          .scrollBar(BarState.Off)
+          .width('100%')
+          .margin({ bottom: 10 })
+        }
 
         if (this.scenarioCategories.length > 0) {
           // 7 类场景目录（同步自桌面客户端 home-scenarios）
@@ -1112,7 +1218,7 @@ struct Index {
             .borderRadius(14)
             .backgroundColor(Theme.surfaceAlt)
             .onClick(() => {
-              this.pickAttachment();
+              this.showAttachSheet = true;
             })
             .gesture(LongPressGesture({ repeat: false }).onAction(() => {
               this.runUploadSelfTest();
@@ -1368,7 +1474,7 @@ struct Index {
   drawer() {
     Column() {
       Row({ space: 10 }) {
-        this.avatar(40, 15)
+        this.avatarBox(40, 15)
         Column({ space: 2 }) {
           Text(this.userName.length > 0 ? this.userName : '未命名用户')
             .fontSize(Theme.fBody)
@@ -1416,41 +1522,10 @@ struct Index {
         this.newChat();
       })
 
-      Row({ space: 8 }) {
-        Text('AI')
-          .fontSize(11)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Theme.accent)
-          .width(24)
-          .height(24)
-          .textAlign(TextAlign.Center)
-          .borderRadius(7)
-          .backgroundColor(Theme.accentGhost)
-        Column({ space: 1 }) {
-          Text(L.t('AI 社区', 'AI Community'))
-            .fontSize(Theme.fSmall)
-            .fontColor(Theme.text)
-          Text(L.t('领域智能体 / 应用市场', 'Domain agents & apps'))
-            .fontSize(10)
-            .fontColor(Theme.textFaint)
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-        Text('›').fontSize(14).fontColor(Theme.textFaint)
-      }
-      .width('100%')
-      .padding({ left: 10, right: 10, top: 9, bottom: 9 })
-      .margin({ top: 8 })
-      .backgroundColor(Theme.surfaceAlt)
-      .borderRadius(Theme.rSm)
-      .onClick(() => {
-        this.drawerOpen = false;
-        router.pushUrl({ url: 'pages/AiHubPage' });
-      })
-
+      // 服务入口（顺序与 PC 客户端一致：算力服务 → 插件 → AI 社区 → 应用商城）
       Row({ space: 8 }) {
         Text('HPC')
-          .fontSize(10)
+          .fontSize(9)
           .fontWeight(FontWeight.Bold)
           .fontColor(Theme.accent)
           .width(24)
@@ -1459,12 +1534,8 @@ struct Index {
           .borderRadius(7)
           .backgroundColor(Theme.accentGhost)
         Column({ space: 1 }) {
-          Text(L.t('作业', 'Jobs'))
-            .fontSize(Theme.fSmall)
-            .fontColor(Theme.text)
-          Text(L.t('集群 · 队列 · 配额', 'Cluster · queues · quota'))
-            .fontSize(10)
-            .fontColor(Theme.textFaint)
+          Text(L.t('算力服务', 'Compute service')).fontSize(Theme.fSmall).fontColor(Theme.text)
+          Text(L.t('集群 · 队列 · 作业 · 文件', 'Clusters · queues · jobs')).fontSize(10).fontColor(Theme.textFaint)
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
@@ -1490,12 +1561,8 @@ struct Index {
           .borderRadius(7)
           .backgroundColor(Theme.accentGhost)
         Column({ space: 1 }) {
-          Text(L.t('插件', 'Plugins'))
-            .fontSize(Theme.fSmall)
-            .fontColor(Theme.text)
-          Text(L.t('连接器 / 技能市场', 'Connectors & skills'))
-            .fontSize(10)
-            .fontColor(Theme.textFaint)
+          Text(L.t('插件', 'Plugins')).fontSize(Theme.fSmall).fontColor(Theme.text)
+          Text(L.t('精选连接器 / 技能', 'Featured connectors & skills')).fontSize(10).fontColor(Theme.textFaint)
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
@@ -1503,11 +1570,69 @@ struct Index {
       }
       .width('100%')
       .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+      .margin({ top: 6 })
       .backgroundColor(Theme.surfaceAlt)
       .borderRadius(Theme.rSm)
       .onClick(() => {
         this.drawerOpen = false;
         router.pushUrl({ url: 'pages/MarketPage' });
+      })
+
+      Row({ space: 8 }) {
+        Text('AI')
+          .fontSize(11)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Theme.accent)
+          .width(24)
+          .height(24)
+          .textAlign(TextAlign.Center)
+          .borderRadius(7)
+          .backgroundColor(Theme.accentGhost)
+        Column({ space: 1 }) {
+          Text(L.t('AI 社区', 'AI community')).fontSize(Theme.fSmall).fontColor(Theme.text)
+          Text(L.t('领域智能体 / 应用市场', 'Domain agents & apps')).fontSize(10).fontColor(Theme.textFaint)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Text('›').fontSize(14).fontColor(Theme.textFaint)
+      }
+      .width('100%')
+      .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+      .margin({ top: 6 })
+      .backgroundColor(Theme.surfaceAlt)
+      .borderRadius(Theme.rSm)
+      .onClick(() => {
+        this.drawerOpen = false;
+        router.pushUrl({ url: 'pages/AiHubPage' });
+      })
+
+      Row({ space: 8 }) {
+        Text('🛒')
+          .fontSize(13)
+          .width(24)
+          .height(24)
+          .textAlign(TextAlign.Center)
+          .borderRadius(7)
+          .backgroundColor(Theme.accentGhost)
+        Column({ space: 1 }) {
+          Text(L.t('应用商城', 'App mall')).fontSize(Theme.fSmall).fontColor(Theme.text)
+          Text(L.t('上架应用 · 按需开通', 'Apps on demand')).fontSize(10).fontColor(Theme.textFaint)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Text('›').fontSize(14).fontColor(Theme.textFaint)
+      }
+      .width('100%')
+      .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+      .margin({ top: 6 })
+      .backgroundColor(Theme.surfaceAlt)
+      .borderRadius(Theme.rSm)
+      .onClick(() => {
+        this.drawerOpen = false;
+        router.pushUrl({
+          url: 'pages/WebPage',
+          params: { url: 'https://www.scnet.cn/ui/mall/index.html', title: L.t('应用商城', 'App mall') }
+        });
       })
 
       Row({ space: 8 }) {
@@ -1521,12 +1646,8 @@ struct Index {
           .borderRadius(7)
           .backgroundColor(Theme.accentGhost)
         Column({ space: 1 }) {
-          Text(L.t('文字识别', 'OCR'))
-            .fontSize(Theme.fSmall)
-            .fontColor(Theme.text)
-          Text(L.t('图片转文字', 'Image to text'))
-            .fontSize(10)
-            .fontColor(Theme.textFaint)
+          Text(L.t('文字识别', 'OCR')).fontSize(Theme.fSmall).fontColor(Theme.text)
+          Text(L.t('识别 · 文档解析 · 格式转换', 'OCR · parse · convert')).fontSize(10).fontColor(Theme.textFaint)
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
@@ -1534,7 +1655,7 @@ struct Index {
       }
       .width('100%')
       .padding({ left: 10, right: 10, top: 9, bottom: 9 })
-      .margin({ top: 8 })
+      .margin({ top: 6, bottom: 6 })
       .backgroundColor(Theme.surfaceAlt)
       .borderRadius(Theme.rSm)
       .onClick(() => {
@@ -1612,80 +1733,6 @@ struct Index {
       .scrollBar(BarState.Off)
 
       Divider().color(Theme.hairline).margin({ top: 6, bottom: 6 })
-
-      Row({ space: 10 }) {
-        Text(L.t('设置', 'Settings'))
-          .fontSize(Theme.fSmall)
-          .fontColor(Theme.textSub)
-          .layoutWeight(1)
-          .onClick(() => {
-            this.showSettings = !this.showSettings;
-          })
-        Text(this.showSettings ? L.t('收起', 'Hide') : L.t('网关参数', 'Gateway'))
-          .fontSize(Theme.fTiny)
-          .fontColor(Theme.textFaint)
-          .onClick(() => {
-            this.showSettings = !this.showSettings;
-          })
-      }
-      .width('100%')
-      .padding({ top: 4, bottom: 8 })
-
-      if (this.showSettings) {
-        Column({ space: 8 }) {
-          TextInput({ text: this.draftKey, placeholder: 'API Key（留空则用登录自动获取的 key）' })
-            .type(InputType.Password)
-            .height(38)
-            .fontSize(Theme.fSmall)
-            .backgroundColor(Theme.surfaceAlt)
-            .borderRadius(Theme.rSm)
-            .padding({ left: 10, right: 10 })
-            .onChange((value: string) => {
-              this.draftKey = value;
-            })
-          TextInput({ text: this.draftUrl, placeholder: 'Base URL' })
-            .height(38)
-            .fontSize(Theme.fSmall)
-            .backgroundColor(Theme.surfaceAlt)
-            .borderRadius(Theme.rSm)
-            .padding({ left: 10, right: 10 })
-            .onChange((value: string) => {
-              this.draftUrl = value;
-            })
-          Row({ space: 8 }) {
-            Text('保存')
-              .fontSize(Theme.fSmall)
-              .fontColor(Theme.textOnAccent)
-              .textAlign(TextAlign.Center)
-              .layoutWeight(1)
-              .padding({ top: 9, bottom: 9 })
-              .backgroundColor(Theme.accent)
-              .borderRadius(Theme.rSm)
-              .onClick(() => {
-                this.apiKey = this.draftKey.trim();
-                this.baseUrl = this.draftUrl.trim().length > 0 ? this.draftUrl.trim() : DEFAULT_BASE_URL;
-                store.setApiKey(this.apiKey);
-                store.setBaseUrl(this.baseUrl);
-                this.showSettings = false;
-              })
-            Text('重置')
-              .fontSize(Theme.fSmall)
-              .fontColor(Theme.textSub)
-              .textAlign(TextAlign.Center)
-              .layoutWeight(1)
-              .padding({ top: 9, bottom: 9 })
-              .backgroundColor(Theme.surfaceAlt)
-              .borderRadius(Theme.rSm)
-              .onClick(() => {
-                this.draftKey = store.getAutoKey();
-                this.draftUrl = store.getBaseUrl();
-              })
-          }
-          .width('100%')
-        }
-        .width('100%')
-        .padding({ bottom: 8 })
-      }
 
       Text(L.t('退出登录', 'Sign out'))
         .fontSize(Theme.fSmall)
@@ -1799,6 +1846,56 @@ struct Index {
         }
         .width('100%')
         .height('100%')
+      }
+
+      if (this.showAttachSheet) {
+        Column() {
+          Blank().layoutWeight(1).width('100%').onClick(() => {
+            this.showAttachSheet = false;
+          })
+          Column({ space: 10 }) {
+            Text(L.t('添加附件', 'Add attachment'))
+              .fontSize(Theme.fTitle)
+              .fontFamily(Theme.fontDisplay)
+              .fontColor(Theme.text)
+              .width('100%')
+            Row({ space: 10 }) {
+              Column({ space: 6 }) {
+                Text('🖼').fontSize(22)
+                Text(L.t('图片', 'Photo')).fontSize(Theme.fSmall).fontColor(Theme.text)
+                Text(L.t('从相册选', 'From gallery')).fontSize(9).fontColor(Theme.textFaint)
+              }
+              .layoutWeight(1)
+              .padding({ top: 14, bottom: 14 })
+              .backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rMd)
+              .onClick(() => {
+                this.pickImage();
+              })
+              Column({ space: 6 }) {
+                Text('📄').fontSize(22)
+                Text(L.t('文件', 'File')).fontSize(Theme.fSmall).fontColor(Theme.text)
+                Text('CSV / PDF / DOCX').fontSize(9).fontColor(Theme.textFaint)
+              }
+              .layoutWeight(1)
+              .padding({ top: 14, bottom: 14 })
+              .backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rMd)
+              .onClick(() => {
+                this.pickFile();
+              })
+            }
+            .width('100%')
+          }
+          .width('100%')
+          .padding({ left: 20, right: 20, top: 18, bottom: 24 })
+          .backgroundColor(Theme.surface)
+          .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl })
+          .shadow(Theme.shadowSheet)
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#0B1F3355')
       }
 
       if (this.showRename) {

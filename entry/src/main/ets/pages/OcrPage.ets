@@ -21,6 +21,8 @@ const TAG: string = 'SCNetLite';
 struct OcrPage {
   @StorageProp('themeRev') themeRev: number = 0;
   @State ocrType: string = 'GENERAL';
+  /** 'ocr' 通用识别 / 'parse' 文档解析 / 'convert' 格式转换 */
+  @State mode: string = 'ocr';
   @State fileName: string = '';
   @State previewUri: string = '';
   @State busy: boolean = false;
@@ -171,6 +173,64 @@ struct OcrPage {
 
       Scroll() {
         Column({ space: 12 }) {
+          // 三种能力：OCR 走网关；文档解析/格式转换在平台 Web 端
+          Row({ space: 8 }) {
+            ForEach(['ocr', 'parse', 'convert'], (m: string) => {
+              Text(m === 'ocr' ? L.t('通用文字识别', 'OCR')
+                : (m === 'parse' ? L.t('文档解析', 'Parse') : L.t('格式转换', 'Convert')))
+                .fontSize(Theme.fTiny)
+                .fontColor(this.mode === m ? Theme.textOnAccent : Theme.textSub)
+                .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+                .backgroundColor(this.mode === m ? Theme.accent : Theme.surface)
+                .borderRadius(Theme.rPill)
+                .border({ width: 1, color: this.mode === m ? Theme.accent : Theme.hairline })
+                .onClick(() => {
+                  this.mode = m;
+                })
+            }, (m: string) => m)
+            Blank().layoutWeight(1)
+          }
+          .width('100%')
+
+          if (this.mode !== 'ocr') {
+            Column({ space: 8 }) {
+              Text(this.mode === 'parse'
+                ? L.t('文档解析（DOC_MIND）', 'Document parsing (DOC_MIND)')
+                : L.t('格式转换（DOC_CONVERSION）', 'Format conversion (DOC_CONVERSION)'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.text)
+              Text(L.t('平台把这两项做成独立应用（支持 PDF/Word/图片 → 文本或目标格式），网关的 /ocr/recognize 只接受识别类枚举（GENERAL/ID_CARD/…），不处理文档解析与转换。这里改为在应用内打开平台对应页面，避免给出一个假入口。',
+                'These two are separate platform apps; the gateway /ocr/recognize only accepts \
+recognition enums. Opening the platform page inside the app instead of faking a feature.'))
+                .fontSize(10)
+                .lineHeight(16)
+                .fontColor(Theme.textFaint)
+              Text(L.t('打开平台页面', 'Open platform page'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.textOnAccent)
+                .width('100%')
+                .textAlign(TextAlign.Center)
+                .padding({ top: 10, bottom: 10 })
+                .backgroundColor(Theme.accent)
+                .borderRadius(Theme.rSm)
+                .onClick(() => {
+                  router.pushUrl({
+                    url: 'pages/WebPage',
+                    params: {
+                      url: 'https://www.scnet.cn/ui/llm/index.html',
+                      title: this.mode === 'parse' ? L.t('文档解析', 'Parse') : L.t('格式转换', 'Convert')
+                    }
+                  });
+                })
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+            .padding(12)
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+          }
+
           // 图片选择
           Column({ space: 10 }) {
             if (this.previewUri.length > 0) {
@@ -224,7 +284,8 @@ struct OcrPage {
           }
           .width('100%')
 
-          // 类型
+          // 类型（仅识别模式）
+          if (this.mode === 'ocr') {
           Scroll() {
             Row({ space: 8 }) {
               ForEach(OCR_TYPES, (type: OcrType) => {
@@ -244,6 +305,7 @@ struct OcrPage {
           .scrollable(ScrollDirection.Horizontal)
           .scrollBar(BarState.Off)
           .width('100%')
+          }
 
           if (this.errorMsg.length > 0) {
             Text(this.errorMsg)

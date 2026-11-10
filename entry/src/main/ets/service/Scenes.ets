@@ -40,7 +40,16 @@ export interface SceneTab {
   questions: string[];
 }
 
+/** config/list 的推荐位（banner）：{logo, name, url} */
+export interface AdItem {
+  logo: string;
+  name: string;
+  url: string;
+}
+
 export interface SceneBoard {
+  /** 首页 banner（平台推荐位：商城商品 / Token Plan 等） */
+  ads: AdItem[];
   tabs: SceneTab[];
   /** 各服务的推荐问题（按 identify 索引），智能体通道用 */
   byService: Map<string, string[]>;
@@ -52,17 +61,32 @@ interface RouterRow {
 }
 
 class Scenes {
-  private board: SceneBoard = { tabs: [], byService: new Map<string, string[]>() };
+  private board: SceneBoard = { ads: [], tabs: [], byService: new Map<string, string[]>() };
 
   /** 拉 config + recommend，按桌面端算法组装。 */
   async load(): Promise<SceneBoard> {
     const tabs: SceneTab[] = [];
+    const ads: AdItem[] = [];
     const byService: Map<string, string[]> = new Map<string, string[]>();
     try {
       const configData = await httpClient.getData('/acx/chatbot/config/list');
       const recommendData = await httpClient.getData('/acx/chatbot/recommend/list?enable=true&position=all');
 
       const config = configData as Record<string, Object>;
+      const rawAds = config['recommendAD'];
+      if (Array.isArray(rawAds)) {
+        const rows: Record<string, Object>[] = rawAds as Record<string, Object>[];
+        for (let i = 0; i < rows.length; i++) {
+          const ad: AdItem = {
+            logo: String(rows[i]['logo'] ?? ''),
+            name: String(rows[i]['name'] ?? ''),
+            url: String(rows[i]['url'] ?? '')
+          };
+          if (ad.name.length > 0 && ad.url.length > 0) {
+            ads.push(ad);
+          }
+        }
+      }
       const scenes: Scene[] = [];
       const rawScenes = config['vibeCodingScenes'];
       if (Array.isArray(rawScenes)) {
@@ -179,7 +203,7 @@ class Scenes {
     } catch (e) {
       hilog.warn(0x0000, TAG, 'scenes load failed');
     }
-    const board: SceneBoard = { tabs: tabs, byService: byService };
+    const board: SceneBoard = { ads: ads, tabs: tabs, byService: byService };
     this.board = board;
     return board;
   }

@@ -10,6 +10,8 @@ import { store } from '../service/Store';
 import { auth, ClusterIdentity, ClusterInfo } from '../service/Auth';
 import { UserInfo } from '../model/Types';
 import { ThemeSheet } from '../view/ThemeSheet';
+import { AVATAR_PRESETS, Avatar, AvatarPreset } from '../view/Avatar';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
 
 const TAG: string = 'SCNetLite';
 
@@ -35,6 +37,13 @@ struct Profile {
   @State showClusterSheet: boolean = false;
   @State fontLevel: number = 1;
   @State lang: string = 'zh';
+  @State avatar: string = '';
+  @State showAvatarSheet: boolean = false;
+  @State showProviderSheet: boolean = false;
+  @State cpName: string = '';
+  @State cpUrl: string = '';
+  @State cpKey: string = '';
+  @State cpModel: string = '';
   /** 本次进来换过主题 → 返回时要用 replaceUrl 重建对话页，否则还是旧配色 */
   private themeChanged: boolean = false;
 
@@ -51,9 +60,32 @@ struct Profile {
     Theme.applyPalette(store.getTheme());
     Theme.applyFontLevel(store.getFontLevel());
     L.zh = store.getLang() !== 'en';
+    this.avatar = store.getAvatar();
+    this.cpName = store.getCustomName();
+    this.cpUrl = store.getCustomBaseUrl();
+    this.cpKey = store.getCustomApiKey();
+    this.cpModel = store.getCustomModel();
     this.fontLevel = store.getFontLevel();
     this.lang = store.getLang();
     this.load();
+  }
+
+  private async pickAvatarPhoto(): Promise<void> {
+    try {
+      const options = new photoAccessHelper.PhotoSelectOptions();
+      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+      options.maxSelectNumber = 1;
+      const picker = new photoAccessHelper.PhotoViewPicker();
+      const result: photoAccessHelper.PhotoSelectResult = await picker.select(options);
+      if (result.photoUris.length > 0) {
+        this.avatar = `file:${result.photoUris[0]}`;
+        store.setAvatar(this.avatar);
+        this.showAvatarSheet = false;
+        Theme.bumpRev();
+      }
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'avatar picker failed');
+    }
   }
 
   private async load(): Promise<void> {
@@ -163,15 +195,18 @@ struct Profile {
           Column({ space: 14 }) {
             // 头像卡
             Column({ space: 10 }) {
-              Text(this.userName.length > 0 ? this.userName.substring(0, 1) : '我')
-                .fontSize(26)
-                .fontColor(Theme.textOnAccent)
-                .width(72)
-                .height(72)
-                .textAlign(TextAlign.Center)
-                .borderRadius(36)
-                .backgroundColor(Theme.accent)
-                .shadow({ radius: 18, color: '#0B1F3320', offsetY: 6 })
+              Stack() {
+                Avatar({
+                  avatarSize: 72,
+                  fontSize: 26,
+                  name: this.userName,
+                  avatar: this.avatar,
+                  onTap: () => {
+                    this.showAvatarSheet = true;
+                  }
+                })
+                  .shadow({ radius: 18, color: '#0B1F3320', offsetY: 6 })
+              }
               Text(this.userName.length > 0 ? this.userName : L.t('未命名用户', 'Unnamed'))
                 .fontSize(20)
                 .fontWeight(FontWeight.Normal)
@@ -213,6 +248,46 @@ struct Profile {
             .backgroundColor(Theme.surface)
             .borderRadius(Theme.rMd)
             .border({ width: 1, color: Theme.hairline })
+
+            // 自定义模型 provider
+            Row({ space: 10 }) {
+              Text(L.t('自定义模型', 'Custom model')).fontSize(Theme.fSmall).fontColor(Theme.text).layoutWeight(1)
+              Text(store.getModelProvider() === 'custom'
+                ? (store.getCustomName().length > 0 ? store.getCustomName() : L.t('已启用', 'On'))
+                : L.t('平台网关', 'Platform gateway'))
+                .fontSize(Theme.fTiny)
+                .fontColor(Theme.textSub)
+              Text('›').fontSize(13).fontColor(Theme.textFaint)
+            }
+            .width('100%')
+            .padding({ left: 14, right: 12, top: 14, bottom: 14 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+            .onClick(() => {
+              this.showProviderSheet = true;
+            })
+
+            // 充值 / 控制台
+            Row({ space: 10 }) {
+              Text(L.t('充值 / 控制台', 'Recharge / Console')).fontSize(Theme.fSmall).fontColor(Theme.text)
+                .layoutWeight(1)
+              Text('›').fontSize(13).fontColor(Theme.textFaint)
+            }
+            .width('100%')
+            .padding({ left: 14, right: 12, top: 14, bottom: 14 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+            .onClick(() => {
+              router.pushUrl({
+                url: 'pages/WebPage',
+                params: {
+                  url: 'https://www.scnet.cn/ui/console/index.html',
+                  title: L.t('控制台', 'Console')
+                }
+              });
+            })
 
             // 外观
             Row({ space: 10 }) {
@@ -390,6 +465,191 @@ struct Profile {
           }
           .width('100%')
           .padding({ left: 16, right: 16, bottom: 26 })
+          .backgroundColor(Theme.surface)
+          .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl })
+          .shadow(Theme.shadowSheet)
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#0B1F3355')
+      }
+
+      if (this.showProviderSheet) {
+        Column() {
+          Blank().layoutWeight(1).width('100%').onClick(() => {
+            this.showProviderSheet = false;
+          })
+          Column({ space: 10 }) {
+            Text(L.t('自定义模型', 'Custom model'))
+              .fontSize(Theme.fTitle)
+              .fontFamily(Theme.fontDisplay)
+              .fontColor(Theme.text)
+              .width('100%')
+            Text(L.t('接入任意 OpenAI 兼容端点（DeepSeek / Kimi / 本地 Ollama 等）。密钥只存本机。',
+              'Point it at any OpenAI-compatible endpoint. Key stays on this device.'))
+              .fontSize(10)
+              .fontColor(Theme.textFaint)
+              .width('100%')
+
+            TextInput({ text: this.cpName, placeholder: L.t('名称（如 deepseek）', 'Name') })
+              .height(40).fontSize(Theme.fSmall).backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rSm).padding({ left: 12, right: 12 })
+              .onChange((v: string) => {
+                this.cpName = v;
+              })
+            TextInput({ text: this.cpUrl, placeholder: 'Base URL（…/v1）' })
+              .height(40).fontSize(Theme.fSmall).backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rSm).padding({ left: 12, right: 12 })
+              .onChange((v: string) => {
+                this.cpUrl = v;
+              })
+            TextInput({ text: this.cpKey, placeholder: 'API Key' })
+              .type(InputType.Password)
+              .height(40).fontSize(Theme.fSmall).backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rSm).padding({ left: 12, right: 12 })
+              .onChange((v: string) => {
+                this.cpKey = v;
+              })
+            TextInput({ text: this.cpModel, placeholder: L.t('模型名（如 deepseek-chat）', 'Model id') })
+              .height(40).fontSize(Theme.fSmall).backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rSm).padding({ left: 12, right: 12 })
+              .onChange((v: string) => {
+                this.cpModel = v;
+              })
+
+            Row({ space: 8 }) {
+              Text(L.t('用平台网关', 'Use platform'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.textSub)
+                .layoutWeight(1)
+                .textAlign(TextAlign.Center)
+                .padding({ top: 10, bottom: 10 })
+                .backgroundColor(Theme.surfaceAlt)
+                .borderRadius(Theme.rSm)
+                .onClick(() => {
+                  store.setModelProvider('platform');
+                  this.showProviderSheet = false;
+                  router.replaceUrl({ url: 'pages/Index' });
+                })
+              Text(L.t('保存并启用', 'Save & enable'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.textOnAccent)
+                .layoutWeight(1)
+                .textAlign(TextAlign.Center)
+                .padding({ top: 10, bottom: 10 })
+                .backgroundColor(Theme.accent)
+                .borderRadius(Theme.rSm)
+                .onClick(() => {
+                  store.setCustomProvider(this.cpName.trim(), this.cpUrl.trim(),
+                    this.cpKey.trim(), this.cpModel.trim());
+                  store.setModelProvider('custom');
+                  this.showProviderSheet = false;
+                  router.replaceUrl({ url: 'pages/Index' });
+                })
+            }
+            .width('100%')
+          }
+          .width('100%')
+          .padding({ left: 20, right: 20, top: 18, bottom: 24 })
+          .backgroundColor(Theme.surface)
+          .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl })
+          .shadow(Theme.shadowSheet)
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#0B1F3355')
+      }
+
+      if (this.showAvatarSheet) {
+        Column() {
+          Blank().layoutWeight(1).width('100%').onClick(() => {
+            this.showAvatarSheet = false;
+          })
+          Column({ space: 12 }) {
+            Text(L.t('头像', 'Avatar'))
+              .fontSize(Theme.fTitle)
+              .fontFamily(Theme.fontDisplay)
+              .fontColor(Theme.text)
+              .width('100%')
+            Text(L.t('选一个内置头像，或从相册选，或让智能体帮你画一个',
+              'Pick a preset, choose a photo, or ask the agent to draw one'))
+              .fontSize(10)
+              .fontColor(Theme.textFaint)
+              .width('100%')
+
+            Flex({ wrap: FlexWrap.Wrap }) {
+              ForEach(AVATAR_PRESETS, (preset: AvatarPreset) => {
+                Column({ space: 4 }) {
+                  Avatar({
+                    avatarSize: 48,
+                    fontSize: 18,
+                    name: this.userName,
+                    avatar: `preset:${preset.id}`
+                  })
+                  if (this.avatar === `preset:${preset.id}`) {
+                    Text('✓').fontSize(10).fontColor(Theme.accent)
+                  }
+                }
+                .width('25%')
+                .padding({ top: 6, bottom: 6 })
+                .onClick(() => {
+                  this.avatar = `preset:${preset.id}`;
+                  store.setAvatar(this.avatar);
+                  Theme.bumpRev();
+                })
+              }, (preset: AvatarPreset) => preset.id)
+            }
+            .width('100%')
+
+            Row({ space: 8 }) {
+              Text(L.t('从相册选', 'From gallery'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.accent)
+                .layoutWeight(1)
+                .textAlign(TextAlign.Center)
+                .padding({ top: 10, bottom: 10 })
+                .backgroundColor(Theme.accentGhost)
+                .borderRadius(Theme.rSm)
+                .onClick(() => {
+                  this.pickAvatarPhoto();
+                })
+              Text(L.t('恢复默认', 'Reset'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.textSub)
+                .layoutWeight(1)
+                .textAlign(TextAlign.Center)
+                .padding({ top: 10, bottom: 10 })
+                .backgroundColor(Theme.surfaceAlt)
+                .borderRadius(Theme.rSm)
+                .onClick(() => {
+                  this.avatar = '';
+                  store.setAvatar('');
+                  Theme.bumpRev();
+                })
+            }
+            .width('100%')
+
+            Text(L.t('让智能体生成头像 →', 'Ask the agent to generate →'))
+              .fontSize(Theme.fSmall)
+              .fontColor(Theme.textOnAccent)
+              .width('100%')
+              .textAlign(TextAlign.Center)
+              .padding({ top: 10, bottom: 10 })
+              .backgroundColor(Theme.accent)
+              .borderRadius(Theme.rSm)
+              .onClick(() => {
+                this.showAvatarSheet = false;
+                // 生成式头像：把画面描述带进对话（图像生成能力由平台 MCP 提供）
+                router.replaceUrl({
+                  url: 'pages/Index',
+                  params: {
+                    prefill: '生成一个简洁的科技感头像：几何线条 + 深蓝橙配色，正方形 512x512，无文字'
+                  }
+                });
+              })
+          }
+          .width('100%')
+          .padding({ left: 20, right: 20, top: 18, bottom: 24 })
           .backgroundColor(Theme.surface)
           .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl })
           .shadow(Theme.shadowSheet)
