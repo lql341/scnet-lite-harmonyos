@@ -617,10 +617,12 @@ struct Jobs {
           .layoutWeight(1)
           .width('100%')
           .scrollBar(BarState.Off)
+          .align(Alignment.Top)
         }
       }
       .width('100%')
       .height('100%')
+      .justifyContent(FlexAlign.Start)
       .backgroundColor(Theme.bg)
 
       if (this.showCreds) {

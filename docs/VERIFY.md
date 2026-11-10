@@ -1,4 +1,8 @@
-# VERIFY — 真机待验清单（设备回来后照着走）
+# VERIFY — 真机验证记录与待验清单
+
+> **2026-11-10 已跑一轮**（PLA-AL10 / HarmonyOS / API 26，USB 连接）。结果见文末「验证记录」。
+
+
 
 > 环境：`hdc list targets` 有 `Connected` 设备后执行。
 > 构建/签名/安装三连见 `docs/NEXT.md` §0。
@@ -109,3 +113,50 @@ hdc shell aa start -a EntryAbility -b cn.scnet.hmos
 - [ ] 杀进程重进 → 会话恢复、模型/通道选择保持
 - [ ] 附件：＋ 选文件 → chip 出现 → 发送「附件有几行数据」→ 回答与文件一致
 - [ ] 停止生成：长回答中途点 ■ → 截断保留、不崩、按钮回 ↑
+
+---
+
+## 验证记录（2026-11-10）
+
+设备：PLA-AL10，`hdc` USB `Connected`（需要 udev 规则，见「环境问题」）。
+
+| # | 项目 | 结果 |
+| --- | --- | --- |
+| 1 | 登录态恢复 | ✅ `restore: token=235 cookie=99` → 直接进对话页 |
+| 2 | 双通道对话 | ✅ 网关 `SCNet Max` 出字正常 |
+| 3 | Markdown 表格 | ✅ 首版三列横滑不可用（第三列截断、滚动手势被外层 List 抢）→ 改「每行一张卡」后完整可读 |
+| 4 | 长按复制 | ✅ 首版 `LongPressGesture` 被吃掉 → 改 `bindContextMenu`；复制后剪贴板内容与表格 Markdown 原文一致 |
+| 5 | 首页 7 类场景 | ✅ `scenarios: 7 categories, 32 items`；文献阅读选中，卡片含「附件 1」标记 |
+| 6 | 插件市场 | ✅ 连接器 13617、精选分组生效（必应/MATLAB/Fetch/GitHub/高德/Blender） |
+| 7 | OCR 自检 | ✅ `ocr selftest ok trace=0b54731f22c48c0c` |
+| 8 | 作业页 | ✅ 两个集群实测：昆山 6 队列 / 哈尔滨 3 队列；空闲核、配额、队列列表正确 |
+| 9 | 作业详情 | ✅ 作业 127501160：11 项字段全对（队列/用户/时间/节点 a01r1n18/8 核/workDir/outputPath） |
+| 10 | 日志读取 | ✅ `job log … len=6`，作业未输出时显示「（日志为空）」不报错 |
+| 11 | 文件浏览 | ✅ 31 个目录逐级进入到 5 层深（`kylinflow/evidence/1d-limiter-smoke/127037152`） |
+
+### 这轮修掉的 3 个真机专属问题
+
+1. **表格横滑不可用** —— 嵌套 `Scroll` 与外层消息 `List` 抢手势 → 改卡片式
+2. **长按复制不触发** —— 同上，`LongPressGesture` 被列表滚动吃掉 → 改 `bindContextMenu`
+3. **作业页顶部大片留白** —— `Scroll` 内容不足时垂直居中 → `.align(Alignment.Top)`
+
+### 未验（受条件限制）
+
+- **登录过期提示卡**：需要一次真实 token 过期，只能等自然过期或手动清凭据
+- **作业提交**：dry-run 已验证请求体生成，真提交未执行（会真计费，需人工决定）
+- **取消作业**：契约已用 curl 验证，UI 弹层未点确认（会真取消用户的作业）
+- **附件上传完整链路**：本机 curl 端到端验过（智能体读到文件答 33），App 内选文件走系统 picker 待人工点一次
+
+## 环境问题（会挡住后来者）
+
+`hdc` 需要 udev 规则才能以普通用户访问 USB 设备，否则 `hdc list targets` 一直是 `[Empty]`：
+
+```bash
+sudo tee /etc/udev/rules.d/99-harmonyos-hdc.rules >/dev/null <<'EOF'
+SUBSYSTEM=="usb", ATTR{idVendor}=="12d1", MODE="0666"
+EOF
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+症状对照：`lsusb` 能看到 `12d1:5000 Huawei HDC Device`，但 `hdc` 日志报
+`libusb: error [get_usbfs_fd] libusb couldn't open USB device, errno=13`（权限拒绝）。
