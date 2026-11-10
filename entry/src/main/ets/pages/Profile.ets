@@ -12,6 +12,7 @@ import { UserInfo } from '../model/Types';
 import { ThemeSheet } from '../view/ThemeSheet';
 import { AVATAR_PRESETS, Avatar, AvatarPreset, presetsOf, AvatarStyle } from '../view/Avatar';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { bundleManager } from '@kit.AbilityKit';
 
 const TAG: string = 'SCNetLite';
 
@@ -59,6 +60,8 @@ struct Profile {
   @State showAvatarSheet: boolean = false;
   @State showProviderSheet: boolean = false;
   @State showAbout: boolean = false;
+  /** 当前应用版本（启动时读一次） */
+  @State appVersion: string = '';
   @State cpName: string = '';
   @State cpUrl: string = '';
   @State cpKey: string = '';
@@ -79,6 +82,7 @@ struct Profile {
     Theme.applyPalette(store.getTheme());
     Theme.applyFontLevel(store.getFontLevel());
     L.zh = store.getLang() !== 'en';
+    this.appVersion = this.readVersion();
     this.avatar = store.getAvatar();
     this.cpName = store.getCustomName();
     this.cpUrl = store.getCustomBaseUrl();
@@ -169,6 +173,17 @@ struct Profile {
       { label: L.t('集群调度器', 'Scheduler'), value: this.agentRoute() }
     ];
     this.rows = rows;
+  }
+
+  /** 读自身版本号（用于「检查更新」显示基线）。 */
+  private readVersion(): string {
+    try {
+      const info = bundleManager.getBundleInfoForSelfSync(
+        bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+      return info.versionName ?? '';
+    } catch (e) {
+      return '';
+    }
   }
 
   /** 当前通道/服务（替代原来暴露网关 key 那一行）。 */
@@ -376,8 +391,17 @@ struct Profile {
 
             // 检查更新 / 关于
             Row({ space: 10 }) {
-              Text(L.t('检查更新', 'Check for updates')).fontSize(Theme.fSmall).fontColor(Theme.text)
-                .layoutWeight(1)
+              Column({ space: 2 }) {
+                Text(L.t('检查更新', 'Check for updates')).fontSize(Theme.fSmall).fontColor(Theme.text)
+                Text(this.appVersion.length > 0
+                  ? L.t(`当前版本 ${this.appVersion} · 仓库私有，需在页面内登录 GitHub 查看`,
+                    `v${this.appVersion} · private repo, sign in on the page`)
+                  : L.t('仓库私有，需在页面内登录 GitHub 查看', 'Private repo; sign in on the page'))
+                  .fontSize(10)
+                  .fontColor(Theme.textFaint)
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
               Text('›').fontSize(13).fontColor(Theme.textFaint)
             }
             .width('100%')

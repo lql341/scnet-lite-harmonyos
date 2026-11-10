@@ -192,14 +192,14 @@ MIME 表在 `service/Upload.ets:mimeOf()`，新增格式在那里加一行即可
 
 | 项 | 结果 |
 | --- | --- |
-| 附件不再分「图片/文件」 | ✅ 合并成单一「选择文件」，过滤条件里包含图片后缀 |
+| 附件不再分「图片/文件」 | ✅ 真机：面板只剩「选择文件」，系统选择器显示「Only show applicable file formats」（过滤生效） |
 | 新会话 banner 去掉 | ✅ 已移除（`recommendAD` 拉取保留在 Scenes 里，随时可恢复） |
 | 左侧「应用商城」入口去掉 | ✅ 已移除（手机端 `/ui/mall` 不是移动适配） |
 | 自定义模型加知名 provider 预设 | ✅ DeepSeek / Moonshot / 阿里通义 / 智谱 GLM / OpenAI / SiliconFlow / Ollama，点一下填好 baseUrl+model |
 | 设置里不显示网关 key | ✅ 换成「集群调度器 / 当前通道」 |
 | 「充值 / 控制台」去掉 | ✅ 已移除 |
 | 应用图标 + 主会话 logo 改回原 SCNet | ✅ `git checkout 9b98233 -- app_icon.png startIcon.png` |
-| 设置页「检查更新」→ GitHub Releases | ✅ 真机（内嵌打开 github.com/lql341/scnet-lite-harmonyos/releases） |
+| 设置页「检查更新」→ GitHub Releases | ✅ 真机（内嵌打开 releases 页）。⚠️ 仓库是 **private**（`gh repo view` 显示 visibility PRIVATE），所以无法匿名调 GitHub API 比版本；当前显示「当前版本 0.2.0 · 仓库私有，需在页面内登录 GitHub 查看」 |
 | 设置页「关于」→ 作者 lql341 + GitHub 主页 | ✅ 真机（面板含图标/作者/GitHub/项目链接，均可点） |
 | 登录页「非官方客户端」小字去掉 | ✅ 已移除 |
 | 会话主窗口 AI 风险提示 | ✅ 空状态常驻一行「AI 生成内容可能不准确…请自行核实」 |
