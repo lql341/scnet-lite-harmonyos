@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# 构建 Android APK（WebView 壳形态）——不依赖 Gradle。
+#
+# 背景见 docs/APK-ASSESSMENT.md：ArkTS/HAP 无法直接转 APK（面是方舟运行时 + ArkUI），
+# 最短可行路径是「WebView 壳 + 平台自带的移动适配 Web 前端」。
+#
+# 这个脚本证明该路径可落地：只用 Android SDK 的 build-tools 手工打包
+# （aapt2 编译资源 → javac → d8 出 dex → zip 合并 → zipalign → apksigner），
+# 不需要 Gradle / AGP，CI 里跑得很快。
+#
+# 用法：
+#   scripts/build-apk.sh                 # 输出 dist/android/scnet-agent-webview-*.apk
+#   ANDROID_HOME=/path/to/sdk scripts/build-apk.sh
+#
+# 依赖：Android SDK（platforms;android-34 + build-tools;34.0.0）、JDK 17+。
+# 没装 SDK 时脚本会给出安装命令并退出。
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+SRC=$ROOT/android
+OUT=${OUT:-$ROOT/dist/android}
+PKG=cn.scnet.agent
+VER_NAME=${VER_NAME:-0.1.0-webview}
+VER_CODE=${VER_CODE:-1}
+ENTRY=${ENTRY:-https://www.scnet.cn/ui/chatbot/index.html}
+
+die() { printf '[err] %s\n' "$1" >&2; exit 1; }
+note() { printf '[..] %s\n' "$1"; }
+
+[[ -d $SRC ]] || die "缺少 $SRC（Android 壳源码目录）"
+
+# ---- 找 SDK ----
+SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
+if [[ -z $SDK || ! -d $SDK/platforms/android-34 ]]; then
+  for cand in "$HOME/Android/Sdk" "$HOME/android-sdk" /opt/android-sdk; do
+    [[ -d $cand/platforms/android-34 ]] && SDK=$cand && break
+  done
+fi
+if [[ -z ${SDK:-} || ! -d $SDK/platforms/android-34 ]]; then
+  cat >&2 <<'EOF'
+[err] 没找到 Android SDK（需要 platforms;android-34 与 build-tools;34.0.0）
+
+  mkdir -p ~/android-sdk/cmdline-tools && cd ~/android-sdk/cmdline-tools
+  curl -LO https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+  unzip -q commandlinetools-linux-*.zip && mv cmdline-tools latest
+  export ANDROID_HOME=~/android-sdk
+  yes | ./latest/bin/sdkmanager --sdk_root=$ANDROID_HOME --licenses >/dev/null
+  ./latest/bin/sdkmanager --sdk_root=$ANDROID_HOME "platforms;android-34" "build-tools;34.0.0"
+EOF
+  exit 2
+fi
+
+BT=$(ls -d "$SDK"/build-tools/34.* 2>/dev/null | tail -1)
+[[ -n $BT ]] || die "缺 build-tools;34.0.0"
+PLAT=$SDK/platforms/android-34/android.jar
+for tool in aapt2 d8 zipalign apksigner; do
+  [[ -x $BT/$tool ]] || die "缺 $BT/$tool"
+done
+command -v javac >/dev/null || die "需要 JDK（javac）"
+command -v keytool >/dev/null || die "需要 JDK（keytool）"
+
+note "SDK  = $SDK"
+note "BT   = $BT"
+note "out  = $OUT"
+
+rm -rf "$OUT" && mkdir -p "$OUT/work/classes" "$OUT/work/dex" "$OUT/work/res"
+
+# ---- 1) 资源 ----
+note "1/6 aapt2 compile（资源）"
+"$BT/aapt2" compile --dir "$SRC/res" -o "$OUT/work/res"
+
+# ---- 2) 链接（生成未签名 apk + AndroidManifest） ----
+note "2/6 aapt2 link（manifest + 资源）"
+sed -e "s|@VER_NAME@|$VER_NAME|g" -e "s|@VER_CODE@|$VER_CODE|g" \
+  "$SRC/AndroidManifest.xml" > "$OUT/work/AndroidManifest.xml"
+"$BT/aapt2" link \
+  -o "$OUT/work/base.apk" \
+  -I "$PLAT" \
+  --manifest "$OUT/work/AndroidManifest.xml" \
+  --min-sdk-version 24 --target-sdk-version 34 \
+  --version-code "$VER_CODE" --version-name "$VER_NAME" \
+  "$OUT/work/res"/*.flat --auto-add-overlay
+
+# ---- 3) javac ----
+note "3/6 javac"
+javac --release 11 -classpath "$PLAT" -d "$OUT/work/classes" \
+  $(find "$SRC/src" -name '*.java')
+
+# ---- 4) d8 → dex ----
+note "4/6 d8（dex）"
+"$BT/d8" --lib "$PLAT" --min-api 24 --output "$OUT/work/dex" \
+  $(find "$OUT/work/classes" -name '*.class')
+
+# ---- 5) 合并 + align ----
+note "5/6 合并 dex + zipalign"
+(cd "$OUT/work" && cp base.apk unsigned.apk && zip -q -j unsigned.apk dex/classes.dex)
+"$BT/zipalign" -f -p 4 "$OUT/work/unsigned.apk" "$OUT/work/aligned.apk"
+
+# ---- 6) 签名 ----
+note "6/6 apksigner（debug keystore）"
+KS=${APK_KEYSTORE:-$OUT/work/debug.keystore}
+if [[ ! -f $KS ]]; then
+  keytool -genkeypair -keystore "$KS" -storepass android -keypass android \
+    -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+    -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
+fi
+APK=$OUT/scnet-agent-webview-$VER_NAME.apk
+"$BT/apksigner" sign \
+  --ks "$KS" --ks-pass pass:android --key-pass pass:android \
+  --ks-key-alias androiddebugkey --min-sdk-version 24 \
+  --out "$APK" "$OUT/work/aligned.apk"
+
+"$BT/apksigner" verify --print-certs "$APK" >/dev/null || die "签名校验失败"
+unzip -p "$APK" classes.dex >/dev/null 2>&1 || die "APK 里没有 classes.dex"
+
+rm -rf "$OUT/work"
+printf '\n[done] %s  (%s bytes)\n' "$APK" "$(stat -c %s "$APK")"
+printf '       entry = %s\n' "$ENTRY"
+printf '       注意：这是 WebView 壳（加载平台 Web 前端），不是 ArkTS 界的重写\n'

@@ -118,3 +118,56 @@ test/*.test.mjs      4 组测试向量（Markdown 30 / SSE 10 / 裁剪 13 / HMAC
 官方 APK 42.4 MB（Flutter + Impeller + pdfium + 多个插件）。
 本项目的 HAP 只有 **366 KB**（ArkTS 编译产物，无第三方运行时）——
 这也是为什么它没法"打包成 APK"：它依赖方舟运行时，而 Android 上没有。
+
+---
+
+## 7. 实测：路线 C 已跑通（2026-11-10）
+
+不是纸上评估了 —— 仓库里现在有一个**能装的真 APK**：
+
+```
+android/                         WebView 壳源码（1 个 Activity + manifest + 图标）
+scripts/build-apk.sh             不用 Gradle 的打包脚本（aapt2 → javac → d8 → zip → zipalign → apksigner）
+dist/android/scnet-agent-webview-0.1.0-webview.apk    45 809 bytes
+```
+
+验证结果：
+
+```
+apksigner verify   → Verifies（v2 + v3 scheme 都已签）
+aapt2 dump badging → package cn.scnet.agent, sdkVersion 24, target 34,
+                     application-label 'SCNet 智能体'
+内容               → classes.dex 3.6 KB + 4 档 mipmap 图标 + resources.arsc
+```
+
+**怎么做到不用 Gradle 的**（这也是为什么它能进 CI）：
+
+```bash
+aapt2 compile --dir android/res -o work/res              # 资源编译
+aapt2 link -I $PLAT --manifest … --min-sdk-version 24    # 生成 base.apk
+javac --release 11 -classpath $PLAT -d work/classes …    # 编译 Java
+d8 --lib $PLAT --min-api 24 --output work/dex …          # 出 classes.dex
+zip -j base.apk dex/classes.dex && zipalign -p 4 …       # 合并 + 对齐
+apksigner sign --ks debug.keystore …                     # 签名
+```
+
+需要装的东西只有 `platforms;android-34` + `build-tools;34.0.0`（脚本里带了安装命令）。
+构建耗时 **约 6 秒**，产物 45 KB。
+
+**它是什么、不是什么**：
+
+- 是：一个能加载 `https://www.scnet.cn/ui/chatbot/index.html` 的壳，带 cookie 持久化、
+  DOM storage、返回键回退 Web 历史。平台 Web 端本身有移动 viewport，所以能直接用。
+- 不是：ArkTS 那 1.2 万行功能的重写。作业面 / OCR / 插件市场 / 本地多会话都不在这个壳里。
+
+**要继续下去的话**（把壳做成"像 App"）：
+
+| 步骤 | 工作 | 估算 |
+| --- | --- | --- |
+| 1 | 登录态打通：壳内登录后把 cookie 交给原生层，或直接复用 Web 端登录 | 0.5 天 |
+| 2 | 文件上传/下载回调（`WebChromeClient.onShowFileChooser` + `DownloadListener`） | 0.5 天 |
+| 3 | 原生入口：底部 Tab（对话 / 作业 / 我的），作业/OCR 用原生页对 API | 3-5 天 |
+| 4 | 深链、分享、通知 | 1 天 |
+
+第 3 步才是真正的工作量所在 —— 也就是把本仓库已经验证过的接口在 Android 上再实现一遍
+（协议可直接照抄 `docs/PROTOCOL.md`）。

@@ -14,7 +14,7 @@
 | [`docs/NEXT.md`](docs/NEXT.md) | **接手先看这个**：当前卡点、下一步、换机器要带什么 |
 | [`docs/FEATURES.md`](docs/FEATURES.md) | **功能清单**：能做什么、哪些真机验过、有哪些限制 |
 | [`docs/VERIFY.md`](docs/VERIFY.md) | **真机回归清单**：设备接上后照着走一遍 |
-| [`docs/APK-ASSESSMENT.md`](docs/APK-ASSESSMENT.md) | **打 Android APK 的难度评估**（三条路线与成本） |
+| [`docs/APK-ASSESSMENT.md`](docs/APK-ASSESSMENT.md) | **打 Android APK 的难度评估**（含已跑通的 WebView 壳实测） |
 | [`docs/TODO.md`](docs/TODO.md) | 待办全表（分 A~I 段，带阻塞项与已完成项） |
 | [`docs/SIGNING.md`](docs/SIGNING.md) | 签名材料清单、换机迁移、重新签发、失败对照 |
 | [`docs/PLAN.md`](docs/PLAN.md) | 对标手机 APK 的分阶段开发计划（P0~P6，约 11 天） |
