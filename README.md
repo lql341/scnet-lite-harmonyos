@@ -16,6 +16,7 @@
 | [`docs/VERIFY.md`](docs/VERIFY.md) | **真机回归清单**：设备接上后照着走一遍 |
 | [`docs/APK-ASSESSMENT.md`](docs/APK-ASSESSMENT.md) | **打 Android APK 的难度评估**（含已跑通的 WebView 壳实测 + §8 工作量复核） |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | 发版流程：一条命令出未签名/已签名 HAP + APK + SHA256SUMS |
+| [`docs/ANDROID-DEV.md`](docs/ANDROID-DEV.md) | Android 原生版：构建、模拟器、无账号验 UI、已知坑 |
 | [`docs/TODO.md`](docs/TODO.md) | 待办全表（分 A~I 段，带阻塞项与已完成项） |
 | [`docs/SIGNING.md`](docs/SIGNING.md) | 签名材料清单、换机迁移、重新签发、失败对照 |
 | [`docs/PLAN.md`](docs/PLAN.md) | 对标手机 APK 的分阶段开发计划（P0~P6，约 11 天） |
