@@ -13,6 +13,7 @@ import { apiKeys, GatewayAccess } from '../service/ApiKeys';
 import { auth } from '../service/Auth';
 import { ocr, OCR_TYPES, OcrType, OcrResult } from '../service/Ocr';
 import { isOcrSupported, mimeOf } from '../service/Upload';
+import { docAi, DocTask, CONVERT_PDF_TO_WORD, CONVERT_PDF_TO_EXCEL, CONVERT_PDF_TO_PPT } from '../service/DocAi';
 import { picker } from '@kit.CoreFileKit';
 
 const TAG: string = 'SCNetLite';
@@ -24,6 +25,10 @@ struct OcrPage {
   @State ocrType: string = 'GENERAL';
   /** 'ocr' 通用识别 / 'parse' 文档解析 / 'convert' 格式转换 */
   @State mode: string = 'ocr';
+  /** 文档解析/转换任务状态（异步接口，要轮询） */
+  @State taskStatus: string = '';
+  @State taskId: string = '';
+  @State convertTarget: string = CONVERT_PDF_TO_WORD;
   @State fileName: string = '';
   @State previewUri: string = '';
   @State busy: boolean = false;
@@ -31,6 +36,7 @@ struct OcrPage {
   @State lines: string[] = [];
   @State traceId: string = '';
   @State copied: boolean = false;
+  @State notice: string = '';
 
   private async pickImage(): Promise<void> {
     try {
@@ -82,6 +88,106 @@ struct OcrPage {
     } catch (e) {
       hilog.warn(0x0000, TAG, 'pdf picker failed');
     }
+  }
+
+  /** 文档解析/转换的文件选择（不限 pdf）。 */
+  private async pickDoc(): Promise<void> {
+    try {
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = 1;
+      options.fileSuffixFilters = ['文档 (.pdf, .doc, .docx, .xls, .xlsx, .ppt, .pptx, .png, .jpg)|' +
+        '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg'];
+      const documentPicker = new picker.DocumentViewPicker();
+      const uris: string[] = await documentPicker.select(options);
+      if (uris.length === 0) {
+        return;
+      }
+      const uri: string = uris[0];
+      const slash: number = uri.lastIndexOf('/');
+      let name: string = slash >= 0 ? uri.substring(slash + 1) : 'document';
+      if (name.indexOf('?') >= 0) {
+        name = name.substring(0, name.indexOf('?'));
+      }
+      this.previewUri = uri;
+      this.fileName = name;
+      this.taskStatus = '';
+      this.taskId = '';
+      this.lines = [];
+      this.errorMsg = '';
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'doc picker failed');
+    }
+  }
+
+  /** 提交文档任务并轮询（解析→拉结果 json 抽文本；转换→给结果链接）。 */
+  private async runDoc(): Promise<void> {
+    if (this.previewUri.length === 0) {
+      this.errorMsg = L.t('先选择一个文件', 'Pick a file first');
+      return;
+    }
+    this.busy = true;
+    this.errorMsg = '';
+    this.lines = [];
+    this.taskStatus = '';
+    try {
+      let key: string = store.getAutoKey();
+      if (key.length === 0) {
+        const access: GatewayAccess = await apiKeys.ensureAccess(await auth.clusterIdentity());
+        key = access.key;
+      }
+      // 读文件
+      const file = fs.openSync(this.previewUri, fs.OpenMode.READ_ONLY);
+      const stat = fs.statSync(file.fd);
+      const buffer: ArrayBuffer = new ArrayBuffer(stat.size);
+      fs.readSync(file.fd, buffer);
+      fs.closeSync(file);
+      const bytes: Uint8Array = new Uint8Array(buffer);
+      const mime: string = mimeOf(this.fileName);
+
+      let task: DocTask = this.mode === 'parse'
+        ? await docAi.submitParse(key, bytes, this.fileName, mime)
+        : await docAi.submitConvert(key, bytes, this.fileName, mime, this.convertTarget);
+      this.taskId = task.taskId;
+      this.taskStatus = task.status;
+
+      // 轮询（最长 ~3 分钟）
+      for (let i = 0; i < 30; i++) {
+        if (task.status === 'succeeded' || task.status === 'failed') {
+          break;
+        }
+        await new Promise<void>((resolve) => {
+          setTimeout(() => resolve(), 4000);
+        });
+        task = await docAi.query(key, task.taskId);
+        this.taskStatus = task.status;
+      }
+
+      if (task.status === 'failed') {
+        this.errorMsg = task.errorMessage.length > 0 ? task.errorMessage
+          : L.t('任务失败', 'Task failed');
+      } else if (task.status === 'succeeded' && task.results.length > 0) {
+        const url: string = task.results[0];
+        if (this.mode === 'convert') {
+          // 转换结果是文件：直接给链接（可复制/打开）
+          this.lines = [url];
+          this.notice = L.t('转换完成，结果链接已放在下方（3 天内有效）',
+            'Converted. Result URL below (valid 3 days)');
+        } else {
+          const raw: string = await docAi.fetchResult(url);
+          const text: string = docAi.extractText(raw);
+          this.lines = text.length > 0 ? text.split('\n') : [url];
+          this.notice = L.t('解析完成', 'Parsed');
+        }
+      } else {
+        this.errorMsg = L.t('任务已提交但还没有结果，稍后再试', 'Submitted, no result yet');
+      }
+      hilog.info(0x0000, TAG, 'doc task %{public}s done status=%{public}s',
+        this.taskId, this.taskStatus);
+    } catch (e) {
+      const err = e as Error;
+      this.errorMsg = err.message ?? L.t('任务提交失败', 'Submit failed');
+    }
+    this.busy = false;
   }
 
   private async run(): Promise<void> {
@@ -232,35 +338,86 @@ struct OcrPage {
           .width('100%')
 
           if (this.mode !== 'ocr') {
-            Column({ space: 8 }) {
+            Column({ space: 10 }) {
               Text(this.mode === 'parse'
-                ? L.t('文档解析（DOC_MIND）', 'Document parsing (DOC_MIND)')
-                : L.t('格式转换（DOC_CONVERSION）', 'Format conversion (DOC_CONVERSION)'))
+                ? L.t('文档解析（DOC_MIND）', 'Document parse (DOC_MIND)')
+                : L.t('格式转换（DOC_CONVERSION）', 'Format convert (DOC_CONVERSION)'))
                 .fontSize(Theme.fSmall)
                 .fontColor(Theme.text)
-              Text(L.t('平台把这两项做成独立应用（支持 PDF/Word/图片 → 文本或目标格式），网关的 /ocr/recognize 只接受识别类枚举（GENERAL/ID_CARD/…），不处理文档解析与转换。这里改为在应用内打开平台对应页面，避免给出一个假入口。',
-                'These two are separate platform apps; the gateway /ocr/recognize only accepts \
-recognition enums. Opening the platform page inside the app instead of faking a feature.'))
+              Text(this.mode === 'parse'
+                ? L.t('支持 PDF / Word / Excel / PPT / 图片，输出结构化文本（含表格、公式）',
+                  'PDF / Word / Excel / PPT / images → structured text')
+                : L.t('选择转换方向后上传文件，结果是转换后的文件（OSS 链接）',
+                  'Pick a direction, upload a file; result is a converted file URL'))
                 .fontSize(10)
                 .lineHeight(16)
                 .fontColor(Theme.textFaint)
-              Text(L.t('打开平台页面', 'Open platform page'))
-                .fontSize(Theme.fSmall)
-                .fontColor(Theme.textOnAccent)
                 .width('100%')
-                .textAlign(TextAlign.Center)
-                .padding({ top: 10, bottom: 10 })
-                .backgroundColor(Theme.accent)
-                .borderRadius(Theme.rSm)
-                .onClick(() => {
-                  router.pushUrl({
-                    url: 'pages/WebPage',
-                    params: {
-                      url: 'https://www.scnet.cn/ui/llm/index.html',
-                      title: this.mode === 'parse' ? L.t('文档解析', 'Parse') : L.t('格式转换', 'Convert')
+
+              if (this.mode === 'convert') {
+                Scroll() {
+                  Row({ space: 8 }) {
+                    ForEach([CONVERT_PDF_TO_WORD, CONVERT_PDF_TO_EXCEL, CONVERT_PDF_TO_PPT], (t: string) => {
+                      Text(t)
+                        .fontSize(Theme.fTiny)
+                        .fontColor(this.convertTarget === t ? Theme.textOnAccent : Theme.textSub)
+                        .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                        .backgroundColor(this.convertTarget === t ? Theme.accent : Theme.surfaceAlt)
+                        .borderRadius(Theme.rPill)
+                        .onClick(() => {
+                          this.convertTarget = t;
+                        })
+                    }, (t: string) => t)
+                  }
+                }
+                .scrollable(ScrollDirection.Horizontal)
+                .scrollBar(BarState.Off)
+                .width('100%')
+              }
+
+              Row({ space: 8 }) {
+                Text(L.t('选择文件', 'Choose file'))
+                  .fontSize(Theme.fSmall)
+                  .fontColor(Theme.accent)
+                  .layoutWeight(1)
+                  .textAlign(TextAlign.Center)
+                  .padding({ top: 10, bottom: 10 })
+                  .backgroundColor(Theme.accentGhost)
+                  .borderRadius(Theme.rSm)
+                  .onClick(() => {
+                    this.pickDoc();
+                  })
+                Text(this.mode === 'parse' ? L.t('开始解析', 'Parse') : L.t('开始转换', 'Convert'))
+                  .fontSize(Theme.fSmall)
+                  .fontColor(Theme.textOnAccent)
+                  .layoutWeight(1)
+                  .textAlign(TextAlign.Center)
+                  .padding({ top: 10, bottom: 10 })
+                  .backgroundColor(Theme.accent)
+                  .borderRadius(Theme.rSm)
+                  .opacity(this.busy ? 0.6 : 1)
+                  .onClick(() => {
+                    if (!this.busy) {
+                      this.runDoc();
                     }
-                  });
-                })
+                  })
+              }
+              .width('100%')
+
+              if (this.fileName.length > 0) {
+                Text(this.fileName)
+                  .fontSize(10)
+                  .fontColor(Theme.textSub)
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .width('100%')
+              }
+              if (this.taskStatus.length > 0) {
+                Text(L.t(`任务 ${this.taskId}：${this.taskStatus}`, `Task ${this.taskId}: ${this.taskStatus}`))
+                  .fontSize(10)
+                  .fontColor(this.taskStatus === 'succeeded' ? Theme.ok : Theme.textFaint)
+                  .width('100%')
+              }
             }
             .width('100%')
             .alignItems(HorizontalAlign.Start)
@@ -297,13 +454,24 @@ recognition enums. Opening the platform page inside the app instead of faking a 
                 .objectFit(ImageFit.Contain)
                 .backgroundColor(Theme.surfaceAlt)
             } else {
-              // 未选文件：只放一行提示，不再放大加号（下面已有「选图片 / 选 PDF」按钮）
-              Text(L.t('还没有选择文件 · 支持图片与 PDF', 'No file selected · images or PDF'))
-                .fontSize(Theme.fSmall)
-                .fontColor(Theme.textFaint)
-                .width('100%')
-                .textAlign(TextAlign.Center)
-                .padding({ top: 18, bottom: 10 })
+              // 未选文件：可点击占位区（等价于「选图片」），避免页面只剩一条提示
+              Column({ space: 6 }) {
+                Text('🖼').fontSize(26)
+                Text(L.t('选择图片或 PDF 开始识别', 'Pick an image or PDF to start'))
+                  .fontSize(Theme.fSmall)
+                  .fontColor(Theme.textSub)
+                Text(L.t('支持 PNG / JPG / WEBP 与 PDF', 'PNG, JPG, WEBP and PDF'))
+                  .fontSize(10)
+                  .fontColor(Theme.textFaint)
+              }
+              .width('100%')
+              .height(132)
+              .justifyContent(FlexAlign.Center)
+              .backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rMd)
+              .onClick(() => {
+                this.pickImage();
+              })
             }
 
             Row({ space: 8 }) {

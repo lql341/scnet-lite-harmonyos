@@ -127,6 +127,10 @@ export class Theme {
       Theme.accentDeep = Theme.lightAccent;
       Theme.accentSoft = '#3A2A22';
       Theme.accentGhost = '#241C17';
+      // 危险色：深色底上用更亮的红 + 深红底，避免大片浅粉
+      Theme.danger = '#FF7A70';
+      Theme.dangerSoft = '#3A1D1A';
+      Theme.dangerBorder = '#7A3B36';
     } else {
       Theme.restoreLight();
     }
@@ -135,6 +139,9 @@ export class Theme {
   /** 恢复浅色（用记录下来的基色）。 */
   static restoreLight(): void {
     Theme.dark = false;
+    Theme.danger = '#B42318';
+    Theme.dangerSoft = '#FEF3F2';
+    Theme.dangerBorder = '#FDA29B';
     Theme.applyPalette(Theme.paletteId);
   }
 
@@ -238,9 +245,9 @@ export class Theme {
   }
 
   // 状态
-  static readonly danger: string = '#B42318';
-  static readonly dangerSoft: string = '#FEF3F2';
-  static readonly dangerBorder: string = '#FDA29B';
+  static danger: string = '#B42318';
+  static dangerSoft: string = '#FEF3F2';
+  static dangerBorder: string = '#FDA29B';
   static readonly ok: string = '#12B76A';
   static readonly warn: string = '#B54708';
 
