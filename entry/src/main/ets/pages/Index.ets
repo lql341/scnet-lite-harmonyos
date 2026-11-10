@@ -316,7 +316,43 @@ struct Index {
   /** 选附件：系统文件选择器 → 上传到 OSS → 变成待发送的 chip。 */
   @State showAttachSheet: boolean = false;
 
-  /** 从相册选图片（图片走 PhotoViewPicker，权限模型与文件选择器不同）。 */
+  /**
+   * 选附件：统一走文件选择器，并把图片后缀也放进过滤条件 ——
+   * 分「图片/文件」两个入口对用户没意义（实测两者都能上传），合并。
+   */
+  private async pickAttachmentAny(): Promise<void> {
+    this.showAttachSheet = false;
+    if (this.uploading) {
+      return;
+    }
+    let uris: string[] = [];
+    try {
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = 3;
+      options.fileSuffixFilters = [
+        '全部常用 (.pdf, .doc, .docx, .xls, .xlsx, .ppt, .pptx, .png, .jpg, .jpeg)|' +
+          '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif,.bmp',
+        '文档 (.pdf, .doc, .docx)|.pdf,.doc,.docx',
+        '表格 (.xls, .xlsx, .csv, .tsv)|.xls,.xlsx,.csv,.tsv',
+        '演示 (.ppt, .pptx)|.ppt,.pptx',
+        '文本 (.txt, .md, .json, .log, .xml, .yaml)|.txt,.md,.markdown,.json,.log,.xml,.yaml,.yml',
+        '代码 (.py, .js, .ts, .sh, .c, .h, .cpp, .rs, .go, .java, .f90, .inp)|' +
+          '.py,.js,.ts,.sh,.c,.h,.cpp,.hpp,.rs,.go,.java,.f90,.f,.inp',
+        '图片 (.png, .jpg, .jpeg, .webp, .gif, .bmp)|.png,.jpg,.jpeg,.webp,.gif,.bmp',
+        '压缩包 (.zip, .tar, .gz)|.zip,.tar,.gz'
+      ];
+      const documentPicker = new picker.DocumentViewPicker();
+      uris = await documentPicker.select(options);
+    } catch (e) {
+      const err = e as BusinessError;
+      hilog.warn(0x0000, TAG, 'document picker failed code=%{public}s', String(err.code ?? '?'));
+      this.errorMsg = L.t(`选择失败(${err.code ?? '?'})`, `Picker failed (${err.code ?? '?'})`);
+      return;
+    }
+    await this.uploadUris(uris);
+  }
+
+  /** 从相册选图片（保留给"只想要相册"的场景，目前未挂 UI）。 */
   private async pickImage(): Promise<void> {
     this.showAttachSheet = false;
     if (this.uploading) {
@@ -926,47 +962,21 @@ struct Index {
         }
         .padding({ top: 12, bottom: 18 })
 
-        if (this.ads.length > 0) {
-          Scroll() {
-            Row({ space: 10 }) {
-              ForEach(this.ads, (ad: AdItem) => {
-                Row({ space: 8 }) {
-                  if (ad.logo.length > 0) {
-                    Image(ad.logo)
-                      .width(28)
-                      .height(28)
-                      .borderRadius(7)
-                      .objectFit(ImageFit.Cover)
-                      .backgroundColor(Theme.surface)
-                  }
-                  Text(ad.name)
-                    .fontSize(Theme.fTiny)
-                    .fontColor(Theme.text)
-                    .maxLines(2)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    .layoutWeight(1)
-                }
-                .width(230)
-                .alignItems(VerticalAlign.Center)
-                .padding({ left: 10, right: 10, top: 10, bottom: 10 })
-                .backgroundColor(Theme.accentGhost)
-                .borderRadius(Theme.rMd)
-                .border({ width: 1, color: Theme.accentSoft })
-                .onClick(() => {
-                  router.pushUrl({
-                    url: 'pages/WebPage',
-                    params: { url: ad.url, title: ad.name }
-                  });
-                })
-              }, (ad: AdItem) => ad.url)
-            }
-            .padding({ left: 2, right: 2 })
-          }
-          .scrollable(ScrollDirection.Horizontal)
-          .scrollBar(BarState.Off)
-          .width('100%')
-          .margin({ bottom: 10 })
+        // AI 生成风险提示（主窗口常驻，不只藏在输入框下）
+        Row({ space: 6 }) {
+          Text('ⓘ').fontSize(10).fontColor(Theme.textFaint)
+          Text(L.t('AI 生成内容可能不准确或有遗漏，涉及计算、作业与法律医学等结论请自行核实',
+            'AI output may be inaccurate; verify before relying on it'))
+            .fontSize(10)
+            .lineHeight(15)
+            .fontColor(Theme.textFaint)
+            .layoutWeight(1)
         }
+        .width('100%')
+        .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+        .margin({ bottom: 12 })
+        .backgroundColor(Theme.surfaceAlt)
+        .borderRadius(Theme.rSm)
 
         if (this.scenarioCategories.length > 0) {
           // 7 类场景目录（同步自桌面客户端 home-scenarios）
@@ -1620,35 +1630,6 @@ struct Index {
       })
 
       Row({ space: 8 }) {
-        Text('🛒')
-          .fontSize(13)
-          .width(24)
-          .height(24)
-          .textAlign(TextAlign.Center)
-          .borderRadius(7)
-          .backgroundColor(Theme.accentGhost)
-        Column({ space: 1 }) {
-          Text(L.t('应用商城', 'App mall')).fontSize(Theme.fSmall).fontColor(Theme.text)
-          Text(L.t('上架应用 · 按需开通', 'Apps on demand')).fontSize(10).fontColor(Theme.textFaint)
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-        Text('›').fontSize(14).fontColor(Theme.textFaint)
-      }
-      .width('100%')
-      .padding({ left: 10, right: 10, top: 9, bottom: 9 })
-      .margin({ top: 6 })
-      .backgroundColor(Theme.surfaceAlt)
-      .borderRadius(Theme.rSm)
-      .onClick(() => {
-        this.drawerOpen = false;
-        router.pushUrl({
-          url: 'pages/WebPage',
-          params: { url: 'https://www.scnet.cn/ui/mall/index.html', title: L.t('应用商城', 'App mall') }
-        });
-      })
-
-      Row({ space: 8 }) {
         Text('OCR')
           .fontSize(9)
           .fontWeight(FontWeight.Bold)
@@ -1872,36 +1853,24 @@ struct Index {
               .fontFamily(Theme.fontDisplay)
               .fontColor(Theme.text)
               .width('100%')
+            Text(L.t('支持 PDF / Office / 文本 / 代码 / 图片 / 压缩包',
+              'PDF, Office, text, code, images, archives'))
+              .fontSize(10)
+              .fontColor(Theme.textFaint)
+              .width('100%')
             Row({ space: 10 }) {
-              Column({ space: 6 }) {
-                Text('🖼').fontSize(22)
-                Text(L.t('图片', 'Photo')).fontSize(Theme.fSmall).fontColor(Theme.text)
-                Text(L.t('相册图片', 'Gallery photos')).fontSize(9).fontColor(Theme.textFaint)
-              }
-              .layoutWeight(1)
-              .padding({ top: 14, bottom: 14 })
-              .backgroundColor(Theme.surfaceAlt)
-              .borderRadius(Theme.rMd)
-              .onClick(() => {
-                this.pickImage();
-              })
-              Column({ space: 6 }) {
-                Text('📄').fontSize(22)
-                Text(L.t('文件', 'File')).fontSize(Theme.fSmall).fontColor(Theme.text)
-                Text(L.t('PDF/Office/文本/代码/图片', 'PDF, Office, text, code, images'))
-                  .fontSize(9)
-                  .fontColor(Theme.textFaint)
-                  .textAlign(TextAlign.Center)
-              }
-              .layoutWeight(1)
-              .padding({ top: 14, bottom: 14 })
-              .backgroundColor(Theme.surfaceAlt)
-              .borderRadius(Theme.rMd)
-              .onClick(() => {
-                this.pickFile();
-              })
+              Text('📎').fontSize(20)
+              Text(L.t('选择文件', 'Choose file')).fontSize(Theme.fSmall).fontColor(Theme.text)
+                .layoutWeight(1)
+              Text('›').fontSize(14).fontColor(Theme.textFaint)
             }
             .width('100%')
+            .padding({ left: 14, right: 12, top: 14, bottom: 14 })
+            .backgroundColor(Theme.surfaceAlt)
+            .borderRadius(Theme.rMd)
+            .onClick(() => {
+              this.pickAttachmentAny();
+            })
           }
           .width('100%')
           .padding({ left: 20, right: 20, top: 18, bottom: 24 })

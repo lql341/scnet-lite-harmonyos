@@ -360,12 +360,7 @@ struct Login {
 
       Blank().layoutWeight(2)
 
-      Text('非官方客户端 · 仅调用公开接口')
-        .fontSize(10)
-        .fontColor(Theme.textFaint)
-        .width('100%')
-        .textAlign(TextAlign.Center)
-        .padding({ bottom: 8 })
+      Blank().height(18)
     }
     .width('100%')
     .height('100%')

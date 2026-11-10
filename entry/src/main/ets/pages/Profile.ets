@@ -15,6 +15,24 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 
 const TAG: string = 'SCNetLite';
 
+/** 知名 provider 预设：点一下填好 baseUrl / 模型名，用户只需补 API Key。 */
+interface ProviderPreset {
+  name: string;
+  baseUrl: string;
+  model: string;
+  hint: string;
+}
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', hint: 'platform.deepseek.com' },
+  { name: 'Moonshot', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k', hint: 'platform.moonshot.cn' },
+  { name: '阿里通义', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', hint: 'bailian.console.aliyun.com' },
+  { name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-plus', hint: 'bigmodel.cn' },
+  { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', hint: 'platform.openai.com' },
+  { name: 'SiliconFlow', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-72B-Instruct', hint: 'siliconflow.cn' },
+  { name: 'Ollama 本地', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5', hint: '本地无需 key' }
+];
+
 /** 信息行。⚠️ 不能用 @Builder(label, value) 渲染：ArkUI 的 @Builder 按值传参
  *  不会随状态刷新，数据到了 UI 还是旧值（踩过）。用 @State 数组 + ForEach。 */
 interface InfoRow {
@@ -40,6 +58,7 @@ struct Profile {
   @State avatar: string = '';
   @State showAvatarSheet: boolean = false;
   @State showProviderSheet: boolean = false;
+  @State showAbout: boolean = false;
   @State cpName: string = '';
   @State cpUrl: string = '';
   @State cpKey: string = '';
@@ -147,9 +166,14 @@ struct Profile {
             `${this.clusterName} (${this.clusters.length})`) : ''
       },
       { label: L.t('当前通道', 'Channel'), value: this.channelLabel() },
-      { label: L.t('网关 key', 'Gateway key'), value: this.maskedKey() }
+      { label: L.t('集群调度器', 'Scheduler'), value: this.agentRoute() }
     ];
     this.rows = rows;
+  }
+
+  /** 当前通道/服务（替代原来暴露网关 key 那一行）。 */
+  private agentRoute(): string {
+    return store.getChannel() === 'agent' ? L.t('智能体服务', 'Agent router') : L.t('模型网关', 'Model gateway');
   }
 
   private maskedKey(): string {
@@ -276,27 +300,6 @@ struct Profile {
               this.showProviderSheet = true;
             })
 
-            // 充值 / 控制台
-            Row({ space: 10 }) {
-              Text(L.t('充值 / 控制台', 'Recharge / Console')).fontSize(Theme.fSmall).fontColor(Theme.text)
-                .layoutWeight(1)
-              Text('›').fontSize(13).fontColor(Theme.textFaint)
-            }
-            .width('100%')
-            .padding({ left: 14, right: 12, top: 14, bottom: 14 })
-            .backgroundColor(Theme.surface)
-            .borderRadius(Theme.rMd)
-            .border({ width: 1, color: Theme.hairline })
-            .onClick(() => {
-              router.pushUrl({
-                url: 'pages/WebPage',
-                params: {
-                  url: 'https://www.scnet.cn/ui/console/index.html',
-                  title: L.t('控制台', 'Console')
-                }
-              });
-            })
-
             // 外观
             Row({ space: 10 }) {
               Text(L.t('主题色', 'Theme')).fontSize(Theme.fSmall).fontColor(Theme.text).layoutWeight(1)
@@ -371,6 +374,40 @@ struct Profile {
             .borderRadius(Theme.rMd)
             .border({ width: 1, color: Theme.hairline })
 
+            // 检查更新 / 关于
+            Row({ space: 10 }) {
+              Text(L.t('检查更新', 'Check for updates')).fontSize(Theme.fSmall).fontColor(Theme.text)
+                .layoutWeight(1)
+              Text('›').fontSize(13).fontColor(Theme.textFaint)
+            }
+            .width('100%')
+            .padding({ left: 14, right: 12, top: 14, bottom: 14 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+            .onClick(() => {
+              router.pushUrl({
+                url: 'pages/WebPage',
+                params: {
+                  url: 'https://github.com/lql341/scnet-lite-harmonyos/releases',
+                  title: L.t('检查更新', 'Check for updates')
+                }
+              });
+            })
+
+            Row({ space: 10 }) {
+              Text(L.t('关于', 'About')).fontSize(Theme.fSmall).fontColor(Theme.text).layoutWeight(1)
+              Text('SCNet 智能体').fontSize(Theme.fTiny).fontColor(Theme.textFaint)
+            }
+            .width('100%')
+            .padding({ left: 14, right: 12, top: 14, bottom: 14 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
+            .onClick(() => {
+              this.showAbout = true;
+            })
+
             Text(L.t('退出登录', 'Sign out'))
               .fontSize(Theme.fSmall)
               .fontColor(Theme.danger)
@@ -385,12 +422,6 @@ struct Profile {
                 });
               })
 
-            Text('非官方客户端 · 仅调用公开接口')
-              .fontSize(10)
-              .fontColor(Theme.textFaint)
-              .width('100%')
-              .textAlign(TextAlign.Center)
-              .padding({ top: 4, bottom: 20 })
           }
           .width('100%')
           .padding({ left: 16, right: 16 })
@@ -482,6 +513,81 @@ struct Profile {
         .backgroundColor('#0B1F3355')
       }
 
+      if (this.showAbout) {
+        Column() {
+          Blank().layoutWeight(1).width('100%').onClick(() => {
+            this.showAbout = false;
+          })
+          Column({ space: 12 }) {
+            Image($r('app.media.app_icon'))
+              .width(56)
+              .height(56)
+              .borderRadius(14)
+            Text(L.t('SCNet 智能体', 'SCNet Agent'))
+              .fontSize(Theme.fTitle)
+              .fontFamily(Theme.fontDisplay)
+              .fontColor(Theme.text)
+            Text(L.t('非官方客户端，仅调用公开接口', 'Unofficial client, public APIs only'))
+              .fontSize(10)
+              .fontColor(Theme.textFaint)
+
+            Divider().color(Theme.hairline).margin({ top: 4, bottom: 4 })
+
+            Row({ space: 10 }) {
+              Text(L.t('作者', 'Author')).fontSize(Theme.fSmall).fontColor(Theme.textFaint).width(72)
+              Text('lql341').fontSize(Theme.fSmall).fontColor(Theme.text).layoutWeight(1)
+            }
+            .width('100%')
+            Row({ space: 10 }) {
+              Text('GitHub').fontSize(Theme.fSmall).fontColor(Theme.textFaint).width(72)
+              Text('github.com/lql341').fontSize(Theme.fSmall).fontColor(Theme.accent).layoutWeight(1)
+                .onClick(() => {
+                  router.pushUrl({
+                    url: 'pages/WebPage',
+                    params: { url: 'https://github.com/lql341', title: 'lql341' }
+                  });
+                })
+            }
+            .width('100%')
+            Row({ space: 10 }) {
+              Text(L.t('项目', 'Project')).fontSize(Theme.fSmall).fontColor(Theme.textFaint).width(72)
+              Text('scnet-lite-harmonyos').fontSize(Theme.fSmall).fontColor(Theme.accent).layoutWeight(1)
+                .onClick(() => {
+                  router.pushUrl({
+                    url: 'pages/WebPage',
+                    params: {
+                      url: 'https://github.com/lql341/scnet-lite-harmonyos',
+                      title: 'scnet-lite-harmonyos'
+                    }
+                  });
+                })
+            }
+            .width('100%')
+
+            Text(L.t('关闭', 'Close'))
+              .fontSize(Theme.fSmall)
+              .fontColor(Theme.textOnAccent)
+              .width('100%')
+              .textAlign(TextAlign.Center)
+              .padding({ top: 10, bottom: 10 })
+              .backgroundColor(Theme.accent)
+              .borderRadius(Theme.rSm)
+              .onClick(() => {
+                this.showAbout = false;
+              })
+          }
+          .width('100%')
+          .padding({ left: 24, right: 24, top: 22, bottom: 26 })
+          .backgroundColor(Theme.surface)
+          .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl })
+          .shadow(Theme.shadowSheet)
+          .alignItems(HorizontalAlign.Center)
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#0B1F3355')
+      }
+
       if (this.showProviderSheet) {
         Column() {
           Blank().layoutWeight(1).width('100%').onClick(() => {
@@ -498,6 +604,27 @@ struct Profile {
               .fontSize(10)
               .fontColor(Theme.textFaint)
               .width('100%')
+
+            Scroll() {
+              Row({ space: 8 }) {
+                ForEach(PROVIDER_PRESETS, (preset: ProviderPreset) => {
+                  Text(preset.name)
+                    .fontSize(Theme.fTiny)
+                    .fontColor(this.cpName === preset.name ? Theme.textOnAccent : Theme.textSub)
+                    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                    .backgroundColor(this.cpName === preset.name ? Theme.accent : Theme.surfaceAlt)
+                    .borderRadius(Theme.rPill)
+                    .onClick(() => {
+                      this.cpName = preset.name;
+                      this.cpUrl = preset.baseUrl;
+                      this.cpModel = preset.model;
+                    })
+                }, (preset: ProviderPreset) => preset.name)
+              }
+            }
+            .scrollable(ScrollDirection.Horizontal)
+            .scrollBar(BarState.Off)
+            .width('100%')
 
             TextInput({ text: this.cpName, placeholder: L.t('名称（如 deepseek）', 'Name') })
               .height(40).fontSize(Theme.fSmall).backgroundColor(Theme.surfaceAlt)

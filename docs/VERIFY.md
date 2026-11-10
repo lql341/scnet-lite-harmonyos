@@ -188,6 +188,23 @@ MIME 表在 `service/Upload.ets:mimeOf()`，新增格式在那里加一行即可
 > 头像改动后顶栏与抽屉会同步（`Index.onPageShow()` 重读 `store.getAvatar()`，
 > 实测 🐼→🦊 切换后右上角立即变化，hilog `avatar preset applied id=1`）。
 
+## 2026-11-10 用户第 2 轮反馈（已改，真机已验证的标注 ✅）
+
+| 项 | 结果 |
+| --- | --- |
+| 附件不再分「图片/文件」 | ✅ 合并成单一「选择文件」，过滤条件里包含图片后缀 |
+| 新会话 banner 去掉 | ✅ 已移除（`recommendAD` 拉取保留在 Scenes 里，随时可恢复） |
+| 左侧「应用商城」入口去掉 | ✅ 已移除（手机端 `/ui/mall` 不是移动适配） |
+| 自定义模型加知名 provider 预设 | ✅ DeepSeek / Moonshot / 阿里通义 / 智谱 GLM / OpenAI / SiliconFlow / Ollama，点一下填好 baseUrl+model |
+| 设置里不显示网关 key | ✅ 换成「集群调度器 / 当前通道」 |
+| 「充值 / 控制台」去掉 | ✅ 已移除 |
+| 应用图标 + 主会话 logo 改回原 SCNet | ✅ `git checkout 9b98233 -- app_icon.png startIcon.png` |
+| 设置页「检查更新」→ GitHub Releases | ✅ 真机（内嵌打开 github.com/lql341/scnet-lite-harmonyos/releases） |
+| 设置页「关于」→ 作者 lql341 + GitHub 主页 | ✅ 真机（面板含图标/作者/GitHub/项目链接，均可点） |
+| 登录页「非官方客户端」小字去掉 | ✅ 已移除 |
+| 会话主窗口 AI 风险提示 | ✅ 空状态常驻一行「AI 生成内容可能不准确…请自行核实」 |
+| 设置页顺序 | ✅ 自定义模型 → 主题 → 字号 → 语言 → 检查更新 → 关于 → 退出登录 |
+
 ## 环境问题（会挡住后来者）
 
 `hdc` 需要 udev 规则才能以普通用户访问 USB 设备，否则 `hdc list targets` 一直是 `[Empty]`：
