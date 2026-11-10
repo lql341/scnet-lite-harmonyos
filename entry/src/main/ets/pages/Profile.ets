@@ -345,6 +345,9 @@ struct Profile {
                       }
                       Theme.applyDark(m === 'dark');
                       Theme.bumpRev();
+                      // 外观属于「静态色值」改动：标记后返回时用 replaceUrl 重建 Index，
+                      // 否则 router.back() 回来的旧页面不会重新求值颜色。
+                      this.themeChanged = true;
                       router.replaceUrl({ url: 'pages/Profile' });
                     })
                 }, (m: string) => m)

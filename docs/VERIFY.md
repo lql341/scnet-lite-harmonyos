@@ -205,6 +205,32 @@ MIME 表在 `service/Upload.ets:mimeOf()`，新增格式在那里加一行即可
 | 会话主窗口 AI 风险提示 | ✅ 空状态常驻一行「AI 生成内容可能不准确…请自行核实」 |
 | 设置页顺序 | ✅ 自定义模型 → 主题 → 字号 → 语言 → 检查更新 → 关于 → 退出登录 |
 
+## 2026-11-10 全量回归（用户授权后整体测试）
+
+| # | 用例 | 结果 |
+| --- | --- | --- |
+| 1 | 构建 `assembleHap` | ✅ 无 ERROR |
+| 2 | 单元测试 | ✅ 51/51（Markdown 30 / SSE 10 / 裁剪 13 / HMAC 8） |
+| 3 | 深色模式（设置→外观→深色） | ✅ 背景/卡片/文字/主色/状态栏全部切换 |
+| 4 | 深色下表格 + 正文 | 🐞 **发现 bug**：Markdown 内容保留深色文字色 → 已修（见下） |
+| 5 | 切回浅色 | 🐞 **发现 bug**：表格标题/正文变近白不可见 → 已修 |
+| 6 | 新会话首页 | ✅ 7 类场景 + AI 风险提示卡，banner 已移除 |
+| 7 | 对话出字（智能体通道） | ✅ 流式 + 生成中指示 + 停止按钮 |
+| 8 | Markdown 表格 | ✅ 表头 + 行标题 + 双列对照 + 斑马纹 |
+| 9 | 算力服务（昆山） | ✅ 6 队列 / 作业列表 |
+| 10 | 文件浏览 | ✅ 31 目录，可逐级进入 |
+| 11 | 插件市场精选 | ✅ `featured picked: 8`（必应/FreeCAD/Fetch/Blender/COMSOL/MATLAB…） |
+| 12 | OCR 自检 | ✅ `ocr selftest ok trace=c2b68c2f969c444b` |
+| 13 | 崩溃扫描（全流程后） | ✅ JSCRASH / Fatal / TypeError 均无 |
+
+### 这轮修掉的 2 个 bug（都是深色模式相关）
+
+1. **深色下 Markdown 变暗**：`MarkdownView` 是子组件，静态 `Theme.xxx` 不参与依赖追踪，
+   父级 `bumpRev` 重建时它没跟着重建 → 给 `MarkdownView` 加 `@Prop rev` 并作根 `.key()`。
+2. **切回浅色后文字近白**：从设置页 `router.back()` 回到的是**已有**的 Index 实例，
+   它的 `themeRev` 还是旧值 → `onPageShow()` 里对比 `store.getColorMode()` 与 `Theme.dark`，
+   不一致就 `applyDark` + `bumpRev` 强制重建。
+
 ## 环境问题（会挡住后来者）
 
 `hdc` 需要 udev 规则才能以普通用户访问 USB 设备，否则 `hdc list targets` 一直是 `[Empty]`：

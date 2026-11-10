@@ -13,6 +13,8 @@ export struct MarkdownView {
   @Prop content: string = '';
   /** 流式输出中：末尾画一个光标块 */
   @Prop streaming: boolean = false;
+  /** 主题版本：变化时强制重建，否则内部静态 Theme 色值不会重新求值 */
+  @Prop rev: number = 0;
   @State copiedIndex: number = -1;
 
   private async copyCode(code: string, index: number): Promise<void> {
@@ -259,5 +261,6 @@ export struct MarkdownView {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
+    .key(`md-${this.rev}-${this.streaming}`)
   }
 }

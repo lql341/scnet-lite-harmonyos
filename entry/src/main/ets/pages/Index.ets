@@ -175,6 +175,19 @@ struct Index {
   onPageShow(): void {
     // 从设置页返回时刷新头像（顶栏与抽屉共用 this.avatar，改完要重新读一次）
     this.avatar = store.getAvatar();
+    // 外观（深色/浅色）或配色可能在设置页改过：这里对比一次，
+    // 不一致就 bumpRev 强制重建整棵树 —— 否则 Markdown 内容会保留旧文字色
+    // （实测：深色切回浅色后，表格标题/正文变成近白，看不清）。
+    const mode: string = store.getColorMode();
+    // system 模式不在这里判断（系统切换由 onConfigurationUpdate 处理）
+    const wantDark: boolean = mode === 'dark';
+    const paletteChanged: boolean = Theme.paletteId !== store.getTheme();
+    if ((mode !== 'system' && wantDark !== Theme.dark) || paletteChanged) {
+      Theme.applyPalette(paletteChanged ? store.getTheme() : Theme.paletteId);
+      Theme.applyDark(wantDark);
+      Theme.bumpRev();
+      hilog.info(0x0000, TAG, 'appearance changed on return: dark=%{public}s', String(wantDark));
+    }
     // OCR 页「发送到对话」会把文字带回来
     const params = router.getParams() as Record<string, string> | undefined;
     if (params !== undefined && params !== null && params['prefill'] !== undefined) {
@@ -904,7 +917,7 @@ struct Index {
       .padding({ left: 4 })
 
       Column() {
-        MarkdownView({ content: content, streaming: isStreaming })
+        MarkdownView({ content: content, streaming: isStreaming, rev: this.themeRev })
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
