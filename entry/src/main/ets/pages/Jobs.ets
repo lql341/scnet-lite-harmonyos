@@ -264,12 +264,12 @@ struct Jobs {
         .margin({ top: 8, bottom: 8 })
       Row() {
         Column({ space: 2 }) {
-          Text(L.t('HPC 凭据', 'HPC credentials'))
+          Text(L.t('算力密钥', 'Compute key'))
             .fontSize(Theme.fTitle)
             .fontFamily(Theme.fontDisplay)
             .fontColor(Theme.text)
-          Text(L.t('在控制台「个人设置 → AccessKey」获取，仅存本机',
-            'Get it in console → AccessKey; stored locally'))
+          Text(L.t('提交作业需要平台的 AccessKey 与 SecretKey。在网页控制台「个人设置 → AccessKey」获取，仅存本机。',
+            'Jobs need your platform AccessKey + SecretKey (console → AccessKey). Stored locally only.'))
             .fontSize(Theme.fTiny)
             .fontColor(Theme.textFaint)
         }
@@ -293,7 +293,7 @@ struct Jobs {
       Column({ space: 8 }) {
         // 一次粘贴 AK:SK（避免两个输入框重复输入导致签名失败）
         TextArea({ text: this.pasted, placeholder: L.t(
-          '粘贴 AccessKey:SecretKey', 'Paste AccessKey:SecretKey') })
+          '粘贴算力密钥（AccessKey:SecretKey）', 'Paste AccessKey:SecretKey') })
           .height(64)
           .fontSize(Theme.fTiny)
           .backgroundColor(Theme.surfaceAlt)
@@ -405,7 +405,7 @@ struct Jobs {
             .onClick(() => {
               router.pushUrl({ url: 'pages/JobSubmit' });
             })
-          Text('AK')
+          Text(L.t('算力密钥', 'Key'))
             .fontSize(Theme.fTiny)
             .fontColor(Theme.accent)
             .padding({ left: 10, right: 10, top: 5, bottom: 5 })
@@ -431,15 +431,15 @@ struct Jobs {
           .justifyContent(FlexAlign.Center)
         } else if (this.needCreds) {
           Column({ space: 12 }) {
-            Text(L.t('需要配置 HPC 凭据', 'HPC credentials required'))
+            Text(L.t('需要配置算力密钥', 'Compute key required'))
               .fontSize(Theme.fBody)
               .fontColor(Theme.text)
-            Text(L.t('作业面走 OpenAPI（AK/SK 签名），与聊天凭据是两套。',
-              'The jobs page uses OpenAPI (AK/SK), separate from chat auth.'))
+            Text(L.t('查看/提交作业要用平台的 AccessKey + SecretKey（与聊天登录是两套凭据）。',
+              'Jobs use platform AccessKey + SecretKey (separate from chat sign-in).'))
               .fontSize(Theme.fSmall)
               .fontColor(Theme.textFaint)
               .textAlign(TextAlign.Center)
-            Text(L.t('填写 AK/SK', 'Add AK/SK'))
+            Text(L.t('填写算力密钥', 'Add compute key'))
               .fontSize(Theme.fSmall)
               .fontColor(Theme.textOnAccent)
               .padding({ left: 18, right: 18, top: 10, bottom: 10 })

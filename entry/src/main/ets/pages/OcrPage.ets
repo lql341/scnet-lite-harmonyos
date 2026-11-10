@@ -297,21 +297,15 @@ recognition enums. Opening the platform page inside the app instead of faking a 
                 .objectFit(ImageFit.Contain)
                 .backgroundColor(Theme.surfaceAlt)
             } else {
-              Column({ space: 6 }) {
-                Text('＋').fontSize(26).fontColor(Theme.textFaint)
-                Text(L.t('选择图片', 'Choose image'))
-                  .fontSize(Theme.fSmall)
-                  .fontColor(Theme.textSub)
-              }
-              .width('100%')
-              .height(150)
-              .justifyContent(FlexAlign.Center)
-              .backgroundColor(Theme.surfaceAlt)
-              .borderRadius(Theme.rMd)
-              .onClick(() => {
-                this.pickImage();
-              })
+              // 未选文件：只放一行提示，不再放大加号（下面已有「选图片 / 选 PDF」按钮）
+              Text(L.t('还没有选择文件 · 支持图片与 PDF', 'No file selected · images or PDF'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.textFaint)
+                .width('100%')
+                .textAlign(TextAlign.Center)
+                .padding({ top: 18, bottom: 10 })
             }
+
             Row({ space: 8 }) {
               Text(L.t('选图片', 'Image'))
                 .fontSize(Theme.fSmall)
@@ -431,6 +425,7 @@ recognition enums. Opening the platform page inside the app instead of faking a 
       }
       .layoutWeight(1)
       .width('100%')
+      .align(Alignment.Top)
       .scrollBar(BarState.Off)
     }
     .width('100%')
