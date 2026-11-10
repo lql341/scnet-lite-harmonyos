@@ -589,6 +589,57 @@ class Hpc {
     }
   }
 
+  /**
+   * 作业详情（`GET /hpc/openapi/v2/jobs/{id}`，实测）。
+   * 关键字段：jobStatus / jobSubmitTime / jobStartTime / jobEndTime / exitCode /
+   *          nodeUsed / procNumUsed / gpuNumUsed / dcuNumUsed / outputPath / errorPath / workDir
+   */
+  async jobDetail(ctx: HpcContext, jobId: string): Promise<Record<string, Object> | null> {
+    try {
+      const resp: Envelope = await this.getJson(
+        `${ctx.hpcUrl}/hpc/openapi/v2/jobs/${encodeURIComponent(jobId)}`, ctx.token);
+      const data = resp.data as Record<string, Object>;
+      return data === undefined || data === null ? null : data;
+    } catch (e) {
+      hilog.warn(0x0000, TAG, 'job detail failed');
+      return null;
+    }
+  }
+
+  /**
+   * 取消作业（`DELETE /hpc/openapi/v2/jobs` + form）。
+   * `strJobInfoMap=<scheduler>,<user>:<jobId>:`
+   * ⚠️ 服务端对不存在的 jobId 也回 code 0，所以只能靠调用前的确认弹层防误操作。
+   */
+  async cancel(ctx: HpcContext, jobId: string): Promise<void> {
+    const head: Record<string, string> = {
+      'token': ctx.token,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    };
+    const form: string = `jobMethod=5&strJobInfoMap=${encodeURIComponent(
+      `${ctx.schedulerId},${ctx.userName}:${jobId}:`)}`;
+    const options: http.HttpRequestOptions = {
+      method: http.RequestMethod.DELETE,
+      header: head,
+      extraData: form,
+      expectDataType: http.HttpDataType.STRING,
+      connectTimeout: 20000,
+      readTimeout: 60000
+    };
+    const client: http.HttpRequest = http.createHttp();
+    try {
+      const resp = await client.request(`${ctx.hpcUrl}/hpc/openapi/v2/jobs`, options);
+      const text: string = typeof resp.result === 'string' ? resp.result as string : '';
+      const env: Envelope = JSON.parse(text) as Envelope;
+      if (env.code !== undefined && String(env.code) !== '0') {
+        throw new HpcError(String(env.code), env.msg ?? '取消失败');
+      }
+      hilog.info(0x0000, TAG, 'job cancelled %{public}s', jobId);
+    } finally {
+      client.destroy();
+    }
+  }
+
   /** 运行中作业。平台侧偶发 10001（internal_error），这里向上抛由 UI 展示。 */
   async jobs(ctx: HpcContext, limit: number): Promise<Record<string, Object>[]> {
     const url: string = `${ctx.hpcUrl}/hpc/openapi/v2/jobs?strClusterIDList=${encodeURIComponent(ctx.schedulerId)}` +

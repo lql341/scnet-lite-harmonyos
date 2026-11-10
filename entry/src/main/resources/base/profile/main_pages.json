@@ -9,6 +9,7 @@
     "pages/OcrPage",
     "pages/MarketPage",
     "pages/JobSubmit",
-    "pages/Files"
+    "pages/Files",
+    "pages/JobDetail"
   ]
 }

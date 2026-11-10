@@ -582,6 +582,9 @@ struct Jobs {
                     }
                     .width('100%')
                     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+                    .onClick(() => {
+                      router.pushUrl({ url: 'pages/JobDetail', params: { jobId: job.id } });
+                    })
                     if (index < this.jobs.length - 1) {
                       Divider().color(Theme.hairline)
                     }
