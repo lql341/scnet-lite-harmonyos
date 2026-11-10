@@ -12,7 +12,8 @@ import { UserInfo } from '../model/Types';
 import { ThemeSheet } from '../view/ThemeSheet';
 import { AVATAR_PRESETS, Avatar, AvatarPreset, presetsOf, AvatarStyle } from '../view/Avatar';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
-import { bundleManager } from '@kit.AbilityKit';
+import { bundleManager, ConfigurationConstant } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit';
 
 const TAG: string = 'SCNetLite';
 
@@ -62,6 +63,7 @@ struct Profile {
   @State showAbout: boolean = false;
   /** 当前应用版本（启动时读一次） */
   @State appVersion: string = '';
+  @State colorMode: string = 'system';
   @State cpName: string = '';
   @State cpUrl: string = '';
   @State cpKey: string = '';
@@ -83,6 +85,7 @@ struct Profile {
     Theme.applyFontLevel(store.getFontLevel());
     L.zh = store.getLang() !== 'en';
     this.appVersion = this.readVersion();
+    this.colorMode = store.getColorMode();
     this.avatar = store.getAvatar();
     this.cpName = store.getCustomName();
     this.cpUrl = store.getCustomBaseUrl();
@@ -314,6 +317,44 @@ struct Profile {
             .onClick(() => {
               this.showProviderSheet = true;
             })
+
+            // 外观模式（浅色 / 深色 / 跟随系统）
+            Row({ space: 8 }) {
+              Text(L.t('外观', 'Appearance')).fontSize(Theme.fSmall).fontColor(Theme.text).layoutWeight(1)
+              Row({ space: 6 }) {
+                ForEach(['system', 'light', 'dark'], (m: string) => {
+                  Text(m === 'system' ? L.t('跟随', 'Auto')
+                    : (m === 'light' ? L.t('浅色', 'Light') : L.t('深色', 'Dark')))
+                    .fontSize(Theme.fTiny)
+                    .fontColor(this.colorMode === m ? Theme.textOnAccent : Theme.textSub)
+                    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                    .backgroundColor(this.colorMode === m ? Theme.accent : Theme.surfaceAlt)
+                    .borderRadius(Theme.rSm)
+                    .onClick(() => {
+                      this.colorMode = m;
+                      store.setColorMode(m);
+                      // 用系统级 setColorMode：既改应用深色，也影响系统组件（键盘/弹窗）
+                      try {
+                        const appCtx = getContext(this).getApplicationContext();
+                        appCtx.setColorMode(m === 'dark'
+                          ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+                          : (m === 'light' ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+                            : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET));
+                      } catch (e) {
+                        hilog.warn(0x0000, TAG, 'setColorMode failed');
+                      }
+                      Theme.applyDark(m === 'dark');
+                      Theme.bumpRev();
+                      router.replaceUrl({ url: 'pages/Profile' });
+                    })
+                }, (m: string) => m)
+              }
+            }
+            .width('100%')
+            .padding({ left: 14, right: 12, top: 12, bottom: 12 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
 
             // 外观
             Row({ space: 10 }) {

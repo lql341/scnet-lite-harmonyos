@@ -1,4 +1,4 @@
-import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, UIAbility, Want, ConfigurationConstant } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window, KeyboardAvoidMode } from '@kit.ArkUI';
 import { auth } from '../service/Auth';
@@ -18,6 +18,18 @@ export default class EntryAbility extends UIAbility {
     const loggedIn: boolean = auth.restore(this.context);
     // 主题必须在首帧之前应用，否则会先闪一下默认色
     Theme.applyPalette(store.getTheme());
+    // 颜色模式：system 跟随系统（Configuration.colorMode）
+    const mode: string = store.getColorMode();
+    let dark: boolean = mode === 'dark';
+    if (mode === 'system') {
+      try {
+        const cfg = this.context.config;
+        dark = cfg.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+      } catch (e) {
+        dark = false;
+      }
+    }
+    Theme.applyDark(dark);
     Theme.applyFontLevel(store.getFontLevel());
     L.zh = store.getLang() !== 'en';
     AppStorage.setOrCreate('themeVersion', 0);

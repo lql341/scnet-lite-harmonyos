@@ -26,6 +26,53 @@ import { scenes, SceneBoard, SceneTab, AdItem } from '../service/Scenes';
 
 const TAG: string = 'SCNetLite';
 
+/** LazyForEach 数据源：长会话只渲染可视区的消息。 */
+class MsgSource implements IDataSource {
+  private items: RenderMsg[] = [];
+  private listeners: DataChangeListener[] = [];
+
+  totalCount(): number {
+    return this.items.length;
+  }
+
+  getData(index: number): RenderMsg {
+    return this.items[index];
+  }
+
+  registerDataChangeListener(listener: DataChangeListener): void {
+    if (this.listeners.indexOf(listener) < 0) {
+      this.listeners.push(listener);
+    }
+  }
+
+  unregisterDataChangeListener(listener: DataChangeListener): void {
+    const idx: number = this.listeners.indexOf(listener);
+    if (idx >= 0) {
+      this.listeners.splice(idx, 1);
+    }
+  }
+
+  /** 整体替换（追加消息用 pushOne 更省）。 */
+  reset(items: RenderMsg[]): void {
+    this.items = items;
+    for (let i = 0; i < this.listeners.length; i++) {
+      this.listeners[i].onDataReloaded();
+    }
+  }
+
+  pushOne(item: RenderMsg): void {
+    const index: number = this.items.length;
+    this.items.push(item);
+    for (let i = 0; i < this.listeners.length; i++) {
+      this.listeners[i].onDataAdd(index);
+    }
+  }
+
+  snapshot(): RenderMsg[] {
+    return this.items;
+  }
+}
+
 interface RenderMsg {
   role: string;
   content: string;
@@ -59,6 +106,7 @@ const FALLBACK_SUGGEST: string[] = [
 @Component
 struct Index {
   @State messages: RenderMsg[] = [];
+  private msgSource: MsgSource = new MsgSource();
   @State input: string = '';
   @State streaming: string = '';
   @State progressText: string = '';
@@ -507,6 +555,7 @@ struct Index {
       restored.push(msgVia(item.role, item.content, item.via ?? ''));
     }
     this.messages = restored;
+    this.msgSource.reset(restored);
     this.currentSessionId = data.id;
     this.sessionTitle = data.title;
     this.currentCloudId = '';
@@ -545,6 +594,7 @@ struct Index {
     sessions.remove(meta.id);
     if (meta.id === this.currentSessionId) {
       this.messages = [];
+      this.msgSource.reset([]);
       this.currentSessionId = '';
     }
     this.localSessions = sessions.list();
@@ -580,6 +630,7 @@ struct Index {
         rendered.push(msg(m.role === 'user' ? 'user' : 'assistant', text));
       }
       this.messages = rendered;
+      this.msgSource.reset(rendered);
       this.currentCloudId = id;
       setTimeout(() => this.scrollToEnd(), 80);
     } catch (e) {
@@ -659,6 +710,7 @@ struct Index {
   private finishStream(): void {
     if (this.streaming.length > 0) {
       this.messages = this.messages.concat([msgVia('assistant', this.streaming, this.pendingVia)]);
+    this.msgSource.pushOne(msgVia('assistant', this.streaming, this.pendingVia));
     }
     this.streaming = '';
     this.progressText = '';
@@ -682,6 +734,7 @@ struct Index {
     this.currentCloudId = '';
     this.pendingVia = this.currentLabel();
     this.messages = this.messages.concat([msg('user', text)]);
+    this.msgSource.pushOne(msg('user', text));
     this.persistSession();
     this.scrollToEnd();
 
@@ -745,6 +798,7 @@ struct Index {
 
   private newChat(): void {
     this.messages = [];
+    this.msgSource.reset([]);
     this.streaming = '';
     this.errorMsg = '';
     this.currentCloudId = '';
@@ -1769,7 +1823,7 @@ struct Index {
           this.emptyState()
         } else {
           List({ space: 0, scroller: this.scroller }) {
-            ForEach(this.messages, (item: RenderMsg, index: number) => {
+            LazyForEach(this.msgSource, (item: RenderMsg) => {
               ListItem() {
                 if (item.role === 'user') {
                   this.userBubble(item.content)
@@ -1777,7 +1831,7 @@ struct Index {
                   this.assistantBubble(item.content, false, item.via ?? '')
                 }
               }
-            }, (item: RenderMsg, index: number) => `${index}-${item.role}-${item.content.length}`)
+            }, (item: RenderMsg) => `${item.role}-${item.content.length}-${item.content.substring(0, 12)}`)
 
             if (this.busy) {
               ListItem() {

@@ -97,6 +97,63 @@ export class Theme {
    * 切换主题。改完要让它生效：调用方 bump AppStorage('themeVersion')，
    * 订阅了该键的页面会重建，build 里读到的就是新颜色。
    */
+  /** 浅色基色（深色模式要在它的基础上反推，不能直接覆盖） */
+  private static lightAccent: string = '#C15F3C';
+  private static lightAccentDeep: string = '#A44A2C';
+  private static lightAccentSoft: string = '#F2E4DC';
+  private static lightAccentGhost: string = '#FAF3EF';
+
+  /** 'light' | 'dark'（已解析过，不是 system） */
+  static dark: boolean = false;
+
+  /**
+   * 深色模式底色。刻意不用纯黑：暖砂主题在 #15130F 上更协调，
+   * 文字用 '#F2EFEA' 而不是纯白，长时间看更舒服。
+   */
+  static applyDark(on: boolean): void {
+    Theme.dark = on;
+    if (on) {
+      Theme.bg = '#15130F';
+      Theme.surface = '#1F1C18';
+      Theme.surfaceAlt = '#2A2620';
+      Theme.surfaceSunken = '#332E27';
+      Theme.text = '#F2EFEA';
+      Theme.textSub = '#BDB6AC';
+      Theme.textFaint = '#8C857B';
+      Theme.border = '#3A342C';
+      Theme.hairline = '#2C2823';
+      // 主色在深色下要提亮一档，否则对比度不足
+      Theme.accent = Theme.lighten(Theme.lightAccent);
+      Theme.accentDeep = Theme.lightAccent;
+      Theme.accentSoft = '#3A2A22';
+      Theme.accentGhost = '#241C17';
+    } else {
+      Theme.restoreLight();
+    }
+  }
+
+  /** 恢复浅色（用记录下来的基色）。 */
+  static restoreLight(): void {
+    Theme.dark = false;
+    Theme.applyPalette(Theme.paletteId);
+  }
+
+  /** 把 #RRGGBB 提亮（深色模式主色用）。 */
+  private static lighten(hex: string): string {
+    if (hex.length !== 7) {
+      return hex;
+    }
+    const r: number = parseInt(hex.substring(1, 3), 16);
+    const g: number = parseInt(hex.substring(3, 5), 16);
+    const b: number = parseInt(hex.substring(5, 7), 16);
+    const mix = (v: number): number => Math.min(255, Math.round(v + (255 - v) * 0.28));
+    const toHex = (v: number): string => {
+      const h: string = v.toString(16);
+      return h.length === 1 ? `0${h}` : h;
+    };
+    return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+  }
+
   static applyPalette(id: string): void {
     let chosen: Palette | null = null;
     for (let i = 0; i < PALETTES.length; i++) {
@@ -122,6 +179,14 @@ export class Theme {
     Theme.textFaint = chosen.textFaint;
     Theme.border = chosen.border;
     Theme.hairline = chosen.hairline;
+    Theme.lightAccent = chosen.accent;
+    Theme.lightAccentDeep = chosen.accentDeep;
+    Theme.lightAccentSoft = chosen.accentSoft;
+    Theme.lightAccentGhost = chosen.accentGhost;
+    // 换配色时如果正处在深色模式，要重新套一次深色底色
+    if (Theme.dark) {
+      Theme.applyDark(true);
+    }
   }
 
   static bumpRev(): void {

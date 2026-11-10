@@ -100,49 +100,78 @@ export struct MarkdownView {
   }
 
   /**
-   * 表格在手机上不该横向滚（实测嵌套滚动抢手势，第三列会被截断）。
-   * 改成「每行一张卡」：首列做标题，其余按表头做 键:值 行 —— 窄屏可读性最好。
+   * 表格：手机上不做横向滚动（实测嵌套 Scroll 会被外层消息列表抢手势），
+   * 改成「一整张卡 + 行分隔」的紧凑表格：
+   *   - 表头一行深色底
+   *   - 每行「首列标题 + 其余列 键:值」
+   * 比逐行分开的卡片更像表格，也不会被截断。
    */
   @Builder
   table(block: MdBlock) {
-    Column({ space: 8 }) {
+    Column() {
+      // 表头
+      Row({ space: 8 }) {
+        ForEach(block.rows[0], (header: string, index: number) => {
+          Column() {
+            this.inline(header, Theme.fTiny, 16, Theme.textSub)
+          }
+          .layoutWeight(index === 0 ? 3 : 4)
+          .alignItems(HorizontalAlign.Start)
+          .padding({ left: index === 0 ? 12 : 4, right: 4, top: 8, bottom: 8 })
+        }, (header: string, index: number) => `h-${index}`)
+      }
+      .width('100%')
+      .backgroundColor(Theme.surfaceAlt)
+      .borderRadius({ topLeft: Theme.rMd, topRight: Theme.rMd })
+
+      Divider().color(Theme.hairline)
+
+      // 数据行
       ForEach(block.rows, (row: string[], rowIndex: number) => {
         if (rowIndex > 0) {
-          Column({ space: 5 }) {
+          Column({ space: 4 }) {
+            // 首列当行标题
             if (row.length > 0) {
               this.inline(row[0], Theme.mdBody - 1, Theme.mdLine - 6, Theme.text)
             }
-            ForEach(block.rows[0], (header: string, cellIndex: number) => {
-              if (cellIndex > 0 && cellIndex < row.length) {
-                Row({ space: 6 }) {
-                  Text(header)
-                    .fontSize(Theme.fTiny - 1)
-                    .fontColor(Theme.textFaint)
-                    .constraintSize({ maxWidth: 96 })
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Column() {
-                    this.inline(row[cellIndex], Theme.mdBody - 2, Theme.mdLine - 8, Theme.textSub)
+            // 其余列按表头列名展示
+            if (row.length > 1) {
+              Row({ space: 6 }) {
+                ForEach(block.rows[0], (header: string, cellIndex: number) => {
+                  if (cellIndex > 0 && cellIndex < row.length) {
+                    Column({ space: 2 }) {
+                      Text(header)
+                        .fontSize(Theme.fTiny - 1)
+                        .fontColor(Theme.textFaint)
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      this.inline(row[cellIndex], Theme.mdBody - 2, Theme.mdLine - 8, Theme.textSub)
+                    }
+                    .alignItems(HorizontalAlign.Start)
+                    .layoutWeight(1)
                   }
-                  .layoutWeight(1)
-                  .alignItems(HorizontalAlign.Start)
-                }
-                .width('100%')
-                .alignItems(VerticalAlign.Top)
+                }, (header: string, cellIndex: number) => `c-${rowIndex}-${cellIndex}`)
               }
-            }, (header: string, cellIndex: number) => `h-${rowIndex}-${cellIndex}`)
+              .width('100%')
+              .alignItems(VerticalAlign.Top)
+            }
           }
           .width('100%')
           .alignItems(HorizontalAlign.Start)
           .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-          .backgroundColor(Theme.surface)
-          .borderRadius(Theme.rMd)
-          .border({ width: 1, color: Theme.hairline })
+          .backgroundColor(rowIndex % 2 === 0 ? Theme.surfaceAlt : Color.Transparent)
+
+          if (rowIndex < block.rows.length - 1) {
+            Divider().color(Theme.hairline)
+          }
         }
       }, (row: string[], rowIndex: number) => `t-${rowIndex}`)
     }
     .width('100%')
-    .margin({ top: 4, bottom: 4 })
+    .clip(true)
+    .margin({ top: 6, bottom: 6 })
+    .borderRadius(Theme.rMd)
+    .border({ width: 1, color: Theme.border })
   }
 
   @Builder

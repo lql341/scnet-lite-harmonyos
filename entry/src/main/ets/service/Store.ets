@@ -17,6 +17,7 @@ const KEY_CLUSTER: string = 'clusterId';
 const KEY_USER_NAME: string = 'platformUserName';
 const KEY_HAD_SESSION: string = 'hadSession';
 const KEY_AVATAR: string = 'avatar';
+const KEY_COLOR_MODE: string = 'colorMode';
 const KEY_CP_NAME: string = 'customProviderName';
 const KEY_CP_URL: string = 'customProviderUrl';
 const KEY_CP_KEY: string = 'customProviderKey';
@@ -134,6 +135,15 @@ class Store {
     this.writeString(KEY_CP_KEY, '');
     this.writeString(KEY_CP_MODEL, '');
     this.writeString(KEY_MODEL_PROVIDER, 'platform');
+  }
+
+  /** 'system' | 'light' | 'dark' */
+  getColorMode(): string {
+    return this.readString(KEY_COLOR_MODE, 'system');
+  }
+
+  setColorMode(value: string): void {
+    this.writeString(KEY_COLOR_MODE, value);
   }
 
   /** 头像：'' = 用姓名首字；'preset:<id>' = 内置；'file:<uri>' = 用户选的图片 */
