@@ -11,3 +11,4 @@ signing
 dist/release/
 dist/android/work/
 *.idsig
+dist/android/test-classes/

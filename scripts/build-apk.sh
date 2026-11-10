@@ -22,6 +22,8 @@ OUT=${OUT:-$ROOT/dist/android}
 PKG=cn.scnet.agent
 VER_NAME=${VER_NAME:-0.4.0}
 VER_CODE=${VER_CODE:-5}
+# DEBUG=1 出可调试包（仅本机联调用：aapt2 --debug-mode → android:debuggable=true）
+DEBUG=${DEBUG:-0}
 ENTRY=${ENTRY:-https://www.scnet.cn/ui/chatbot/index.html}
 
 die() { printf '[err] %s\n' "$1" >&2; exit 1; }
@@ -32,7 +34,7 @@ note() { printf '[..] %s\n' "$1"; }
 # ---- 找 SDK ----
 SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
 if [[ -z $SDK || ! -d $SDK/platforms/android-34 ]]; then
-  for cand in "$HOME/Android/Sdk" "$HOME/android-sdk" /opt/android-sdk; do
+  for cand in "$HOME/android-sdk" "$HOME/Android/Sdk" /tmp/asdk/sdk /opt/android-sdk; do
     [[ -d $cand/platforms/android-34 ]] && SDK=$cand && break
   done
 fi
@@ -77,7 +79,10 @@ note "1/6 aapt2 compile（资源）"
 note "2/6 aapt2 link（manifest + 资源）"
 sed -e "s|@VER_NAME@|$VER_NAME|g" -e "s|@VER_CODE@|$VER_CODE|g" \
   "$SRC/AndroidManifest.xml" > "$OUT/work/AndroidManifest.xml"
+AAPT_DEBUG=""
+[[ $DEBUG -eq 1 ]] && AAPT_DEBUG="--debug-mode"
 "$BT/aapt2" link \
+  $AAPT_DEBUG \
   -o "$OUT/work/base.apk" \
   -I "$PLAT" \
   --manifest "$OUT/work/AndroidManifest.xml" \
@@ -102,7 +107,10 @@ note "5/6 合并 dex + zipalign"
 
 # ---- 6) 签名 ----
 note "6/6 apksigner（debug keystore）"
-KS=${APK_KEYSTORE:-$OUT/work/debug.keystore}
+# ⚠️ keystore 必须放在稳定路径：放在 $OUT 里会被下次构建删掉，导致每次签名 key 不同、
+# 用户无法覆盖升级（INSTALL_FAILED_UPDATE_INCOMPATIBLE）。默认放在 ~/.android 下。
+KS=${APK_KEYSTORE:-$HOME/.android/scnet-agent.keystore}
+mkdir -p "$(dirname "$KS")"
 if [[ ! -f $KS ]]; then
   keytool -genkeypair -keystore "$KS" -storepass android -keypass android \
     -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \

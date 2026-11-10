@@ -283,10 +283,34 @@ Gradle + AndroidX 依赖解析会把构建绑死在网络上；直接用框架�
 | 项 | 状态 |
 | --- | --- |
 | 构建（无须 Gradle，约 8 s） | ✅ `scripts/build-apk.sh` |
-| 签名 / 结构 | ✅ `apksigner verify`、`aapt2 dump badging`（minSdk 24 / target 34） |
+| 签名 / 结构 | ✅ `apksigner verify`、`aapt2 dump badging`（minSdk 24 / target 34，release 包不可调试） |
 | 核心逻辑单测 | ✅ `scripts/test-android.sh` **43/43**（Markdown / SSE / 裁剪 / HMAC） |
-| 装机运行 | ❌ 本机无 Android 设备；模拟器镜像下载太慢（未完成） |
-| 真机功能回归 | ❌ 待做（登录 / 出字 / 停止 / 作业 / OCR） |
+| **装机运行（Android 11 / API 30 模拟器）** | ✅ 见下 |
+| 真实账号登录 / 出字 / 作业提交 | ❌ 需要真机 + 真实账号 |
+
+模拟器上跑过的（2026-11-11，`system-images;android-30;default;x86_64`，1080×2340）：
+
+| 场景 | 结果 |
+| --- | --- |
+| 冷启动 → 未登录跳登录页 | ✅ 817 ms 显示，无崩溃 |
+| 登录页渲染（品牌区/分段 Tab/表单/免责） | ✅ |
+| 主界面空状态（场景分类 chips + 推荐问题） | ✅ 场景目录来自内置 `scenarios.json` |
+| 抽屉（账号卡/新对话/本地会话/平台历史/6 个入口/退出） | ✅ |
+| 发消息 → 网络失败 → 顶部错误卡 + 消息气泡 | ✅ 文案可读（DNS 解析失败直出） |
+| 本地会话落盘 + 重启后仍在抽屉里 | ✅ `files/sessions/*.json` |
+| Markdown 渲染（标题/粗斜/行内码/链接/列表/引用/表格/代码块+复制/分隔线） | ✅ 截图比对通过 |
+| 设置页 + 深色模式切换（重新着色整个界面） | ✅ |
+| 作业页未配置 AK/SK 的引导卡 | ✅ |
+| AI 社区 / 市场 空态 | ✅ 不崩、给"0 个"提示 |
+| 覆盖安装升级（同一 keystore） | ✅ `adb install -r` |
+
+模拟器上抓出来并修掉的 3 个真问题：
+
+1. **签名 keystore 每次构建都变**（放在会被 `rm -rf` 的构建目录里）→ 用户升级报
+   `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。已改到 `~/.android/scnet-agent.keystore`。
+2. **底部面板高度算错**：Dialog 是 `wrap_content`，ScrollView 用 `weight=1` 会算出 0 高；
+   现在按内容量测 + 上限屏幕 55%。
+3. **401 回调在后台线程动 UI** → 已切主线程。
 
 ### 9.3 剩下的活（真机回归 + 打磨，约 3-5 天）
 

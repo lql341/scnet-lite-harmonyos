@@ -112,13 +112,14 @@ public final class Sheet {
         LinearLayout list = new LinearLayout(context);
         list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding(0, 0, 0, 0);
-        ScrollView scroll = new ScrollView(context);
+        final ScrollView scroll = new ScrollView(context);
         scroll.addView(list);
-        // Dialog 的高度是 wrap_content，用 weight 会算出 0；这里给一个固定上限（屏幕 55%）
-        int maxList = Math.max(Ui.dpInt(context, 160),
+        // Dialog 高度是 wrap_content，用 weight 会算出 0；这里按内容量测高度、上限屏幕 55%
+        final int maxList = Math.max(Ui.dpInt(context, 160),
                 (int) (context.getResources().getDisplayMetrics().heightPixels * 0.55f));
+        final int minList = Ui.dpInt(context, 72);
         root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                maxList));
+                minList));
 
         final Context ctx = context;
         final List<Item> all = items == null ? new ArrayList<Item>() : items;
@@ -181,6 +182,16 @@ public final class Sheet {
                     });
                     list.addView(row);
                 }
+                // 内容少时贴合内容，内容多时封顶可滚动
+                int width = context.getResources().getDisplayMetrics().widthPixels
+                        - Ui.dpInt(context, 32);
+                list.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.AT_MOST),
+                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+                int wanted = list.getMeasuredHeight();
+                ViewGroup.LayoutParams lp = scroll.getLayoutParams();
+                lp.height = Math.max(minList, Math.min(maxList, wanted));
+                scroll.setLayoutParams(lp);
+
                 if (list.getChildCount() == 0) {
                     TextView empty = Ui.label(ctx, Ui.t("没有匹配的项", "No match"), 13f, Ui.textFaint);
                     empty.setPadding(Ui.dpInt(ctx, 18), Ui.dpInt(ctx, 16), Ui.dpInt(ctx, 18),
