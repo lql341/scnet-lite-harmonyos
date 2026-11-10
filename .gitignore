@@ -6,3 +6,8 @@ local.properties
 *.cer
 *.p7b
 signing
+
+# 构建产物 / 发布物料（走 GitHub Releases，不进仓库）
+dist/release/
+dist/android/work/
+*.idsig

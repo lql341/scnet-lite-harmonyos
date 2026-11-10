@@ -20,8 +20,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/android
 OUT=${OUT:-$ROOT/dist/android}
 PKG=cn.scnet.agent
-VER_NAME=${VER_NAME:-0.1.0-webview}
-VER_CODE=${VER_CODE:-1}
+VER_NAME=${VER_NAME:-0.2.0-webview}
+VER_CODE=${VER_CODE:-2}
 ENTRY=${ENTRY:-https://www.scnet.cn/ui/chatbot/index.html}
 
 die() { printf '[err] %s\n' "$1" >&2; exit 1; }
@@ -50,8 +50,12 @@ EOF
   exit 2
 fi
 
-BT=$(ls -d "$SDK"/build-tools/34.* 2>/dev/null | tail -1)
-[[ -n $BT ]] || die "缺 build-tools;34.0.0"
+# build-tools 取最新一版（34.0.0 的 d8 在部分离线包里会 NPE 到非静态内部类，
+# 35.0.0 起正常；只要求 >= 34）
+BT=$(ls -d "$SDK"/build-tools/* 2>/dev/null | sort -V | tail -1)
+[[ -n $BT ]] || die "缺 build-tools（需要 >= 34.0.0）"
+BT_VER=$(basename "$BT")
+[[ ${BT_VER%%.*} -ge 34 ]] || die "build-tools $BT_VER 太旧，需要 >= 34.0.0"
 PLAT=$SDK/platforms/android-34/android.jar
 for tool in aapt2 d8 zipalign apksigner; do
   [[ -x $BT/$tool ]] || die "缺 $BT/$tool"
@@ -60,7 +64,7 @@ command -v javac >/dev/null || die "需要 JDK（javac）"
 command -v keytool >/dev/null || die "需要 JDK（keytool）"
 
 note "SDK  = $SDK"
-note "BT   = $BT"
+note "BT   = $BT ($BT_VER)"
 note "out  = $OUT"
 
 rm -rf "$OUT" && mkdir -p "$OUT/work/classes" "$OUT/work/dex" "$OUT/work/res"
@@ -83,7 +87,7 @@ sed -e "s|@VER_NAME@|$VER_NAME|g" -e "s|@VER_CODE@|$VER_CODE|g" \
 
 # ---- 3) javac ----
 note "3/6 javac"
-javac --release 11 -classpath "$PLAT" -d "$OUT/work/classes" \
+javac -Xlint:-options --release 8 -classpath "$PLAT" -d "$OUT/work/classes" \
   $(find "$SRC/src" -name '*.java')
 
 # ---- 4) d8 → dex ----

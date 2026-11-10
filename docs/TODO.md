@@ -49,12 +49,13 @@
       逻辑在 `common/Chat.trimHistory`，13 条单测）
 - [x] 会话重命名（`conversation/rename`）
 
-## D. 富交互 / 附件（需要平台能力，暂缓）
+## D. 富交互 / 附件
 
-- [ ] 附件上传下载（`file/upload/url`、`file/download/url`）
+- [x] 附件上传（`file/upload/url` → OSS 直传 → v2 `inputs[]`，智能体可读）
+- [x] OCR（`/api/llm/v1/ocr/recognize`，12 种类型 + PDF）与文档解析/格式转换
+- [ ] 附件下载到本地沙盒（现在只给结果链接）
 - [ ] 图片输入（网关多模态模型 + `image_url`）
-- [ ] 语音输入（`wss://www.scnet.cn/acx/chatbot/ws/audio/recognize`）
-- [ ] OCR（`/api/llm/v1/ocr/recognize`）
+- [ ] 语音输入（按需求取消）
 
 ## E. 作业面 P4（照 `../scnet-cli` 搬，最高价值的下一步）
 
@@ -64,12 +65,13 @@
 - [ ] 签名：`POST /api/user/v3/tokens`，头 `user`/`accessKey`/`signature`/`timestamp`，
       `signature = HMAC-SHA256(secretKey, JSON.stringify({accessKey,timestamp,user}))`（hex）
 - [ ] 区域：`GET /ac/openapi/v2/center` → 各区域 `hpcUrls` / `efileUrls`；token TTL 4h
-- [ ] 提交：`POST {hpc}/hpc/openapi/v2/apptemplates/BASIC/BASE/job`，
+- [x] 提交（2026-11-10 真机成功，jobId `127537835`）：`POST {hpc}/hpc/openapi/v2/apptemplates/BASIC/BASE/job`，
       `mapAppJobInfo` 用 `GAP_*`（`GAP_NPROC` 是**总核数**，`GAP_NGPU/GAP_NDCU` 是**每节点**）
 - [ ] 取消：`DELETE /openapi/v2/jobs` + `strJobInfoMap=<scheduler>,<user>:<jobId>:`
-- [ ] 队列/配额：`sci status` / `sci queues` 对应接口
-- [ ] 页面：底部 Tab「作业」，列表 + 详情 + 日志
-- [ ] 提交前二次确认（显示集群/队列/资源/计费）
+- [x] 队列/配额：`sci status` / `sci queues` 对应接口
+- [x] 页面：作业 Tab，列表 + 详情 + 日志 + 文件浏览
+- [x] 提交前二次确认（显示集群/队列/资源/计费；默认 dry-run，红色开关才真提交）
+- [ ] 作业取消（契约已验，UI 有确认弹层，等真机回归）
 
 ## F. 账号 / 团队 / 计费
 
@@ -93,3 +95,24 @@
 - [ ] `api-key/create` 的完整入参（团队维度）与配额字段
 - [ ] `createActivityApiKey` 的调用频控（每调一次是否新建 key）
 - [ ] 余额/账单查询接口（用于在 App 里直接提示"还差多少钱"）
+
+---
+
+## J. Android（附加产物）
+
+- [x] WebView 壳可装（49 KB，不用 Gradle）：`android/` + `scripts/build-apk.sh`
+- [x] 登录态持久化（`CookieManager.flush()`）
+- [x] 附件上传（`onShowFileChooser`）/ 下载（DownloadManager 带 cookie）/ 进度条 / 返回键
+- [ ] 真机装一次回归（本机无 Android 设备）
+- [ ] 预置离线包 + 首屏骨架（1 天）
+- [ ] 应用内更新（检查 GitHub Releases + 下载安装，0.5 天）
+- [ ] 作业完成通知（原生轮询 + 通知，2 天）
+- [ ] 原生入口（底部 Tab：对话 / 作业 / 我的，3-5 天）
+- [ ] 决策：是否做原生 Android 版（约 19.5 天，见 `docs/APK-ASSESSMENT.md` §8.3）
+
+## K. 发版
+
+- [x] `scripts/make-release.sh`：debug/release × 未签名/已签名 HAP + APK + SHA256SUMS
+- [x] `docs/RELEASE.md`：发版流程与发版前检查
+- [x] v0.3.1 物料（release 构建首次产出：830 KB 已签名 / 781 KB 未签名）
+- [ ] 0.3.1 真机回归（`hdc list targets` 当前为 `[Empty]`）

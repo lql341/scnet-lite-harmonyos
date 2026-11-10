@@ -171,3 +171,74 @@ apksigner sign --ks debug.keystore …                     # 签名
 
 第 3 步才是真正的工作量所在 —— 也就是把本仓库已经验证过的接口在 Android 上再实现一遍
 （协议可直接照抄 `docs/PROTOCOL.md`）。
+
+---
+
+## 8. 2026-11-10 复核：壳已到「能用」，剩下的是原生功能
+
+上一节的路线 C 已经从 demo 推进到可发布状态。代码在 `android/`（1 个 Activity，约 290 行 Java），
+构建脚本 `scripts/build-apk.sh`（不依赖 Gradle）。
+
+### 8.1 已经有的（APK 0.2.0-webview，49 KB）
+
+| 能力 | 实现 | 状态 |
+| --- | --- | --- |
+| 加载平台 Web 端（移动 viewport） | `WebView` + `ENTRY` | ✅ 可装可跑 |
+| 登录态持久化 | `CookieManager.flush()`（onPause / onDestroy） | ✅ |
+| 附件上传 | `onShowFileChooser` → `ACTION_GET_CONTENT`（多选 + MIME 过滤） | ✅ |
+| 文件下载 | `DownloadListener` → `DownloadManager`（带 cookie） | ✅ |
+| 返回键回退 Web 历史 / 转屏保状态 | `onKeyDown` + `saveState/restoreState` | ✅ |
+| 顶部进度条 | `onProgressChanged` → 6px `ProgressBar` | ✅ |
+| 构建 | aapt2 → javac → d8 → zipalign → apksigner，约 6 s | ✅ |
+
+构建坑（已修）：**build-tools 34.0.0 里的 d8 对非静态内部类/匿名类会 NPE**
+（`Cannot invoke "String.length()" because "<parameter1>" is null`），
+`scripts/build-apk.sh` 现在自动取最新 build-tools（35.0.0 正常）。
+
+### 8.2 还差什么（按「要不要重写成原生」分两类）
+
+**A. 壳方案本身就够了的部分（不写代码）**
+
+对话 / 模型切换 / 会话历史 / 文档解析 / OCR / 插件市场 / 作业面 —— 平台 Web 端
+（`/ui/chatbot`，内含 `/ui/aihub`、`/ui/mall` 入口）全都有，跟在浏览器里用一样。
+
+**B. 壳方案做不到 / 体验差的部分**
+
+| 缺口 | 原因 | 原生实现工作量 |
+| --- | --- | --- |
+| 首屏冷启动慢（每次都要拉 Web 资源） | 纯 WebView | 预置离线包 / 首屏骨架：1 天 |
+| 推送通知（作业完成） | Web 端没有 | 原生页 + FCM/厂商通道：2 天 |
+| 后台长任务（作业提交后回前台看进度） | WebView 后台会被杀 | 原生 JobIntentService 轮询 + 通知：2 天 |
+| 系统分享 / 深链（`scnet://`） | 需要原生 intent-filter | 1 天 |
+| 文件管理（下载到沙盒、列表、删除） | 现在走系统 DownloadManager | 原生文件页：1.5 天 |
+| 应用内更新 | Web 端无 | 检查 GitHub Releases + 下载安装：0.5 天 |
+
+合计 **约 8 天**，全部是「壳之外的原生增强」，与 ArkTS 那 1.2 万行业务无关。
+
+### 8.3 如果要做「原生 Android 版」（和 HAP 功能对齐）
+
+按现有代码实测行数换算（2026-11-10：40 个 `.ets`，12 468 行）：
+
+| 层 | 现状（ArkTS） | Android 目标 | 估算 |
+| --- | --- | --- | --- |
+| 纯逻辑 | `common/{Markdown,Hmac,Sse,Chat}.ets` 579 行，51 条单测 | Kotlin 逐行翻译（单测向量可复用） | 2 天 |
+| 协议服务 | `service/*` 3 934 行（Auth/Http/Gateway/AgentChat/Upload/Hpc/Ocr/Market/DocAi/ApiKeys/Sessions，kit 调用与协议混杂） | OkHttp + kotlinx.serialization，协议照抄 | 5 天 |
+| 声明式 UI | `pages/*` 6 459 行 + `view/*` 922 行（11 页） | Jetpack Compose | 9 天 |
+| 平台能力 | 文件选择/相册/剪贴板/偏好/ArkWeb 内嵌 | SAF / PhotoPicker / DataStore / WebView | 2 天 |
+| 工程 | hvigor + 自签脚本 | Gradle + AGP + 签名 + CI | 1.5 天 |
+| **合计** | | | **19.5 天**（单人，含自测；不含上架） |
+
+如果砍到「MVP：登录 + 对话 + 会话 + 设置」（不做作业面/OCR/插件市场/文档解析），
+约 **8-10 天**（`pages/Jobs|JobDetail|JobSubmit|Files|OcrPage|MarketPage` 共 2 803 行不做）。
+
+> Flutter 方案（本节 §3 路线 A）仍是同样量级：9-12 天出双端。差在 Compose 只有 Android，
+> 但可以直接复用本仓库的 Kotlin 对照（`Hmac.ets` 的 RFC 4231 向量、`Sse.ets` 的 10 条分帧用例）。
+
+### 8.4 结论（给决策用）
+
+1. **现在就能发 Android 版**：`dist/android/scnet-agent-webview-*.apk`，49 KB，debug 签名，
+   功能等于平台 Web 端的手机版。**推荐先这样发**，成本已付。
+2. 想让 Android 版「像 App」：加 §8.2 的 8 天原生增强（优先级最高是应用内更新 + 下载/分享）。
+3. 想做功能对齐的原生版：§8.3 的 19.5 天；MVP 8-10 天。
+4. 不建议把 ArkTS 硬转 Kotlin —— `@Builder`/`@State` 与 Compose 语义不一一对应，
+   转换产物可维护性差；用 `docs/PROTOCOL.md` + 4 个纯逻辑文件 + 51 条单测当规格书重写更划算。

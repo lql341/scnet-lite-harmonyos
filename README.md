@@ -14,7 +14,8 @@
 | [`docs/NEXT.md`](docs/NEXT.md) | **接手先看这个**：当前卡点、下一步、换机器要带什么 |
 | [`docs/FEATURES.md`](docs/FEATURES.md) | **功能清单**：能做什么、哪些真机验过、有哪些限制 |
 | [`docs/VERIFY.md`](docs/VERIFY.md) | **真机回归清单**：设备接上后照着走一遍 |
-| [`docs/APK-ASSESSMENT.md`](docs/APK-ASSESSMENT.md) | **打 Android APK 的难度评估**（含已跑通的 WebView 壳实测） |
+| [`docs/APK-ASSESSMENT.md`](docs/APK-ASSESSMENT.md) | **打 Android APK 的难度评估**（含已跑通的 WebView 壳实测 + §8 工作量复核） |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | 发版流程：一条命令出未签名/已签名 HAP + APK + SHA256SUMS |
 | [`docs/TODO.md`](docs/TODO.md) | 待办全表（分 A~I 段，带阻塞项与已完成项） |
 | [`docs/SIGNING.md`](docs/SIGNING.md) | 签名材料清单、换机迁移、重新签发、失败对照 |
 | [`docs/PLAN.md`](docs/PLAN.md) | 对标手机 APK 的分阶段开发计划（P0~P6，约 11 天） |
@@ -66,7 +67,34 @@
 > 调试提示：协议问题不必装机。`scripts/probe.sh` 用桌面客户端里的活体 `accessToken`
 > 直接打平台与网关接口，几秒一轮。
 
-## 旧版说明（v0.1.0 MVP）
+## 产物与发布（v0.3.1）
+
+Bundle name：`cn.scnet.hmos`（**v0.3.1**，versionCode 4，minAPI 26）。
+
+产物（`scripts/make-release.sh` 一次全出，落到 `dist/release/v<version>/`）：
+
+| 文件 | 大小 | 说明 |
+| --- | --- | --- |
+| `scnet-agent-0.3.1-release-signed.hap` | 830 KB | **推荐**，release 构建 + 调试证书签名 |
+| `scnet-agent-0.3.1-release-unsigned.hap` | 781 KB | 自签用 |
+| `scnet-agent-0.3.1-debug-signed.hap` / `-debug-unsigned.hap` | 1.8 MB | debug 构建（带符号） |
+| `scnet-agent-webview-0.2.0-webview.apk` | 49 KB | **Android WebView 壳**（见下） |
+| `SHA256SUMS.txt` | — | `sha256sum -c` 校验 |
+
+已发布：[`v0.3.1` Releases](https://github.com/lql341/scnet-lite-harmonyos/releases/tag/v0.3.1)
+（HAP 为 debug 证书签名，profile 的 `device-ids` 只含作者设备，别人装不上 —— 自己构建+签名）。
+
+### Android（附加产物）
+
+`android/` 是一个 290 行的 WebView 壳（不用 Gradle，`scripts/build-apk.sh` 用
+aapt2 → javac → d8 → zipalign → apksigner 直接打包，约 6 s / 49 KB），加载平台自带的
+移动适配 Web 端：登录态持久化、附件上传（系统文件选择器）、下载（DownloadManager 带 cookie）、
+进度条、返回键回退。
+
+**它不是** ArkTS 那 1.2 万行的原生重写：作业面 / OCR / 插件市场 / 本地多会话都没有原生入口
+（Web 端里有）。各方案工作量见 [`docs/APK-ASSESSMENT.md` §8](docs/APK-ASSESSMENT.md)。
+
+## 旧版说明（v0.1.0 MVP，已被上面取代）
 
 | 能力 | 状态 |
 | --- | --- |
@@ -77,12 +105,6 @@
 | 账号密码登录 | ❌ |
 | 作业/队列/文件 | ❌ |
 | 多会话、PDF 预览 | ❌ |
-
-Bundle name：`cn.scnet.hmos`（**v0.3.0**，minAPI 26）。
-产物：`entry/build/default/outputs/default/entry-default-signed.hap`（约 1.8 MB）。
-
-已发布：[`v0.3.0` Releases](https://github.com/lql341/scnet-lite-harmonyos/releases/tag/v0.3.0)
-（debug 签名，profile 的 `device-ids` 只含作者设备，别人装不上 —— 自己构建+签名）。
 
 ## 构建
 
