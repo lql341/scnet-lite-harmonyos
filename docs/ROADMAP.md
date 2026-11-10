@@ -265,6 +265,23 @@ router 的 94 条问题里 `scene` 分布 general 83 / industry 4 / bioinformati
 实现：`service/Scenes.ets`（完全照上面的算法）+ `pages/Index.ets` 空状态
 （分类 chips + 3 条推荐问题 + 换一批；本地场景目录作为兜底）。
 
+### 收尾项（2026-11-10，计划内功能已全部落地）
+
+| 项 | 状态 |
+| --- | --- |
+| 会话重命名（本地 + 平台 `conversation/rename`） | ✅ |
+| 消息长按复制 | ✅ |
+| 上下文裁剪（24000 字符 / 至少 6 条 / 提示用户） | ✅ |
+| Markdown 表格渲染 | ✅ |
+| 作业提交后回读状态 + 列表高亮 | ✅ |
+| 日志分级（高频 info → debug，移除签名明文） | ✅ |
+| 单元测试（Markdown 30 / SSE 10 / 裁剪 13 / HMAC 8） | ✅ `./scripts/test.sh` |
+
+单元测试的做法值得记：纯逻辑模块（`common/{Markdown,Sse,Chat,Hmac}.ets`）**不 import 任何 kit**，
+`scripts/test.sh` 把 `.ets` 复制成 `.ts` 后用 Node `--experimental-transform-types` 加载，
+所以测的是**线上同一份源码**，不是复制出来的实现。ArkTS 侧只保留薄封装
+（解码器、cryptoFramework 的 sha256 由调用方注入）。
+
 ### 待办：连接器安装/接入
 
 - 连接器**安装**（把 MCP 接入当前会话）需要 MCP 客户端 + 传输，桌面端走 host op

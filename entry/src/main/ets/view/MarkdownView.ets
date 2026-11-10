@@ -99,6 +99,42 @@ export struct MarkdownView {
     .padding({ left: 4 + block.level * 14, top: 1, bottom: 1 })
   }
 
+  /** 表格：首行加粗做表头，其余按列平分；窄屏允许横向滚动。 */
+  @Builder
+  table(block: MdBlock) {
+    Scroll() {
+      Column() {
+        ForEach(block.rows, (row: string[], rowIndex: number) => {
+          Row() {
+            ForEach(row, (cell: string, cellIndex: number) => {
+              Column() {
+                this.inline(cell, Theme.mdBody - 2, Theme.mdLine - 8,
+                  rowIndex === 0 ? Theme.text : Theme.textSub)
+              }
+              .constraintSize({ minWidth: 90 })
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+              .padding({ left: 10, right: 10, top: 7, bottom: 7 })
+              .backgroundColor(rowIndex === 0 ? Theme.surfaceAlt : Color.Transparent)
+              .border({ width: { right: cellIndex < row.length - 1 ? 1 : 0 }, color: Theme.hairline })
+            }, (cell: string, cellIndex: number) => `${rowIndex}-${cellIndex}`)
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Top)
+          if (rowIndex === 0) {
+            Divider().color(Theme.hairline)
+          }
+        }, (row: string[], rowIndex: number) => `row-${rowIndex}`)
+      }
+    }
+    .scrollable(ScrollDirection.Horizontal)
+    .scrollBar(BarState.Off)
+    .width('100%')
+    .margin({ top: 4, bottom: 4 })
+    .borderRadius(Theme.rSm)
+    .border({ width: 1, color: Theme.hairline })
+  }
+
   @Builder
   quote(block: MdBlock) {
     Row() {
@@ -164,6 +200,8 @@ export struct MarkdownView {
           this.heading(block)
         } else if (block.kind === MdKind.Bullet || block.kind === MdKind.Ordered) {
           this.bullet(block)
+        } else if (block.kind === MdKind.Table) {
+          this.table(block)
         } else if (block.kind === MdKind.Quote) {
           this.quote(block)
         } else {

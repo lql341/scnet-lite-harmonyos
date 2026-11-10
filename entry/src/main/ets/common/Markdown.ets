@@ -19,7 +19,8 @@ export enum MdKind {
   Ordered,
   Code,
   Quote,
-  Hr
+  Hr,
+  Table
 }
 
 export interface MdBlock {
@@ -29,6 +30,45 @@ export interface MdBlock {
   order: number;
   lang: string;
   code: string;
+  /** 表格：首行是表头，其余是数据行；每行按 `|` 切好 */
+  rows: string[][];
+}
+
+export interface MdTable {
+  header: string[];
+  rows: string[][];
+}
+
+/** `|a|b|` → ['a','b']；允许首尾不写竖线。 */
+export function splitRow(line: string): string[] {
+  let body: string = line.trim();
+  if (body.startsWith('|')) {
+    body = body.substring(1);
+  }
+  if (body.endsWith('|')) {
+    body = body.substring(0, body.length - 1);
+  }
+  const out: string[] = [];
+  const parts: string[] = body.split('|');
+  for (let i = 0; i < parts.length; i++) {
+    out.push(parts[i].trim());
+  }
+  return out;
+}
+
+/** 判断是不是分隔行（`|---|:--:|`）。 */
+function isSeparator(line: string): boolean {
+  const body: string = line.trim();
+  if (body.indexOf('-') < 0) {
+    return false;
+  }
+  const cells: string[] = splitRow(body);
+  for (let i = 0; i < cells.length; i++) {
+    if (!/^:?-{2,}:?$/.test(cells[i].replace(/\s/g, ''))) {
+      return false;
+    }
+  }
+  return cells.length > 0;
 }
 
 export interface MdSeg {
@@ -62,7 +102,7 @@ export function parseMarkdown(source: string): MdBlock[] {
   const flushParagraph = (): void => {
     const text: string = paragraph.trim();
     if (text.length > 0) {
-      const block: MdBlock = { kind: MdKind.P, text: text, level: 0, order: 0, lang: '', code: '' };
+      const block: MdBlock = { kind: MdKind.P, text: text, level: 0, order: 0, lang: '', code: '', rows: [] };
       blocks.push(block);
     }
     paragraph = '';
@@ -86,7 +126,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       i++; // 跳过闭合 ```（越界也无所谓）
       const code: MdBlock = {
         kind: MdKind.Code, text: '', level: 0, order: 0,
-        lang: lang, code: body.join('\n')
+        lang: lang, code: body.join('\n'), rows: []
       };
       blocks.push(code);
       continue;
@@ -98,10 +138,40 @@ export function parseMarkdown(source: string): MdBlock[] {
       continue;
     }
 
+    // 表格：`|a|b|` + `|---|---|`
+    if (trimmed.startsWith('|') && trimmed.indexOf('|', 1) > 0) {
+      const nextLine: string = i + 1 < lines.length ? lines[i + 1] : '';
+      if (isSeparator(nextLine)) {
+        flushParagraph();
+        const header: string[] = splitRow(trimmed);
+        const rows: string[][] = [];
+        let j: number = i + 2;
+        while (j < lines.length) {
+          const candidate: string = lines[j].trim();
+          if (candidate.length === 0 || candidate.indexOf('|') < 0) {
+            break;
+          }
+          rows.push(splitRow(candidate));
+          j++;
+        }
+        const table: MdBlock = {
+          kind: MdKind.Table, text: '', level: 0, order: 0, lang: '', code: '', rows: []
+        };
+        const all: string[][] = [header];
+        for (let k = 0; k < rows.length; k++) {
+          all.push(rows[k]);
+        }
+        table.rows = all;
+        blocks.push(table);
+        i = j;
+        continue;
+      }
+    }
+
     // 分隔线
     if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
       flushParagraph();
-      const hr: MdBlock = { kind: MdKind.Hr, text: '', level: 0, order: 0, lang: '', code: '' };
+      const hr: MdBlock = { kind: MdKind.Hr, text: '', level: 0, order: 0, lang: '', code: '', rows: [] };
       blocks.push(hr);
       i++;
       continue;
@@ -118,7 +188,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         if (rest.length > 0) {
           flushParagraph();
           const kind: MdKind = level === 1 ? MdKind.H1 : (level === 2 ? MdKind.H2 : MdKind.H3);
-          const head: MdBlock = { kind: kind, text: rest, level: level, order: 0, lang: '', code: '' };
+          const head: MdBlock = { kind: kind, text: rest, level: level, order: 0, lang: '', code: '', rows: [] };
           blocks.push(head);
           i++;
           continue;
@@ -133,7 +203,7 @@ export function parseMarkdown(source: string): MdBlock[] {
       while (text.startsWith('>')) {
         text = text.substring(1).trim();
       }
-      const quote: MdBlock = { kind: MdKind.Quote, text: text, level: 0, order: 0, lang: '', code: '' };
+      const quote: MdBlock = { kind: MdKind.Quote, text: text, level: 0, order: 0, lang: '', code: '', rows: [] };
       blocks.push(quote);
       i++;
       continue;
@@ -149,7 +219,7 @@ export function parseMarkdown(source: string): MdBlock[] {
         kind: MdKind.Bullet,
         text: trimmed.substring(1).trim(),
         level: Math.min(2, Math.floor(indent / 2)),
-        order: 0, lang: '', code: ''
+        order: 0, lang: '', code: '', rows: []
       };
       blocks.push(item);
       i++;
@@ -171,7 +241,7 @@ export function parseMarkdown(source: string): MdBlock[] {
           text: trimmed.substring(digits + 1).trim(),
           level: Math.min(2, Math.floor(indent / 2)),
           order: Number(trimmed.substring(0, digits)),
-          lang: '', code: ''
+          lang: '', code: '', rows: []
         };
         blocks.push(item);
         i++;
@@ -190,16 +260,41 @@ export function parseMarkdown(source: string): MdBlock[] {
  * 行内解析：**粗体** / *斜体* / `行内代码`。
  * 未闭合的标记在流式过程中会出现，此时保留字面量而不是吞掉。
  */
+/** `[文字](url)` → `文字`；用于段落里任何一段（含粗体内部）。 */
+function stripLinks(text: string): string {
+  if (text.indexOf('](') < 0) {
+    return text;
+  }
+  let out: string = '';
+  let i: number = 0;
+  while (i < text.length) {
+    const ch: string = text.charAt(i);
+    if (ch === '[') {
+      const mid: number = text.indexOf('](', i + 1);
+      const close: number = mid > 0 ? text.indexOf(')', mid + 2) : -1;
+      if (mid > 0 && close > mid) {
+        out += text.substring(i + 1, mid);
+        i = close + 1;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
 export function parseInline(text: string): MdSeg[] {
   const segs: MdSeg[] = [];
   let pending: string = '';
   let i: number = 0;
 
   const push = (value: string, bold: boolean, italic: boolean, code: boolean): void => {
-    if (value.length === 0) {
+    const cleaned: string = code ? value : stripLinks(value);
+    if (cleaned.length === 0) {
       return;
     }
-    const seg: MdSeg = { text: value, bold: bold, italic: italic, code: code };
+    const seg: MdSeg = { text: cleaned, bold: bold, italic: italic, code: code };
     segs.push(seg);
   };
   const flush = (): void => {
@@ -224,7 +319,9 @@ export function parseInline(text: string): MdSeg[] {
     // 粗体
     if (ch === '*' && i + 1 < text.length && text.charAt(i + 1) === '*') {
       const end: number = text.indexOf('**', i + 2);
-      if (end > i + 2) {
+      const inner: string = end > i + 2 ? text.substring(i + 2, end) : '';
+      const tight: boolean = inner.length > 0 && inner.charAt(0) !== ' ' && inner.charAt(inner.length - 1) !== ' ';
+      if (end > i + 2 && tight) {
         flush();
         push(text.substring(i + 2, end), true, false, false);
         i = end + 2;
@@ -235,7 +332,9 @@ export function parseInline(text: string): MdSeg[] {
     // 斜体
     if (ch === '*') {
       const end: number = text.indexOf('*', i + 1);
-      if (end > i + 1) {
+      const inner: string = end > i + 1 ? text.substring(i + 1, end) : '';
+      const tight: boolean = inner.length > 0 && inner.charAt(0) !== ' ' && inner.charAt(inner.length - 1) !== ' ';
+      if (end > i + 1 && tight) {
         flush();
         push(text.substring(i + 1, end), false, true, false);
         i = end + 1;

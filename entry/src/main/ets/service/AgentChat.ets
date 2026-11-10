@@ -20,6 +20,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { credentials } from './Http';
 import { StreamHandlers } from './Gateway';
+import { SseBuffer } from '../common/Sse';
 import { UploadedFile } from './Upload';
 
 const TAG: string = 'SCNetLite';
@@ -147,7 +148,9 @@ export class AgentChat {
     this.request = request;
 
     const decoder: util.TextDecoder = util.TextDecoder.create('utf-8', { ignoreBOM: true });
-    let buffer: string = '';
+    const sse: SseBuffer = new SseBuffer((bytes: Uint8Array): string => {
+      return decoder.decodeToString(bytes, { stream: true });
+    });
     let finished: boolean = false;
     let gotText: boolean = false;
 
@@ -226,20 +229,17 @@ export class AgentChat {
     };
 
     request.on('dataReceive', (chunk: ArrayBuffer) => {
-      buffer += decoder.decodeToString(new Uint8Array(chunk), { stream: true });
-      let index: number = buffer.indexOf('\n');
-      while (index >= 0) {
-        handleLine(buffer.substring(0, index));
-        buffer = buffer.substring(index + 1);
-        index = buffer.indexOf('\n');
+      const lines: string[] = sse.pushBytes(new Uint8Array(chunk));
+      for (let i = 0; i < lines.length; i++) {
+        handleLine(lines[i]);
       }
     });
 
     request.on('dataEnd', () => {
-      // 残留 buffer（无换行的末帧）也要过一遍
-      if (buffer.length > 0) {
-        handleLine(buffer);
-        buffer = '';
+      // 残留（无换行的末帧）也要过一遍
+      const rest: string[] = sse.flush();
+      for (let i = 0; i < rest.length; i++) {
+        handleLine(rest[i]);
       }
       if (!gotText) {
         finish(this.conversationId.length > 0 ? '智能体没有返回内容，请重试' : '智能体没有响应，请稍后重试');

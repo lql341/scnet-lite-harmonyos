@@ -2,6 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { SseBuffer } from '../common/Sse';
 
 const TAG: string = 'SCNetLite';
 
@@ -116,7 +117,9 @@ export class Gateway {
     this.request = request;
 
     const decoder: util.TextDecoder = util.TextDecoder.create('utf-8', { ignoreBOM: true });
-    let buffer: string = '';
+    const sse: SseBuffer = new SseBuffer((bytes: Uint8Array): string => {
+      return decoder.decodeToString(bytes, { stream: true });
+    });
     let finished: boolean = false;
 
     const finish = (error: string): void => {
@@ -184,21 +187,17 @@ export class Gateway {
     };
 
     request.on('dataReceive', (chunk: ArrayBuffer) => {
-      buffer += decoder.decodeToString(new Uint8Array(chunk), { stream: true });
-      let index: number = buffer.indexOf('\n');
-      while (index >= 0) {
-        const line: string = buffer.substring(0, index);
-        buffer = buffer.substring(index + 1);
-        handleLine(line);
-        index = buffer.indexOf('\n');
+      const lines: string[] = sse.pushBytes(new Uint8Array(chunk));
+      for (let i = 0; i < lines.length; i++) {
+        handleLine(lines[i]);
       }
     });
 
     request.on('dataEnd', () => {
-      // 冲刷残留：单行 JSON 错误体没有换行，只会在 buffer 里
-      if (buffer.length > 0) {
-        handleLine(buffer);
-        buffer = '';
+      // 冲刷残留：单行 JSON 错误体没有换行，只会在缓冲区里
+      const rest: string[] = sse.flush();
+      for (let i = 0; i < rest.length; i++) {
+        handleLine(rest[i]);
       }
       if (serverError.length > 0) {
         finish(serverError);

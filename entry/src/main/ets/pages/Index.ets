@@ -13,6 +13,7 @@ import { AgentService, KIND_AGENT, PickItem, agentItems, llmItems } from '../mod
 import { Conversation, ChatConfig, UserInfo, HistoryPage, HistoryMessage } from '../model/Types';
 import { Theme, prettyModel, safe } from '../common/Theme';
 import { L } from '../common/I18n';
+import { ChatTurn, TrimResult, trimHistory } from '../common/Chat';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { MarkdownView } from '../view/MarkdownView';
 import { ModelSheet } from '../view/ModelSheet';
@@ -609,7 +610,7 @@ struct Index {
       }
     };
 
-    const history: ChatMessage[] = this.trimHistory(this.messages);
+    const history: ChatMessage[] = this.buildHistory(this.messages);
 
     if (this.trimmedCount > 0) {
       this.notice = L.t(`上下文较长，已省略最近 ${this.trimmedCount} 条之前的历史`,
@@ -1293,28 +1294,21 @@ struct Index {
   }
 
   /**
-   * 上下文裁剪：网关/智能体都不接受无限长的历史。
-   * 规则（保守，不改变最近语义）：从最新往前累计字符数，超过 24000 就停，
-   * 但**至少保留最近 6 条**；被裁掉时提示用户（避免"它怎么忘了"）。
+   * 上下文裁剪（逻辑在 common/Chat.trimHistory，已单测）。
+   * 被裁掉时提示用户，避免"它怎么忘了"。
    */
-  private trimHistory(messages: RenderMsg[]): ChatMessage[] {
-    const LIMIT: number = 24000;
-    const MIN_KEEP: number = 6;
-    const out: ChatMessage[] = [];
-    let chars: number = 0;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const item: ChatMessage = { role: messages[i].role, content: messages[i].content };
-      const cost: number = item.content.length;
-      const enough: boolean = out.length >= MIN_KEEP && chars + cost > LIMIT;
-      if (enough) {
-        this.trimmedCount = i + 1;
-        break;
-      }
-      out.unshift(item);
-      chars += cost;
+  private buildHistory(messages: RenderMsg[]): ChatMessage[] {
+    const turns: ChatTurn[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      const turn: ChatTurn = { role: messages[i].role, content: messages[i].content };
+      turns.push(turn);
     }
-    if (out.length === messages.length) {
-      this.trimmedCount = 0;
+    const result: TrimResult = trimHistory(turns);
+    this.trimmedCount = result.dropped;
+    const out: ChatMessage[] = [];
+    for (let i = 0; i < result.turns.length; i++) {
+      const item: ChatMessage = { role: result.turns[i].role, content: result.turns[i].content };
+      out.push(item);
     }
     return out;
   }

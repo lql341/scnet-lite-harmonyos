@@ -23,6 +23,7 @@ import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { store } from './Store';
+import { hmacSha256, hpcSignMessage, toHex } from '../common/Hmac';
 
 const TAG: string = 'SCNetLite';
 const API_BASE: string = 'https://api.scnet.cn';
@@ -87,63 +88,16 @@ function utf8(text: string): Uint8Array {
   return new util.TextEncoder().encodeInto(text);
 }
 
-/** SHA-256 摘要（走 cryptoFramework 的 Md，只做纯摘要，避开 HMAC 的密钥处理差异）。 */
+/** SHA-256 摘要（cryptoFramework 的 Md 只做纯摘要，避开 createMac 的密钥处理差异）。 */
 function sha256(data: Uint8Array): Uint8Array {
   const md = cryptoFramework.createMd('SHA256');
   md.updateSync({ data: data });
-  const out = md.digestSync();
-  return out.data;
+  return md.digestSync().data;
 }
 
-/**
- * 手写 HMAC-SHA256。
- *
- * 为什么不用 `createMac('SHA256')`：实测它产出的摘要与标准 HMAC-SHA256 不一致
- * （同一 key/message，Python 的 hmac 模块与它对不上），平台侧因此报
- * 「AK/SK签名校验失败」。这里按 RFC 2104 自己拼，行为可控：
- *   HMAC(K,m) = H((K' ^ opad) || H((K' ^ ipad) || m))
- */
-function hmacSha256(key: Uint8Array, message: Uint8Array): Uint8Array {
-  const BLOCK: number = 64;
-  const k: Uint8Array = new Uint8Array(BLOCK);
-  if (key.length > BLOCK) {
-    const hashed: Uint8Array = sha256(key);
-    for (let i = 0; i < hashed.length; i++) {
-      k[i] = hashed[i];
-    }
-  } else {
-    for (let i = 0; i < key.length; i++) {
-      k[i] = key[i];
-    }
-  }
-  const ipad: Uint8Array = new Uint8Array(BLOCK + message.length);
-  const opad: Uint8Array = new Uint8Array(BLOCK + 32);
-  for (let i = 0; i < BLOCK; i++) {
-    ipad[i] = k[i] ^ 0x36;
-    opad[i] = k[i] ^ 0x5c;
-  }
-  for (let i = 0; i < message.length; i++) {
-    ipad[BLOCK + i] = message[i];
-  }
-  const inner: Uint8Array = sha256(ipad);
-  for (let i = 0; i < inner.length; i++) {
-    opad[BLOCK + i] = inner[i];
-  }
-  return sha256(opad);
-}
-
-function toHex(bytes: Uint8Array): string {
-  let hex: string = '';
-  for (let i = 0; i < bytes.length; i++) {
-    const h: string = bytes[i].toString(16);
-    hex += h.length === 1 ? `0${h}` : h;
-  }
-  return hex;
-}
-
-/** hex(HMAC-SHA256(secret, message)) —— 平台签名用。 */
+/** hex(HMAC-SHA256(secret, message)) —— 算法在 common/Hmac（已用 RFC 4231 向量单测）。 */
 function hmacHex(secret: string, message: string): string {
-  return toHex(hmacSha256(utf8(secret), utf8(message)));
+  return toHex(hmacSha256(utf8(secret), utf8(message), sha256));
 }
 
 function nowSeconds(): string {
@@ -280,8 +234,8 @@ class Hpc {
       throw new HpcError('no-creds', '未配置 AK/SK');
     }
     const ts: string = nowSeconds();
-    // 注意：key 顺序必须是 accessKey,timestamp,user（JSON.stringify 保持插入顺序）
-    const message: string = `{"accessKey":"${ak}","timestamp":"${ts}","user":"${user}"}`;
+    // 字段顺序固定 accessKey,timestamp,user（构造器在 common/Hmac，已单测）
+    const message: string = hpcSignMessage(ak, ts, user);
     const signature: string = hmacHex(sk, message);
     
     const head: Record<string, string> = {
