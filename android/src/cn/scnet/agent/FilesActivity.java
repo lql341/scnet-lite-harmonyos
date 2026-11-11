@@ -62,28 +62,44 @@ public class FilesActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 10), Ui.dpInt(this, 14),
-                Ui.dpInt(this, 6));
-        bar.addView(Widgets.glyphButton(this, "‹", new Widgets.Action() {
+        bar.setPadding(Ui.dpInt(this, 8), Ui.dpInt(this, 8), Ui.dpInt(this, 12),
+                Ui.dpInt(this, 4));
+        TextView backBtn = Ui.label(this, "‹", 20f, Ui.textSub);
+        backBtn.setGravity(Gravity.CENTER);
+        backBtn.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void run() {
+            public void onClick(View v) {
                 if (!back.isEmpty()) {
-                    String parent = back.pop();
-                    open(parent);
+                    open(back.pop());
                 } else {
                     finish();
                 }
             }
-        }), new LinearLayout.LayoutParams(Ui.dpInt(this, 34), Ui.dpInt(this, 34)));
+        });
+        bar.addView(backBtn, new LinearLayout.LayoutParams(Ui.dpInt(this, 32),
+                Ui.dpInt(this, 32)));
+
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
-        TextView title = Ui.label(this, Ui.t("集群文件", "Cluster files"), 15.5f, Ui.text);
+        titles.setPadding(Ui.dpInt(this, 6), 0, 0, 0);
+        TextView title = Ui.label(this, Ui.t("文件", "Files"), 17f, Ui.text);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         titles.addView(title);
         pathView = Ui.label(this, "", 10.5f, Ui.textFaint);
+        pathView.setMaxLines(1);
         titles.addView(pathView);
-        bar.addView(titles);
+        bar.addView(titles, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView refresh = Ui.label(this, "⟳", 16f, Ui.textSub);
+        refresh.setPadding(Ui.dpInt(this, 8), 0, Ui.dpInt(this, 4), 0);
+        refresh.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                open(path);
+            }
+        });
+        bar.addView(refresh);
         root.addView(bar);
 
         ScrollView scroll = new ScrollView(this);
@@ -161,7 +177,7 @@ public class FilesActivity extends Activity {
         content.removeAllViews();
         if (entries.isEmpty()) {
             LinearLayout card = Widgets.card(this);
-            card.addView(Ui.label(this, Ui.t("空目录", "Empty directory"), 12f, Ui.textFaint));
+            card.addView(Ui.label(this, Ui.t("目录为空", "Empty directory"), 12f, Ui.textFaint));
             addCard(card);
             return;
         }
