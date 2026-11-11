@@ -1,6 +1,7 @@
 /**
  * 账号页（头像点进来）。
- * 展示身份 / 集群账号 / 当前通道 / 集群调度器，提供主题色与退出登录。
+ * 只展示用户关心的内容：头像 / 账号 / 集群账号 / 集群、自定义模型、外观、检查更新、关于、退出。
+ * 开发调试项（更新源、API 基地址等）不放这里。
  * 注意：不展示网关 key（账号额度凭证，连打码也不展示）。
  */
 import { router } from '@kit.ArkUI';
@@ -178,8 +179,7 @@ struct Profile {
           ? L.t(`${this.clusterName}（${this.clusters.length} 个可选）`,
             `${this.clusterName} (${this.clusters.length})`) : ''
       },
-      { label: L.t('当前通道', 'Channel'), value: this.channelLabel() },
-      { label: L.t('集群调度器', 'Scheduler'), value: this.agentRoute() }
+
     ];
     this.rows = rows;
   }
@@ -506,37 +506,6 @@ struct Profile {
             .onClick(() => {
               this.showAbout = true;
             })
-
-            // 调试（与 Android 版对齐：更新源 / 构建版本）
-            Column() {
-              Row({ space: 10 }) {
-                Text(L.t('更新源（JSON，留空走 GitHub）', 'Update source (JSON)'))
-                  .fontSize(Theme.fSmall).fontColor(Theme.textFaint).layoutWeight(1)
-                Text(this.customUpdateUrl.length > 0 ? L.t('已配置', 'Set') : L.t('未配置', 'Unset'))
-                  .fontSize(Theme.fTiny).fontColor(Theme.textSub)
-              }
-              .width('100%')
-              .padding({ top: 11, bottom: 11 })
-              .onClick(() => {
-                this.showUpdateUrlDialog = true;
-              })
-
-              Divider().color(Theme.hairline)
-
-              Divider().color(Theme.hairline)
-
-              Row({ space: 10 }) {
-                Text(L.t('构建', 'Build')).fontSize(Theme.fSmall).fontColor(Theme.textFaint).layoutWeight(1)
-                Text(`v${this.appVersion} · HarmonyOS`).fontSize(Theme.fTiny).fontColor(Theme.textSub)
-              }
-              .width('100%')
-              .padding({ top: 11, bottom: 11 })
-            }
-            .width('100%')
-            .padding({ left: 14, right: 14 })
-            .backgroundColor(Theme.surface)
-            .borderRadius(Theme.rMd)
-            .border({ width: 1, color: Theme.hairline })
 
             Text(L.t('退出登录', 'Sign out'))
               .fontSize(Theme.fSmall)

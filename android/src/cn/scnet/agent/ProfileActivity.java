@@ -44,9 +44,7 @@ public class ProfileActivity extends Activity {
 
     private TextView clusterValue;
     private TextView clusterAccountValue;
-    private TextView schedulerValue;
     private TextView channelValue;
-    private TextView routeValue;
     private TextView userValue;
 
 
@@ -141,7 +139,6 @@ public class ProfileActivity extends Activity {
         LinearLayout infoCard = Widgets.card(this);
         infoCard.setPadding(Ui.dpInt(this, 14), 0, Ui.dpInt(this, 14), 0);
         clusterAccountValue = Ui.label(this, "—", 12f, Ui.text);
-        schedulerValue = Ui.label(this, "—", 12f, Ui.text);
         userValue = Ui.label(this, "—", 12f, Ui.text);
         infoCard.addView(infoRow(Ui.t("账号", "Account"), userValue, null));
         infoCard.addView(divider());
@@ -154,11 +151,7 @@ public class ProfileActivity extends Activity {
                 pickCluster();
             }
         }));
-        infoCard.addView(divider());
-        routeValue = Ui.label(this, "—", 12f, Ui.text);
-        infoCard.addView(infoRow(Ui.t("当前通道", "Channel"), routeValue, null));
-        infoCard.addView(divider());
-        infoCard.addView(infoRow(Ui.t("集群调度器", "Scheduler"), schedulerValue, null));
+
 
         addCard(infoCard);
         loadIdentity();
@@ -275,73 +268,6 @@ public class ProfileActivity extends Activity {
                     }
                 }));
         addCard(keyCard);
-
-        // 调试（Android 特有：镜像/更新源/崩溃）
-        root.addView(Widgets.section(this, Ui.t("调试", "Debug")));
-        LinearLayout debugCard = Widgets.card(this);
-        debugCard.setPadding(0, 0, 0, 0);
-        final String debugBase = Store.get().getDebugBase();
-        debugCard.addView(Widgets.row(this, Ui.t("API 基地址（mock）", "API base (mock)"),
-                debugBase.length() > 0 ? debugBase : Ui.t("官方", "Official"), "",
-                new Widgets.Action() {
-                    @Override
-                    public void run() {
-                        Widgets.prompt(ProfileActivity.this,
-                                Ui.t("API 基地址（留空=官方）", "API base (empty = official)"),
-                                Store.get().getDebugBase(), "http://127.0.0.1:8080", false,
-                                new Widgets.OnText() {
-                                    @Override
-                                    public void onText(String value) {
-                                        Store.get().setDebugBase(value.trim());
-                                        Widgets.tip(ProfileActivity.this, Ui.t(
-                                                "已保存，重启 App 生效", "Saved, restart the app"));
-                                    }
-                                });
-                    }
-                }));
-        debugCard.addView(divider());
-        final String updateUrl = Store.get().getUpdateUrl();
-        debugCard.addView(Widgets.row(this, Ui.t("更新源（JSON）", "Update source"),
-                updateUrl.length() > 0 ? updateUrl : Ui.t("GitHub Releases", "GitHub"), "",
-                new Widgets.Action() {
-                    @Override
-                    public void run() {
-                        Widgets.prompt(ProfileActivity.this,
-                                Ui.t("更新源 URL（留空=GitHub）", "Update URL"), updateUrl,
-                                "https://example.com/update.json", false, new Widgets.OnText() {
-                                    @Override
-                                    public void onText(String value) {
-                                        Store.get().setUpdateUrl(value.trim());
-                                        rebuild();
-                                    }
-                                });
-                    }
-                }));
-        debugCard.addView(divider());
-        debugCard.addView(Widgets.row(this, Ui.t("上次崩溃", "Last crash"), "",
-                Store.get().getDebugBase().length() >= 0
-                        ? (cn.scnet.agent.core.Crash.last(this).length() > 0
-                        ? Ui.t("有", "Yes") : Ui.t("无", "None")) : "—",
-                new Widgets.Action() {
-                    @Override
-                    public void run() {
-                        cn.scnet.agent.core.Crash.showIfAny(ProfileActivity.this);
-                    }
-                }));
-        debugCard.addView(divider());
-        debugCard.addView(Widgets.row(this, Ui.t("复制诊断信息", "Copy diagnostics"), "", "",
-                new Widgets.Action() {
-                    @Override
-                    public void run() {
-                        String text = cn.scnet.agent.core.Crash.diagnostics(ProfileActivity.this);
-                        android.content.ClipboardManager cm =
-                                (android.content.ClipboardManager)
-                                        getSystemService(android.content.Context.CLIPBOARD_SERVICE);
-                        cm.setPrimaryClip(android.content.ClipData.newPlainText("diag", text));
-                        Widgets.tip(ProfileActivity.this, Ui.t("已复制", "Copied"));
-                    }
-                }));
-        addCard(debugCard);
 
         // 退出登录（HAP：浅红底按钮）
         TextView logout = new TextView(this);
@@ -548,17 +474,8 @@ public class ProfileActivity extends Activity {
                     channelValue.setText(value[1] + (("-".equals(value[1]) || "0".equals(count))
                             ? "" : Ui.t("（" + count + " 个可选）", " (" + count + ")")));
                 }
-                if (routeValue != null) {
-                    routeValue.setText("agent".equals(Store.get().getChannel())
-                            ? Ui.t("智能体服务", "Agent router")
-                            : Ui.t("模型网关", "Model gateway"));
-                }
                 if (userValue != null) {
                     userValue.setText(value[3]);
-                }
-
-                if (schedulerValue != null) {
-                    schedulerValue.setText(value[2]);
                 }
             }
 
