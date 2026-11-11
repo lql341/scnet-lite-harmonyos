@@ -25,6 +25,7 @@ public class WebActivity extends Activity {
 
     private WebView web;
     private String url = "";
+    private android.widget.ProgressBar progress;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -42,22 +43,52 @@ public class WebActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 10), Ui.dpInt(this, 14),
-                Ui.dpInt(this, 6));
-        bar.addView(Widgets.glyphButton(this, "‹", new Widgets.Action() {
+        bar.setPadding(Ui.dpInt(this, 8), Ui.dpInt(this, 8), Ui.dpInt(this, 12),
+                Ui.dpInt(this, 4));
+        TextView back = Ui.label(this, "‹", 20f, Ui.textSub);
+        back.setGravity(Gravity.CENTER);
+        back.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void run() {
+            public void onClick(View v) {
                 finish();
             }
-        }), new LinearLayout.LayoutParams(Ui.dpInt(this, 34), Ui.dpInt(this, 34)));
+        });
+        bar.addView(back, new LinearLayout.LayoutParams(Ui.dpInt(this, 32),
+                Ui.dpInt(this, 32)));
+
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setPadding(Ui.dpInt(this, 6), 0, 0, 0);
         TextView titleView = Ui.label(this, title == null || title.length() == 0
-                ? "SCNet" : title, 15f, Ui.text);
+                ? Ui.t("AI 社区", "AI community") : title, 15f, Ui.text);
         titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        titleView.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
         titleView.setMaxLines(1);
-        bar.addView(titleView, new LinearLayout.LayoutParams(0,
+        titles.addView(titleView);
+        TextView hostView = Ui.label(this, hostOf(url), 10f, Ui.textFaint);
+        hostView.setMaxLines(1);
+        titles.addView(hostView);
+        bar.addView(titles, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        final TextView reload = Ui.label(this, "⟳", 15f, Ui.textSub);
+        reload.setPadding(Ui.dpInt(this, 8), 0, Ui.dpInt(this, 4), 0);
+        reload.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (web != null) {
+                    web.reload();
+                }
+            }
+        });
+        bar.addView(reload);
         root.addView(bar);
+
+        progress = new android.widget.ProgressBar(this, null,
+                android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100);
+        progress.setVisibility(View.GONE);
+        root.addView(progress, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dpInt(this, 2)));
 
         web = new WebView(this);
         WebSettings settings = web.getSettings();
@@ -83,12 +114,33 @@ public class WebActivity extends Activity {
         }
 
         web.setWebViewClient(new WebViewClient());
+        web.setWebChromeClient(new android.webkit.WebChromeClient() {
+            @Override
+            public void onProgressChanged(WebView view, int newProgress) {
+                if (progress == null) {
+                    return;
+                }
+                progress.setProgress(newProgress);
+                progress.setVisibility(newProgress > 0 && newProgress < 100
+                        ? View.VISIBLE : View.GONE);
+            }
+        });
         root.addView(web, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
 
         if (url != null && url.length() > 0) {
             web.loadUrl(url);
+        }
+    }
+
+    /** 从 URL 取 host 作副标题（HAP 同款）。 */
+    private static String hostOf(String link) {
+        try {
+            String host = new java.net.URL(link).getHost();
+            return host == null ? "" : host;
+        } catch (Throwable e) {
+            return "";
         }
     }
 

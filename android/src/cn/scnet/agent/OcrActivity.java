@@ -483,6 +483,7 @@ public class OcrActivity extends Activity {
         });
     }
 
+    /** 结果卡（HAP：头部「识别结果 N 行」+ 复制 / 发送到对话，正文在独立卡里）。 */
     private void refreshResult() {
         if (resultCardId == null) {
             return;

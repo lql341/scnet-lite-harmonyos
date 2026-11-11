@@ -66,10 +66,25 @@ public class AiHubActivity extends Activity {
                 finish();
             }
         }), new LinearLayout.LayoutParams(Ui.dpInt(this, 34), Ui.dpInt(this, 34)));
-        TextView title = Ui.label(this, Ui.t("AI 社区", "AI community"), 16f, Ui.text);
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setPadding(Ui.dpInt(this, 8), 0, 0, 0);
+        TextView title = Ui.label(this, Ui.t("AI 社区", "AI community"), 17f, Ui.text);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
-        bar.addView(title);
+        titles.addView(title);
+        titles.addView(Ui.label(this, Ui.t("第三方智能体，内嵌打开",
+                "Third-party agents, opened inline"), 10f, Ui.textFaint));
+        bar.addView(titles, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView refresh = Ui.label(this, Ui.t("刷新", "Refresh"), 11.5f, Ui.accent);
+        refresh.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                loading = false;
+                load();
+            }
+        });
+        bar.addView(refresh);
         root.addView(bar);
 
         statusView = Ui.label(this, "", 11.5f, Ui.textFaint);
@@ -119,24 +134,31 @@ public class AiHubActivity extends Activity {
                 agents.size() + " featured agents"));
         for (final AiHub.Agent agent : agents) {
             LinearLayout card = Widgets.card(this);
+            card.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 12), Ui.dpInt(this, 12),
+                    Ui.dpInt(this, 12));
             LinearLayout head = new LinearLayout(this);
             head.setOrientation(LinearLayout.HORIZONTAL);
             head.setGravity(Gravity.CENTER_VERTICAL);
-            head.addView(Widgets.avatar(this, agent.name, "", 34, null));
-            TextView name = Ui.label(this, agent.name, 14f, Ui.text);
+            head.addView(Widgets.avatar(this, agent.name, "", 36, null));
+            TextView name = Ui.label(this, agent.name, 13.5f, Ui.text);
             name.setTypeface(Typeface.DEFAULT_BOLD);
-            name.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
+            name.setPadding(Ui.dpInt(this, 10), 0, Ui.dpInt(this, 8), 0);
             head.addView(name, new LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             head.addView(Widgets.chip(this, AiHub.sourceLabel(agent.sourceType),
-                    Ui.textSub, Ui.surfaceAlt));
+                    Ui.accent, Ui.accentGhost));
             card.addView(head);
             if (agent.desc.length() > 0) {
-                TextView desc = Ui.label(this, agent.desc, 12f, Ui.textSub);
+                TextView desc = Ui.label(this, agent.desc, 11.5f, Ui.textSub);
                 desc.setMaxLines(3);
-                desc.setPadding(0, Ui.dpInt(this, 6), 0, 0);
+                desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                desc.setLineSpacing(Ui.dp(this, 2), 1f);
+                desc.setPadding(0, Ui.dpInt(this, 8), 0, 0);
                 card.addView(desc);
             }
+            TextView open = Ui.label(this, Ui.t("打开 ›", "Open ›"), 10f, Ui.textFaint);
+            open.setPadding(0, Ui.dpInt(this, 8), 0, 0);
+            card.addView(open);
             card.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {

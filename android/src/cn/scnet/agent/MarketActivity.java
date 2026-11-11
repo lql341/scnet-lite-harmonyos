@@ -79,10 +79,15 @@ public class MarketActivity extends Activity {
                 finish();
             }
         }), new LinearLayout.LayoutParams(Ui.dpInt(this, 34), Ui.dpInt(this, 34)));
-        TextView title = Ui.label(this, Ui.t("插件市场", "Plugin market"), 16f, Ui.text);
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setPadding(Ui.dpInt(this, 8), 0, 0, 0);
+        TextView title = Ui.label(this, Ui.t("插件", "Plugins"), 17f, Ui.text);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
-        bar.addView(title);
+        titles.addView(title);
+        titles.addView(Ui.label(this, Ui.t("连接器与技能，来自 AI 社区",
+                "Connectors and skills from AI community"), 10f, Ui.textFaint));
+        bar.addView(titles);
         root.addView(bar);
 
         LinearLayout filters = new LinearLayout(this);
@@ -252,6 +257,53 @@ public class MarketActivity extends Activity {
             addCard(card);
             return;
         }
+        // HAP：精选（suggestType=1）/ 推荐（2）/ 社区 三段分组
+        if (!onlyFeatured) {
+            java.util.List<Market.Item> featured = new java.util.ArrayList<>();
+            java.util.List<Market.Item> recommended = new java.util.ArrayList<>();
+            java.util.List<Market.Item> community = new java.util.ArrayList<>();
+            for (Market.Item item : loaded) {
+                if ("1".equals(item.recommend)) {
+                    featured.add(item);
+                } else if ("2".equals(item.recommend)) {
+                    recommended.add(item);
+                } else {
+                    community.add(item);
+                }
+            }
+            if (!featured.isEmpty()) {
+                list.addView(sectionLabel(Ui.t("精选", "Featured")));
+                for (Market.Item item : featured) {
+                    addItem(item);
+                }
+            }
+            if (!recommended.isEmpty()) {
+                list.addView(sectionLabel(Ui.t("推荐", "Recommended")));
+                for (Market.Item item : recommended) {
+                    addItem(item);
+                }
+            }
+            if (!community.isEmpty()) {
+                if (!featured.isEmpty() || !recommended.isEmpty()) {
+                    list.addView(sectionLabel(Ui.t("社区", "Community")));
+                }
+                for (Market.Item item : community) {
+                    addItem(item);
+                }
+            }
+            if (loaded.size() < total) {
+                TextView more = Widgets.ghostButton(this, Ui.t("加载更多", "Load more"),
+                        new Widgets.Action() {
+                            @Override
+                            public void run() {
+                                fetch(page + 1, true);
+                            }
+                        });
+                addCard(more);
+            }
+            return;
+        }
+
         int shown = 0;
         for (final Market.Item item : loaded) {
             if (onlyFeatured && !"1".equals(item.recommend)) {
@@ -309,6 +361,51 @@ public class MarketActivity extends Activity {
                     });
             addCard(more);
         }
+    }
+
+    private TextView sectionLabel(String text) {
+        TextView tv = Ui.label(this, text, 10.5f, Ui.textFaint);
+        tv.setPadding(Ui.dpInt(this, 2), Ui.dpInt(this, 10), 0, Ui.dpInt(this, 2));
+        return tv;
+    }
+
+    /** HAP 的插件卡片：名称 + 精选徽标 / 描述 / 作者·浏览·下载·分类。 */
+    private void addItem(final Market.Item item) {
+        LinearLayout card = Widgets.card(this);
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name = Ui.label(this, item.name, 14f, Ui.text);
+        name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        head.addView(name, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        if ("1".equals(item.recommend)) {
+            head.addView(Widgets.chip(this, Ui.t("精选", "Featured"), Ui.accent, Ui.accentSoft));
+        }
+        card.addView(head);
+        if (item.desc.length() > 0) {
+            TextView desc = Ui.label(this, item.desc, 12f, Ui.textSub);
+            desc.setMaxLines(3);
+            desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            desc.setPadding(0, Ui.dpInt(this, 4), 0, 0);
+            card.addView(desc);
+        }
+        String meta = item.author.length() > 0 ? item.author : item.owner;
+        meta += Ui.t(" · 浏览 " + item.browseCount + " · 下载 " + item.downloadCount,
+                " · " + item.browseCount + " views · " + item.downloadCount + " downloads");
+        if (item.category.length() > 0) {
+            meta += " · " + item.category;
+        }
+        card.addView(Ui.label(this, meta, 10.5f, Ui.textFaint));
+        card.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MarketActivity.this, WebActivity.class)
+                        .putExtra("url", item.detailUrl)
+                        .putExtra("title", item.name));
+            }
+        });
+        addCard(card);
     }
 
     private void addCard(View card) {
