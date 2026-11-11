@@ -460,7 +460,7 @@ public class MainActivity extends Activity {
                 Ui.dpInt(this, 4));
 
         input = new EditText(this);
-        input.setHint(Ui.t("问点什么，或说清要做的科研任务…", "Ask anything, or describe a research task…"));
+        input.setHint(Ui.t("发消息…", "Message…"));
         input.setTextSize(Ui.sp(14.5f));
         input.setTextColor(Ui.text);
         input.setHintTextColor(Ui.textFaint);
@@ -698,6 +698,9 @@ public class MainActivity extends Activity {
                         newChat();
                     }
                 });
+        newChat.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        newChat.setPadding(Ui.dpInt(this, 16), Ui.dpInt(this, 13), Ui.dpInt(this, 16),
+                Ui.dpInt(this, 13));
         LinearLayout.LayoutParams newLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         newLp.leftMargin = Ui.dpInt(this, 16);
@@ -715,28 +718,36 @@ public class MainActivity extends Activity {
                 {"OCR", Ui.t("文字识别", "OCR"),
                         Ui.t("识别 · 文档解析 · 格式转换", "OCR · parse · convert"), "ocr"}
         };
-        LinearLayout serviceBox = new LinearLayout(this);
-        serviceBox.setOrientation(LinearLayout.VERTICAL);
-        serviceBox.setBackground(Ui.round(Ui.surfaceAlt, 9, this));
-        LinearLayout.LayoutParams serviceLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        serviceLp.leftMargin = Ui.dpInt(this, 16);
-        serviceLp.rightMargin = Ui.dpInt(this, 16);
-        serviceLp.topMargin = Ui.dpInt(this, 12);
-        for (final String[] service : services) {
-            serviceBox.addView(Widgets.entryRow(this, service[0], service[1], service[2],
+        for (int i = 0; i < services.length; i++) {
+            final String[] service = services[i];
+            LinearLayout card = Widgets.entryRow(this, service[0], service[1], service[2],
                     new Widgets.Action() {
                         @Override
                         public void run() {
                             toggleDrawer(false);
                             openPage(service[3]);
                         }
-                    }));
+                    });
+            card.setBackground(Ui.round(Ui.surfaceAlt, 12, this));
+            LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cardLp.leftMargin = Ui.dpInt(this, 16);
+            cardLp.rightMargin = Ui.dpInt(this, 16);
+            cardLp.topMargin = Ui.dpInt(this, i == 0 ? 12 : 8);
+            drawerPanel.addView(card, cardLp);
         }
-        drawerPanel.addView(serviceBox, serviceLp);
 
-        // ---- 本机会话
-        drawerPanel.addView(Widgets.section(this, Ui.t("本机会话", "Local chats")));
+        // ---- 本机会话（HAP：标题右侧显示数量）
+        List<Sessions.Meta> localList = Sessions.get().list();
+        LinearLayout localHead = new LinearLayout(this);
+        localHead.setOrientation(LinearLayout.HORIZONTAL);
+        localHead.setGravity(Gravity.CENTER_VERTICAL);
+        localHead.setPadding(Ui.dpInt(this, 16), Ui.dpInt(this, 14), Ui.dpInt(this, 16),
+                Ui.dpInt(this, 6));
+        localHead.addView(Ui.label(this, Ui.t("本机会话", "Local chats"), 11.5f, Ui.textFaint),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        localHead.addView(Ui.label(this, String.valueOf(localList.size()), 11.5f, Ui.textFaint));
+        drawerPanel.addView(localHead);
         drawerSessions = new LinearLayout(this);
         drawerSessions.setOrientation(LinearLayout.VERTICAL);
         drawerPanel.addView(drawerSessions);
@@ -750,7 +761,13 @@ public class MainActivity extends Activity {
         historyHead.addView(Ui.label(this, Ui.t("平台历史", "Platform history"), 11.5f,
                 Ui.textFaint), new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        historyHead.addView(Ui.label(this, String.valueOf(conversations.size()), 11.5f,
+                Ui.textFaint));
         TextView refresh = Ui.label(this, Ui.t("刷新", "Refresh"), 11.5f, Ui.accent);
+        LinearLayout.LayoutParams refreshLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        refreshLp.leftMargin = Ui.dpInt(this, 8);
+        refresh.setLayoutParams(refreshLp);
         refresh.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -787,13 +804,18 @@ public class MainActivity extends Activity {
         }
         for (final Auth.Conversation c : conversations) {
             final String title = c.title.length() > 0 ? c.title : Ui.t("（无标题）", "(untitled)");
-            LinearLayout row = Widgets.row(this, title, c.createTime, "",
+            LinearLayout row = Widgets.row(this, title, cloudStatusText(c), "○",
                     new Widgets.Action() {
                         @Override
                         public void run() {
                             openCloudConversation(c.id);
                         }
                     });
+            TextView dot = (TextView) row.findViewWithTag("rowValue");
+            if (dot != null) {
+                dot.setText("●");
+                dot.setTextColor("completed".equals(c.taskStatus) ? Ui.ok : Ui.textFaint);
+            }
             row.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
@@ -838,19 +860,23 @@ public class MainActivity extends Activity {
         }
         drawerPanel.addView(history);
 
-        // ---- 设置 / 退出登录
-        drawerPanel.addView(Widgets.row(this, Ui.t("设置", "Settings"), "", "",
-                new Widgets.Action() {
+        // ---- 退出登录（HAP：浅红底圆角按钮，整行居中）
+        TextView signOut = new TextView(this);
+        signOut.setText(Ui.t("退出登录", "Sign out"));
+        signOut.setTextSize(Ui.sp(14f));
+        signOut.setTextColor(Ui.danger);
+        signOut.setGravity(Gravity.CENTER);
+        signOut.setBackground(Ui.round(Ui.dangerSoft, 12, this));
+        signOut.setPadding(0, Ui.dpInt(this, 12), 0, Ui.dpInt(this, 12));
+        LinearLayout.LayoutParams signOutLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        signOutLp.leftMargin = Ui.dpInt(this, 16);
+        signOutLp.rightMargin = Ui.dpInt(this, 16);
+        signOutLp.topMargin = Ui.dpInt(this, 14);
+        drawerPanel.addView(signOut, signOutLp);
+        signOut.setOnClickListener(new View.OnClickListener() {
                     @Override
-                    public void run() {
-                        toggleDrawer(false);
-                        startActivity(new Intent(MainActivity.this, ProfileActivity.class));
-                    }
-                }));
-        drawerPanel.addView(Widgets.row(this, Ui.t("退出登录", "Sign out"), "", "",
-                new Widgets.Action() {
-                    @Override
-                    public void run() {
+                    public void onClick(View v) {
                         Widgets.confirm(MainActivity.this, Ui.t("退出登录", "Sign out"),
                                 Ui.t("确定要退出吗？", "Sign out now?"),
                                 Ui.t("退出", "Sign out"), new Widgets.Action() {
@@ -878,9 +904,29 @@ public class MainActivity extends Activity {
                                     }
                                 });
                     }
-                }));
+                });
 
         refreshLocalSessions();
+    }
+
+    /** HAP 的历史副标题：状态 · MM-DD。 */
+    private String cloudStatusText(Auth.Conversation c) {
+        String status = c.taskStatus == null ? "" : c.taskStatus;
+        String label;
+        if ("completed".equals(status)) {
+            label = Ui.t("已完成", "Done");
+        } else if ("running".equals(status)) {
+            label = Ui.t("进行中", "Running");
+        } else if (status.length() > 0) {
+            label = status;
+        } else {
+            label = Ui.t("历史", "History");
+        }
+        String time = c.createTime == null ? "" : c.createTime;
+        if (time.length() >= 10) {
+            return label + " · " + time.substring(5, 10);
+        }
+        return label;
     }
 
     private String entryEn(String key) {
@@ -914,11 +960,47 @@ public class MainActivity extends Activity {
             return;
         }
         for (final Sessions.Meta meta : list) {
-            String sub = meta.count + Ui.t(" 条消息", " messages");
-            LinearLayout row = Widgets.row(this, meta.title, sub, "", new Widgets.Action() {
+            String sub = meta.count + Ui.t(" 条", " msgs")
+                    + (meta.model != null && meta.model.length() > 0 ? " · " + meta.model : "");
+            boolean active = meta.id.equals(currentSessionId);
+            LinearLayout row = Widgets.row(this, meta.title, sub, "✕", new Widgets.Action() {
                 @Override
                 public void run() {
                     openLocalSession(meta.id);
+                }
+            }, false);
+            // 当前会话标题用 accent 色（HAP 行为）
+            TextView titleView = (TextView) ((LinearLayout) row.getChildAt(0)).getChildAt(0);
+            if (active) {
+                titleView.setTextColor(Ui.accent);
+                LinearLayout.LayoutParams activeLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                activeLp.leftMargin = Ui.dpInt(this, 10);
+                activeLp.rightMargin = Ui.dpInt(this, 10);
+                row.setBackground(Ui.round(Ui.accentGhost, 10, this));
+                row.setLayoutParams(activeLp);
+            }
+            // 右侧 ✕ 删除（按 tag 找，避免被 chevron 影响索引）
+            TextView close = (TextView) row.findViewWithTag("rowValue");
+            if (close == null) {
+                return;
+            }
+            close.setTextColor(Ui.textFaint);
+            close.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Widgets.confirm(MainActivity.this, Ui.t("删除会话", "Delete session"),
+                            Ui.t("删除后无法恢复，确定吗？", "This cannot be undone."),
+                            Ui.t("删除", "Delete"), new Widgets.Action() {
+                                @Override
+                                public void run() {
+                                    Sessions.get().remove(meta.id);
+                                    if (meta.id.equals(currentSessionId)) {
+                                        newChat();
+                                    }
+                                    refreshDrawer();
+                                }
+                            });
                 }
             });
             row.setOnLongClickListener(new View.OnLongClickListener() {
@@ -1230,7 +1312,7 @@ public class MainActivity extends Activity {
                 ? Store.get().getCustomBaseUrl().length() > 0 : apiKey.length() > 0;
         statusLabel.setText((ready ? "● " : "○ ") + (ready
                 ? Ui.t("网关已就绪", "Gateway ready")
-                : Ui.t("未就绪", "Not ready")) + " · " + currentLabel());
+                : Ui.t("未就绪", "Not ready")));
         statusLabel.setTextColor(ready ? Ui.ok : Ui.textFaint);
         if (channelChip != null) {
             channelChip.setText(currentLabel() + " ▾");
@@ -1421,6 +1503,11 @@ public class MainActivity extends Activity {
             bLp.leftMargin = Ui.dpInt(this, 40);
             cell.addView(bubble, bLp);
         } else {
+            if (msg.via.length() > 0) {
+                TextView meta = Ui.label(this, msg.via, 10.5f, Ui.textFaint);
+                meta.setPadding(Ui.dpInt(this, 2), 0, 0, Ui.dpInt(this, 4));
+                cell.addView(meta);
+            }
             LinearLayout box = new LinearLayout(this);
             box.setOrientation(LinearLayout.VERTICAL);
             MdView.render(this, box, msg.content);
@@ -1430,11 +1517,6 @@ public class MainActivity extends Activity {
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             bLp.rightMargin = Ui.dpInt(this, 8);
             cell.addView(bubble, bLp);
-            if (msg.via.length() > 0) {
-                TextView meta = Ui.label(this, msg.via, 10.5f, Ui.textFaint);
-                meta.setPadding(Ui.dpInt(this, 6), Ui.dpInt(this, 4), 0, 0);
-                cell.addView(meta);
-            }
         }
 
         final String copyText = msg.content;
@@ -1477,8 +1559,8 @@ public class MainActivity extends Activity {
         cell.addView(bubble, bLp);
 
         streamingMeta = Ui.label(this, currentLabel(), 10.5f, Ui.textFaint);
-        streamingMeta.setPadding(Ui.dpInt(this, 6), Ui.dpInt(this, 4), 0, 0);
-        cell.addView(streamingMeta);
+        streamingMeta.setPadding(Ui.dpInt(this, 2), 0, 0, Ui.dpInt(this, 4));
+        cell.addView(streamingMeta, 0);
 
         progressLabel = Ui.label(this, "", 11.5f, Ui.textFaint);
         progressLabel.setPadding(Ui.dpInt(this, 6), Ui.dpInt(this, 2), 0, 0);

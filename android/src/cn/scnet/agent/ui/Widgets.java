@@ -153,6 +153,12 @@ public final class Widgets {
     /** 设置页一行：标题 + 副标题 + 右侧值。 */
     public static LinearLayout row(Context context, String title, String sub, String value,
                                    final Action onTap) {
+        return row(context, title, sub, value, onTap, true);
+    }
+
+    /** chevron=false 时右侧不画 ›（会话行自己带 ✕）。 */
+    public static LinearLayout row(Context context, String title, String sub, String value,
+                                   final Action onTap, boolean chevron) {
         LinearLayout line = new LinearLayout(context);
         line.setOrientation(LinearLayout.HORIZONTAL);
         line.setGravity(Gravity.CENTER_VERTICAL);
@@ -167,9 +173,13 @@ public final class Widgets {
         line.addView(left, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         if (value != null && value.length() > 0) {
-            line.addView(Ui.label(context, value, 12.5f, Ui.textSub));
+            TextView valueView = Ui.label(context, value, 12.5f, Ui.textSub);
+            valueView.setTag("rowValue");
+            line.addView(valueView);
         }
-        line.addView(Ui.label(context, "›", 16f, Ui.textFaint));
+        if (chevron) {
+            line.addView(Ui.label(context, "›", 16f, Ui.textFaint));
+        }
         if (onTap != null) {
             line.setOnClickListener(new View.OnClickListener() {
                 @Override
