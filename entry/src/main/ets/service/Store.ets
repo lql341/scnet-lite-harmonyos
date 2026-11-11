@@ -33,6 +33,7 @@ const KEY_AGENT: string = 'agentIdentify';
 const KEY_CLOUD_TOKEN: string = 'cloudToken';
 const KEY_CLOUD_COOKIE: string = 'cloudCookie';
 const KEY_AUTO_KEY: string = 'autoGatewayKey';
+const KEY_UPDATE_URL: string = 'updateUrl';
 
 /** 网关默认 base：平台 `createActivityApiKey` 下发的就是 /api/llm/v1（不是 /api/gw/v1）。 */
 export const DEFAULT_BASE_URL: string = 'https://api.scnet.cn/api/llm/v1';
@@ -268,6 +269,15 @@ class Store {
 
   setCloudCookie(value: string): void {
     this.writeString(KEY_CLOUD_COOKIE, value);
+  }
+
+  /** 自定义更新源（公开 JSON，空 = 走 GitHub Releases）。 */
+  getUpdateUrl(): string {
+    return this.readString(KEY_UPDATE_URL, '');
+  }
+
+  setUpdateUrl(value: string): void {
+    this.writeString(KEY_UPDATE_URL, value);
   }
 
   getAutoKey(): string {

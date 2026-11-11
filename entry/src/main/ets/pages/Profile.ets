@@ -7,6 +7,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Theme, prettyModel, safe } from '../common/Theme';
 import { L } from '../common/I18n';
 import { store } from '../service/Store';
+import { checkUpdate, UpdateInfo } from '../service/Update';
 import { auth, ClusterIdentity, ClusterInfo } from '../service/Auth';
 import { UserInfo } from '../model/Types';
 import { ThemeSheet } from '../view/ThemeSheet';
@@ -63,6 +64,9 @@ struct Profile {
   @State showAbout: boolean = false;
   /** 当前应用版本（启动时读一次） */
   @State appVersion: string = '';
+  @State updateBusy: boolean = false;
+  @State customUpdateUrl: string = '';
+  @State showUpdateUrlDialog: boolean = false;
   @State colorMode: string = 'system';
   @State cpName: string = '';
   @State cpUrl: string = '';
@@ -85,6 +89,7 @@ struct Profile {
     Theme.applyFontLevel(store.getFontLevel());
     L.zh = store.getLang() !== 'en';
     this.appVersion = this.readVersion();
+    this.customUpdateUrl = store.getUpdateUrl();
     this.colorMode = store.getColorMode();
     this.avatar = store.getAvatar();
     this.cpName = store.getCustomName();
@@ -192,6 +197,49 @@ struct Profile {
   /** 当前通道/服务（替代原来暴露网关 key 那一行）。 */
   private agentRoute(): string {
     return store.getChannel() === 'agent' ? L.t('智能体服务', 'Agent router') : L.t('模型网关', 'Model gateway');
+  }
+
+  /** 应用内检查更新（结果用 dialog 呈现，与 Android 版一致）。 */
+  private async doCheckUpdate(): Promise<void> {
+    if (this.updateBusy) {
+      return;
+    }
+    this.updateBusy = true;
+    const info: UpdateInfo = await checkUpdate(this.appVersion, this.customUpdateUrl);
+    this.updateBusy = false;
+    if (info.error.length > 0) {
+      AlertDialog.show({
+        title: L.t('检查更新失败', 'Update check failed'),
+        message: info.error,
+        confirm: { value: L.t('好', 'OK'), action: () => {
+        } }
+      });
+      return;
+    }
+    if (!info.newer) {
+      AlertDialog.show({
+        title: L.t('已是最新版本', 'Up to date'),
+        message: L.t(`当前版本 ${this.appVersion}`, `v${this.appVersion}`),
+        confirm: { value: L.t('好', 'OK'), action: () => {
+        } }
+      });
+      return;
+    }
+    AlertDialog.show({
+      title: L.t(`发现新版本 ${info.versionName}`, `New version ${info.versionName}`),
+      message: info.notes.length > 0 ? info.notes : L.t('（无更新说明）', '(no notes)'),
+      primaryButton: {
+        value: L.t('打开下载页', 'Open download'),
+        action: () => {
+          router.pushUrl({ url: 'pages/WebPage', params: { url: info.url, title: info.versionName } });
+        }
+      },
+      secondaryButton: {
+        value: L.t('取消', 'Cancel'),
+        action: () => {
+        }
+      }
+    });
   }
 
   private maskedKey(): string {
@@ -433,20 +481,19 @@ struct Profile {
             .borderRadius(Theme.rMd)
             .border({ width: 1, color: Theme.hairline })
 
-            // 检查更新 / 关于
+            // 检查更新（应用内比对，仓库已公开）
             Row({ space: 10 }) {
               Column({ space: 2 }) {
                 Text(L.t('检查更新', 'Check for updates')).fontSize(Theme.fSmall).fontColor(Theme.text)
-                Text(this.appVersion.length > 0
-                  ? L.t(`当前版本 ${this.appVersion} · 仓库私有，需在页面内登录 GitHub 查看`,
-                    `v${this.appVersion} · private repo, sign in on the page`)
-                  : L.t('仓库私有，需在页面内登录 GitHub 查看', 'Private repo; sign in on the page'))
+                Text(L.t(`当前版本 ${this.appVersion}`, `v${this.appVersion}`))
                   .fontSize(10)
                   .fontColor(Theme.textFaint)
               }
               .alignItems(HorizontalAlign.Start)
               .layoutWeight(1)
-              Text('›').fontSize(13).fontColor(Theme.textFaint)
+              Text(this.updateBusy ? L.t('检查中…', 'Checking…') : '›')
+                .fontSize(13)
+                .fontColor(Theme.textFaint)
             }
             .width('100%')
             .padding({ left: 14, right: 12, top: 14, bottom: 14 })
@@ -454,13 +501,7 @@ struct Profile {
             .borderRadius(Theme.rMd)
             .border({ width: 1, color: Theme.hairline })
             .onClick(() => {
-              router.pushUrl({
-                url: 'pages/WebPage',
-                params: {
-                  url: 'https://github.com/lql341/scnet-lite-harmonyos/releases',
-                  title: L.t('检查更新', 'Check for updates')
-                }
-              });
+              this.doCheckUpdate();
             })
 
             Row({ space: 10 }) {
@@ -475,6 +516,44 @@ struct Profile {
             .onClick(() => {
               this.showAbout = true;
             })
+
+            // 调试（与 Android 版对齐：更新源 / 网关 key 状态 / 版本）
+            Column() {
+              Row({ space: 10 }) {
+                Text(L.t('更新源（JSON，留空走 GitHub）', 'Update source (JSON)'))
+                  .fontSize(Theme.fSmall).fontColor(Theme.textFaint).layoutWeight(1)
+                Text(this.customUpdateUrl.length > 0 ? L.t('已配置', 'Set') : L.t('未配置', 'Unset'))
+                  .fontSize(Theme.fTiny).fontColor(Theme.textSub)
+              }
+              .width('100%')
+              .padding({ top: 11, bottom: 11 })
+              .onClick(() => {
+                this.showUpdateUrlDialog = true;
+              })
+
+              Divider().color(Theme.hairline)
+
+              Row({ space: 10 }) {
+                Text(L.t('网关 key', 'Gateway key')).fontSize(Theme.fSmall).fontColor(Theme.textFaint).layoutWeight(1)
+                Text(this.maskedKey()).fontSize(Theme.fTiny).fontColor(Theme.textSub)
+              }
+              .width('100%')
+              .padding({ top: 11, bottom: 11 })
+
+              Divider().color(Theme.hairline)
+
+              Row({ space: 10 }) {
+                Text(L.t('构建', 'Build')).fontSize(Theme.fSmall).fontColor(Theme.textFaint).layoutWeight(1)
+                Text(`v${this.appVersion} · HarmonyOS`).fontSize(Theme.fTiny).fontColor(Theme.textSub)
+              }
+              .width('100%')
+              .padding({ top: 11, bottom: 11 })
+            }
+            .width('100%')
+            .padding({ left: 14, right: 14 })
+            .backgroundColor(Theme.surface)
+            .borderRadius(Theme.rMd)
+            .border({ width: 1, color: Theme.hairline })
 
             Text(L.t('退出登录', 'Sign out'))
               .fontSize(Theme.fSmall)
@@ -761,6 +840,63 @@ struct Profile {
         .width('100%')
         .height('100%')
         .backgroundColor('#0B1F3355')
+      }
+
+      if (this.showUpdateUrlDialog) {
+        Column() {
+          Blank().layoutWeight(1).width('100%').onClick(() => {
+            this.showUpdateUrlDialog = false;
+          })
+          Column({ space: 12 }) {
+            Text(L.t('更新源 JSON 地址', 'Update source JSON URL'))
+              .fontSize(Theme.fTitle).fontColor(Theme.text).width('100%')
+            Text(L.t('留空则直接查 GitHub Releases（仓库已公开）',
+              'Empty = use GitHub Releases (public repo)'))
+              .fontSize(10).fontColor(Theme.textFaint).width('100%')
+            TextInput({ text: this.customUpdateUrl, placeholder: 'https://example.com/update.json' })
+              .height(46)
+              .fontSize(Theme.fSmall)
+              .backgroundColor(Theme.surfaceAlt)
+              .borderRadius(Theme.rMd)
+              .padding({ left: 14, right: 14 })
+              .onChange((v: string) => {
+                this.customUpdateUrl = v;
+              })
+            Row({ space: 8 }) {
+              Text(L.t('取消', 'Cancel'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.textSub)
+                .layoutWeight(1)
+                .textAlign(TextAlign.Center)
+                .padding({ top: 11, bottom: 11 })
+                .backgroundColor(Theme.surfaceAlt)
+                .borderRadius(Theme.rMd)
+                .onClick(() => {
+                  this.showUpdateUrlDialog = false;
+                })
+              Text(L.t('保存', 'Save'))
+                .fontSize(Theme.fSmall)
+                .fontColor(Theme.textOnAccent)
+                .layoutWeight(1)
+                .textAlign(TextAlign.Center)
+                .padding({ top: 11, bottom: 11 })
+                .backgroundColor(Theme.accent)
+                .borderRadius(Theme.rMd)
+                .onClick(() => {
+                  store.setUpdateUrl(this.customUpdateUrl.trim());
+                  this.showUpdateUrlDialog = false;
+                })
+            }
+            .width('100%')
+          }
+          .width('100%')
+          .padding(16)
+          .backgroundColor(Theme.surface)
+          .borderRadius({ topLeft: Theme.rXl, topRight: Theme.rXl })
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#66000000')
       }
 
       if (this.showAvatarSheet) {
