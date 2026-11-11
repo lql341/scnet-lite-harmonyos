@@ -43,6 +43,8 @@ public class JobDetailActivity extends Activity {
     private String logPath = "";
     private String logText = "";
     private String errorMsg = "";
+    private TextView statusLabel;
+    private TextView cancelPill;
     private boolean logLoading;
     private boolean submitting;
 
@@ -77,22 +79,52 @@ public class JobDetailActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 10), Ui.dpInt(this, 14),
-                Ui.dpInt(this, 6));
-        bar.addView(Widgets.glyphButton(this, "‹", new Widgets.Action() {
+        bar.setPadding(Ui.dpInt(this, 8), Ui.dpInt(this, 8), Ui.dpInt(this, 12),
+                Ui.dpInt(this, 4));
+        TextView back = Ui.label(this, "‹", 20f, Ui.textSub);
+        back.setGravity(Gravity.CENTER);
+        back.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void run() {
+            public void onClick(View v) {
                 finish();
             }
-        }), new LinearLayout.LayoutParams(Ui.dpInt(this, 34), Ui.dpInt(this, 34)));
-        TextView title = Ui.label(this, Ui.t("作业详情 #", "Job #") + jobId, 15.5f, Ui.text);
+        });
+        bar.addView(back, new LinearLayout.LayoutParams(Ui.dpInt(this, 32),
+                Ui.dpInt(this, 32)));
+
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setPadding(Ui.dpInt(this, 6), 0, 0, 0);
+        TextView title = Ui.label(this, Ui.t("作业 ", "Job ") + jobId, 17f, Ui.text);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
-        bar.addView(title, new LinearLayout.LayoutParams(0,
+        titles.addView(title);
+        statusLabel = Ui.label(this, "", 10f, Ui.textFaint);
+        titles.addView(statusLabel);
+        bar.addView(titles, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        bar.addView(Widgets.ghostButton(this, Ui.t("取消作业", "Cancel"), new Widgets.Action() {
+
+        TextView refresh = Ui.label(this, "⟳", 15f, Ui.textSub);
+        refresh.setGravity(Gravity.CENTER);
+        refresh.setPadding(Ui.dpInt(this, 6), 0, Ui.dpInt(this, 6), 0);
+        refresh.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void run() {
+            public void onClick(View v) {
+                load();
+            }
+        });
+        bar.addView(refresh);
+
+        cancelPill = new TextView(this);
+        cancelPill.setText(Ui.t("取消作业", "Cancel"));
+        cancelPill.setTextSize(Ui.sp(11.5f));
+        cancelPill.setTextColor(Ui.danger);
+        cancelPill.setBackground(Ui.round(Ui.dangerSoft, 999, this));
+        cancelPill.setPadding(Ui.dpInt(this, 10), Ui.dpInt(this, 5), Ui.dpInt(this, 10),
+                Ui.dpInt(this, 5));
+        cancelPill.setVisibility(View.GONE);
+        cancelPill.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
                 Widgets.confirm(JobDetailActivity.this, Ui.t("取消作业", "Cancel job"),
                         Ui.t("确定取消这个作业吗？", "Cancel this job?"),
                         Ui.t("取消作业", "Cancel job"), new Widgets.Action() {
@@ -102,7 +134,8 @@ public class JobDetailActivity extends Activity {
                             }
                         });
             }
-        }));
+        });
+        bar.addView(cancelPill);
         root.addView(bar);
 
         ScrollView scroll = new ScrollView(this);
@@ -184,15 +217,35 @@ public class JobDetailActivity extends Activity {
                 continue;
             }
             LinearLayout line = new LinearLayout(this);
-            line.setOrientation(LinearLayout.VERTICAL);
-            line.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 8), Ui.dpInt(this, 14),
-                    Ui.dpInt(this, 8));
-            line.addView(Ui.label(this, field.label, 11f, Ui.textFaint));
-            line.addView(Ui.label(this, value, 13f, Ui.text));
+            line.setOrientation(LinearLayout.HORIZONTAL);
+            line.setGravity(Gravity.CENTER_VERTICAL);
+            line.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 9), Ui.dpInt(this, 14),
+                    Ui.dpInt(this, 9));
+            line.addView(Ui.label(this, field.label, 10f, Ui.textFaint));
+            TextView valueView = Ui.label(this, value, 12f, Ui.text);
+            valueView.setGravity(Gravity.END);
+            line.addView(valueView, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             card.addView(line);
+            View div = new View(this);
+            div.setBackgroundColor(Ui.hairline);
+            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Ui.dpInt(this, 1));
+            dlp.leftMargin = Ui.dpInt(this, 14);
+            card.addView(div, dlp);
         }
         addCard(card);
 
+        String state = J.str(detail, "jobStatus");
+        if (statusLabel != null) {
+            statusLabel.setText(Hpc.jobStateText(state));
+            statusLabel.setTextColor("R".equals(state) ? Ui.ok
+                    : ("E".equals(state) ? Ui.danger : Ui.textFaint));
+        }
+        if (cancelPill != null) {
+            boolean running = "R".equals(state) || "PD".equals(state) || "P".equals(state);
+            cancelPill.setVisibility(running ? View.VISIBLE : View.GONE);
+        }
         logPath = J.str(detail, "outputPath");
         if (logPath.length() == 0) {
             logPath = J.str(detail, "errorPath");
@@ -214,7 +267,22 @@ public class JobDetailActivity extends Activity {
         LinearLayout wrap = new LinearLayout(this);
         wrap.setTag("log");
         wrap.setOrientation(LinearLayout.VERTICAL);
-        wrap.addView(Widgets.section(this, Ui.t("日志 · ", "Log · ") + logPath));
+        LinearLayout logHead = new LinearLayout(this);
+        logHead.setOrientation(LinearLayout.HORIZONTAL);
+        logHead.setGravity(Gravity.CENTER_VERTICAL);
+        logHead.setPadding(Ui.dpInt(this, 16), Ui.dpInt(this, 14), Ui.dpInt(this, 16),
+                Ui.dpInt(this, 6));
+        logHead.addView(Ui.label(this, Ui.t("输出日志", "Output log"), 11.5f, Ui.textFaint),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView read = Ui.label(this, Ui.t("读取", "Read"), 11.5f, Ui.accent);
+        read.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                loadLog();
+            }
+        });
+        logHead.addView(read);
+        wrap.addView(logHead);
 
         HorizontalScrollView hsv = new HorizontalScrollView(this);
         LinearLayout box = new LinearLayout(this);

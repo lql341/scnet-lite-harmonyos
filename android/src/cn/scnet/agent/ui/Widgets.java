@@ -262,6 +262,11 @@ public final class Widgets {
     }
 
     /** 单行输入弹窗（重命名等）。 */
+    /** 分段/索引选择回调。 */
+    public interface OnInt {
+        void onInt(int index);
+    }
+
     public interface OnText {
         void onText(String value);
     }
