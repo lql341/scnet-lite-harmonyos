@@ -1,6 +1,7 @@
 /**
  * 账号页（头像点进来）。
- * 展示身份 / 集群账号 / 当前通道 / 网关 key 状态，提供主题色与退出登录。
+ * 展示身份 / 集群账号 / 当前通道 / 集群调度器，提供主题色与退出登录。
+ * 注意：不展示网关 key（账号额度凭证，连打码也不展示）。
  */
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -178,8 +179,7 @@ struct Profile {
             `${this.clusterName} (${this.clusters.length})`) : ''
       },
       { label: L.t('当前通道', 'Channel'), value: this.channelLabel() },
-      { label: L.t('集群调度器', 'Scheduler'), value: this.agentRoute() },
-      { label: L.t('网关 key', 'Gateway key'), value: this.maskedKey() }
+      { label: L.t('集群调度器', 'Scheduler'), value: this.agentRoute() }
     ];
     this.rows = rows;
   }
@@ -241,17 +241,6 @@ struct Profile {
         }
       }
     });
-  }
-
-  private maskedKey(): string {
-    const key: string = store.getAutoKey();
-    if (key.length === 0) {
-      return '未获取';
-    }
-    if (key.length <= 8) {
-      return '***';
-    }
-    return `${key.substring(0, 5)}…${key.substring(key.length - 3)}`;
   }
 
   private channelLabel(): string {
@@ -518,7 +507,7 @@ struct Profile {
               this.showAbout = true;
             })
 
-            // 调试（与 Android 版对齐：更新源 / 网关 key 状态 / 版本）
+            // 调试（与 Android 版对齐：更新源 / 构建版本）
             Column() {
               Row({ space: 10 }) {
                 Text(L.t('更新源（JSON，留空走 GitHub）', 'Update source (JSON)'))
@@ -533,13 +522,6 @@ struct Profile {
               })
 
               Divider().color(Theme.hairline)
-
-              Row({ space: 10 }) {
-                Text(L.t('网关 key', 'Gateway key')).fontSize(Theme.fSmall).fontColor(Theme.textFaint).layoutWeight(1)
-                Text(this.maskedKey()).fontSize(Theme.fTiny).fontColor(Theme.textSub)
-              }
-              .width('100%')
-              .padding({ top: 11, bottom: 11 })
 
               Divider().color(Theme.hairline)
 

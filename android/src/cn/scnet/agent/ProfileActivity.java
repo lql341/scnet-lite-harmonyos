@@ -48,7 +48,7 @@ public class ProfileActivity extends Activity {
     private TextView channelValue;
     private TextView routeValue;
     private TextView userValue;
-    private TextView gatewayKeyValue;
+
 
     @Override
     protected void onCreate(Bundle state) {
@@ -159,9 +159,7 @@ public class ProfileActivity extends Activity {
         infoCard.addView(infoRow(Ui.t("当前通道", "Channel"), routeValue, null));
         infoCard.addView(divider());
         infoCard.addView(infoRow(Ui.t("集群调度器", "Scheduler"), schedulerValue, null));
-        infoCard.addView(divider());
-        gatewayKeyValue = Ui.label(this, "—", 12f, Ui.text);
-        infoCard.addView(infoRow(Ui.t("网关 key", "Gateway key"), gatewayKeyValue, null));
+
         addCard(infoCard);
         loadIdentity();
 
@@ -558,17 +556,7 @@ public class ProfileActivity extends Activity {
                 if (userValue != null) {
                     userValue.setText(value[3]);
                 }
-                if (gatewayKeyValue != null) {
-                    String key = Store.get().getAutoKey();
-                    if (key.length() == 0) {
-                        gatewayKeyValue.setText(Ui.t("未获取", "Not fetched"));
-                    } else if (key.length() <= 8) {
-                        gatewayKeyValue.setText("***");
-                    } else {
-                        gatewayKeyValue.setText(key.substring(0, 5) + "…"
-                                + key.substring(key.length() - 3));
-                    }
-                }
+
                 if (schedulerValue != null) {
                     schedulerValue.setText(value[2]);
                 }
