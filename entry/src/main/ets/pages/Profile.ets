@@ -178,7 +178,8 @@ struct Profile {
             `${this.clusterName} (${this.clusters.length})`) : ''
       },
       { label: L.t('当前通道', 'Channel'), value: this.channelLabel() },
-      { label: L.t('集群调度器', 'Scheduler'), value: this.agentRoute() }
+      { label: L.t('集群调度器', 'Scheduler'), value: this.agentRoute() },
+      { label: L.t('网关 key', 'Gateway key'), value: this.maskedKey() }
     ];
     this.rows = rows;
   }
