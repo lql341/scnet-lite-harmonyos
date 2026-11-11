@@ -21,8 +21,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/android
 OUT=${OUT:-$ROOT/dist/android}
 PKG=cn.scnet.agent
-VER_NAME=${VER_NAME:-0.6.0}
-VER_CODE=${VER_CODE:-20}
+VER_NAME=${VER_NAME:-0.6.1}
+VER_CODE=${VER_CODE:-21}
 # DEBUG=1 出可调试包（仅本机联调用：aapt2 --debug-mode → android:debuggable=true）
 DEBUG=${DEBUG:-0}
 ENTRY=${ENTRY:-https://www.scnet.cn/ui/chatbot/index.html}

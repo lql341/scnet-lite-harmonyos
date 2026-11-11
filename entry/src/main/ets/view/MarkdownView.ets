@@ -4,7 +4,9 @@
  */
 import { pasteboard } from '@kit.BasicServicesKit';
 import { Theme } from '../common/Theme';
-import { MdBlock, MdKind, MdSeg, parseInline, parseMarkdown } from '../common/Markdown';
+import {
+  MdBlock, MdKind, MdSeg, normalizeImageUrl, parseInline, parseMarkdown
+} from '../common/Markdown';
 
 const MONO: string = 'HarmonyOS Sans Mono';
 
@@ -44,6 +46,13 @@ export struct MarkdownView {
           .textBackgroundStyle(seg.code
             ? { color: Theme.surfaceSunken, radius: 4 }
             : { color: Color.Transparent, radius: 0 })
+          .decoration({
+            type: seg.strike === true ? TextDecorationType.LineThrough
+              : (seg.link !== undefined && seg.link.length > 0 ? TextDecorationType.Underline
+                : TextDecorationType.None),
+            color: seg.link !== undefined && seg.link.length > 0 ? Theme.accent : color
+          })
+          .fontColor(seg.link !== undefined && seg.link.length > 0 ? Theme.accent : color)
       }, (seg: MdSeg, index: number) => `${index}-${seg.text.length}`)
     }
     .width('100%')
@@ -176,6 +185,29 @@ export struct MarkdownView {
     .border({ width: 1, color: Theme.border })
   }
 
+  /** 图片：oss:/// 自动映射到公共资源域名；失败时给出链接文字，不留白。 */
+  @Builder
+  image(block: MdBlock) {
+    Column() {
+      Image(normalizeImageUrl(block.url === undefined ? '' : block.url))
+        .width('100%')
+        .constraintSize({ maxHeight: 420 })
+        .objectFit(ImageFit.Contain)
+        .borderRadius(Theme.rSm)
+        .backgroundColor(Theme.surfaceAlt)
+        .alt($r('app.media.app_icon'))
+      Text(block.url === undefined ? '' : block.url)
+        .fontSize(Theme.fTiny - 1)
+        .fontColor(Theme.textFaint)
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .margin({ top: 2 })
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ top: 4, bottom: 4 })
+  }
+
   @Builder
   quote(block: MdBlock) {
     Row() {
@@ -243,6 +275,8 @@ export struct MarkdownView {
           this.bullet(block)
         } else if (block.kind === MdKind.Table) {
           this.table(block)
+        } else if (block.kind === MdKind.Image) {
+          this.image(block)
         } else if (block.kind === MdKind.Quote) {
           this.quote(block)
         } else {

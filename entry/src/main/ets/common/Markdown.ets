@@ -20,11 +20,14 @@ export enum MdKind {
   Code,
   Quote,
   Hr,
-  Table
+  Table,
+  Image
 }
 
 export interface MdBlock {
   kind: MdKind;
+  /** 图片块：URL（oss:/// 或 http） */
+  url?: string;
   text: string;
   level: number;
   order: number;
@@ -76,6 +79,62 @@ export interface MdSeg {
   bold: boolean;
   italic: boolean;
   code: boolean;
+  /** 删除线 ~~x~~ */
+  strike?: boolean;
+  /** 链接地址（[文字](url) 时非空） */
+  link?: string;
+}
+
+/** 平台素材地址归一：oss:/// → 公共资源域名（与桌面客户端一致）。 */
+export function normalizeImageUrl(url: string): string {
+  const text: string = url.trim();
+  if (text.startsWith('oss:///')) {
+    const path: string = text.substring(6);
+    return `https://oss.ksai.scnet.cn:58003/scnet-public-resources${path}`;
+  }
+  if (text.startsWith('//')) {
+    return `https:${text}`;
+  }
+  if (text.startsWith('/')) {
+    return `https://www.scnet.cn${text}`;
+  }
+  return text;
+}
+
+/** 地址看起来是图片（按扩展名）。 */
+export function isImageLike(url: string): boolean {
+  let lower: string = url.trim().toLowerCase();
+  const q: number = lower.indexOf('?');
+  if (q > 0) {
+    lower = lower.substring(0, q);
+  }
+  return lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+    || lower.endsWith('.gif') || lower.endsWith('.webp') || lower.endsWith('.svg')
+    || lower.endsWith('.bmp');
+}
+
+/** 整行图片：`![alt](url)` 或平台素材 `[img](oss:///…)` 或裸图片链接。 */
+function imageOf(line: string): string {
+  const t: string = line.trim();
+  if (t.startsWith('![')) {
+    const mid: number = t.indexOf('](');
+    const close: number = mid > 0 ? t.indexOf(')', mid + 2) : -1;
+    if (mid > 0 && close > mid) {
+      return t.substring(mid + 2, close).trim();
+    }
+  }
+  if (t.startsWith('[img](')) {
+    const close: number = t.indexOf(')', 6);
+    if (close > 6) {
+      const url: string = t.substring(6, close).trim();
+      return isImageLike(url) ? url : '';
+    }
+  }
+  if ((t.startsWith('http://') || t.startsWith('https://') || t.startsWith('oss://'))
+    && isImageLike(t)) {
+    return t;
+  }
+  return '';
 }
 
 function isFence(line: string): boolean {
@@ -168,6 +227,19 @@ export function parseMarkdown(source: string): MdBlock[] {
       }
     }
 
+    // 图片（整行）
+    const imgUrl: string = imageOf(trimmed);
+    if (imgUrl.length > 0) {
+      flushParagraph();
+      const img: MdBlock = {
+        kind: MdKind.Image, text: '', level: 0, order: 0, lang: '', code: '', rows: [],
+        url: imgUrl
+      };
+      blocks.push(img);
+      i++;
+      continue;
+    }
+
     // 分隔线
     if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
       flushParagraph();
@@ -215,9 +287,15 @@ export function parseMarkdown(source: string): MdBlock[] {
       trimmed.length > 1 && (trimmed.charAt(1) === ' ' || trimmed.charAt(1) === '\t')) {
       flushParagraph();
       const indent: number = line.length - line.trimStart().length;
+      let body: string = trimmed.substring(1).trim();
+      if (body.startsWith('[ ] ')) {
+        body = `☐ ${body.substring(4)}`;
+      } else if (body.startsWith('[x] ') || body.startsWith('[X] ')) {
+        body = `☑ ${body.substring(4)}`;
+      }
       const item: MdBlock = {
         kind: MdKind.Bullet,
-        text: trimmed.substring(1).trim(),
+        text: body,
         level: Math.min(2, Math.floor(indent / 2)),
         order: 0, lang: '', code: '', rows: []
       };
@@ -289,12 +367,16 @@ export function parseInline(text: string): MdSeg[] {
   let pending: string = '';
   let i: number = 0;
 
-  const push = (value: string, bold: boolean, italic: boolean, code: boolean): void => {
-    const cleaned: string = code ? value : stripLinks(value);
+  const push = (value: string, bold: boolean, italic: boolean, code: boolean,
+    strike: boolean = false, link: string = ''): void => {
+    const cleaned: string = code || link.length > 0 ? value : stripLinks(value);
     if (cleaned.length === 0) {
       return;
     }
-    const seg: MdSeg = { text: cleaned, bold: bold, italic: italic, code: code };
+    const seg: MdSeg = {
+      text: cleaned, bold: bold, italic: italic, code: code,
+      strike: strike, link: link
+    };
     segs.push(seg);
   };
   const flush = (): void => {
@@ -312,6 +394,17 @@ export function parseInline(text: string): MdSeg[] {
         flush();
         push(text.substring(i + 1, end), false, false, true);
         i = end + 1;
+        continue;
+      }
+    }
+
+    // 删除线 ~~x~~
+    if (ch === '~' && i + 1 < text.length && text.charAt(i + 1) === '~') {
+      const end: number = text.indexOf('~~', i + 2);
+      if (end > i + 2) {
+        flush();
+        push(text.substring(i + 2, end), false, false, false, true);
+        i = end + 2;
         continue;
       }
     }
@@ -348,7 +441,12 @@ export function parseInline(text: string): MdSeg[] {
       const close: number = mid > 0 ? text.indexOf(')', mid + 2) : -1;
       if (mid > 0 && close > mid) {
         flush();
-        push(text.substring(i + 1, mid), false, false, false);
+        let target: string = text.substring(mid + 2, close).trim();
+        const space: number = target.indexOf(' ');
+        if (space > 0) {
+          target = target.substring(0, space);
+        }
+        push(text.substring(i + 1, mid), false, false, false, false, target);
         i = close + 1;
         continue;
       }

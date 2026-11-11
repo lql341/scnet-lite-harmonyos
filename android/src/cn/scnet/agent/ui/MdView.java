@@ -69,9 +69,26 @@ public final class MdView {
                     size = 15.5f;
                 }
                 TextView tv = text(context, block.text, size, Ui.text, true);
-                tv.setPadding(0, Ui.dpInt(context, 10), 0, Ui.dpInt(context, 4));
+                tv.setPadding(0, Ui.dpInt(context, 4), 0, Ui.dpInt(context, 2));
                 lastText = tv;
-                return tv;
+                if (block.kind != Md.H1) {
+                    tv.setPadding(0, Ui.dpInt(context, 8), 0, Ui.dpInt(context, 2));
+                    return tv;
+                }
+                // H1：左侧 accent 色条（与 HAP 的 heading 一致）
+                LinearLayout row = new LinearLayout(context);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                View bar = new View(context);
+                bar.setBackground(Ui.round(Ui.accent, 2, context));
+                LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                        Ui.dpInt(context, 3), Ui.dpInt(context, 16));
+                barLp.rightMargin = Ui.dpInt(context, 8);
+                row.addView(bar, barLp);
+                row.addView(tv, new LinearLayout.LayoutParams(0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                row.setPadding(0, Ui.dpInt(context, 6), 0, Ui.dpInt(context, 2));
+                return row;
             }
             case Md.P: {
                 TextView tv = text(context, "", 15f, Ui.text, false);
@@ -89,11 +106,21 @@ public final class MdView {
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 int pad = Ui.dpInt(context, 4 + block.level * 12);
                 row.setPadding(pad, Ui.dpInt(context, 2), 0, Ui.dpInt(context, 2));
-                TextView bullet = text(context,
-                        block.kind == Md.BULLET ? "•" : (block.order > 0 ? block.order + "." : "•"),
-                        15f, Ui.textSub, false);
-                bullet.setMinWidth(Ui.dpInt(context, 16));
-                row.addView(bullet);
+                if (block.kind == Md.BULLET) {
+                    View dot = new View(context);
+                    dot.setBackground(Ui.round(Ui.textFaint, 999, context));
+                    LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(
+                            Ui.dpInt(context, 5), Ui.dpInt(context, 5));
+                    dotLp.leftMargin = Ui.dpInt(context, 4);
+                    dotLp.rightMargin = Ui.dpInt(context, 9);
+                    dotLp.topMargin = Ui.dpInt(context, 9);
+                    row.addView(dot, dotLp);
+                } else {
+                    TextView order = text(context,
+                            (block.order > 0 ? block.order : 1) + ".", 15f, Ui.textFaint, false);
+                    order.setMinWidth(Ui.dpInt(context, 18));
+                    row.addView(order);
+                }
                 TextView body = text(context, "", 15f, Ui.text, false);
                 body.setText(inline(context, block.text, Ui.text));
                 body.setLineSpacing(Ui.dp(context, 3), 1f);
@@ -109,7 +136,7 @@ public final class MdView {
                 quoteWrap.setPadding(Ui.dpInt(context, 4 + block.level * 12), Ui.dpInt(context, 3),
                         0, Ui.dpInt(context, 3));
                 View bar = new View(context);
-                bar.setBackgroundColor(Ui.accent);
+                bar.setBackgroundColor(Ui.accentSoft);
                 quoteWrap.addView(bar, new LinearLayout.LayoutParams(Ui.dpInt(context, 3),
                         ViewGroup.LayoutParams.MATCH_PARENT));
                 TextView body = text(context, "", 14.5f, Ui.textSub, false);
@@ -226,87 +253,102 @@ public final class MdView {
         return wrap;
     }
 
-    /** 表格：表头浅底 + 行分隔；列宽按内容测量，窄屏横向滚动。 */
+    /**
+     * 表格：**按 HAP 的卡片式**渲染（手机上横向滚动表格会被消息列表抢手势）。
+     *   表头一行浅底；每行「首列标题 + 其余列 键:值」。
+     */
     private static View table(Context context, Md.Block block) {
-        HorizontalScrollView hsv = new HorizontalScrollView(context);
-        hsv.setHorizontalScrollBarEnabled(false);
-        LinearLayout grid = new LinearLayout(context);
-        grid.setOrientation(LinearLayout.VERTICAL);
-
-        int columns = 0;
-        for (List<String> row : block.rows) {
-            columns = Math.max(columns, row.size());
-        }
-        if (columns == 0) {
-            return grid;
-        }
-
-        // 按每个单元格的实测文本宽度算列宽（避免 "1024/2048" 被折断）
-        android.graphics.Paint paint = new android.graphics.Paint();
-        paint.setTextSize(Ui.sp(13f));
-        int cellPad = Ui.dpInt(context, 16);
-        int[] widths = new int[columns];
-        for (List<String> row : block.rows) {
-            for (int c = 0; c < columns; c++) {
-                String value = c < row.size() ? row.get(c) : "";
-                int w = (int) Math.ceil(paint.measureText(value)) + cellPad;
-                widths[c] = Math.max(widths[c], w);
-            }
-        }
-        int minCell = Ui.dpInt(context, 56);
-        int maxCell = Ui.dpInt(context, 220);
-        int total = 0;
-        for (int c = 0; c < columns; c++) {
-            widths[c] = Math.max(minCell, Math.min(maxCell, widths[c]));
-            total += widths[c];
-        }
-
-        // 总宽不足屏幕时按比例撑满，超过则横向滚动
-        int avail = context.getResources().getDisplayMetrics().widthPixels - Ui.dpInt(context, 60);
-        if (total < avail) {
-            int extra = avail - total;
-            for (int c = 0; c < columns; c++) {
-                widths[c] += extra / columns;
-            }
-        }
-
-        for (int r = 0; r < block.rows.size(); r++) {
-            List<String> row = block.rows.get(r);
-            LinearLayout line = new LinearLayout(context);
-            line.setOrientation(LinearLayout.HORIZONTAL);
-            line.setBackgroundColor(r == 0 ? Ui.surfaceAlt
-                    : (r % 2 == 0 ? Ui.alpha(Ui.surfaceAlt, 0.45f) : 0));
-            for (int c = 0; c < columns; c++) {
-                String value = c < row.size() ? row.get(c) : "";
-                TextView cell = text(context, "", 13f, Ui.text, r == 0);
-                cell.setText(inline(context, value, Ui.text));
-                // 不允许在数字/单词中间硬断行
-                cell.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);
-                cell.setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE);
-                cell.setPadding(Ui.dpInt(context, 8), Ui.dpInt(context, 6), Ui.dpInt(context, 8),
-                        Ui.dpInt(context, 6));
-                int align = c < block.aligns.size() ? block.aligns.get(c) : 0;
-                if (r > 0) {
-                    cell.setGravity(align == 1 ? Gravity.CENTER_HORIZONTAL
-                            : (align == 2 ? Gravity.END : Gravity.START));
-                }
-                line.addView(cell, new LinearLayout.LayoutParams(widths[c],
-                        ViewGroup.LayoutParams.WRAP_CONTENT));
-            }
-            grid.addView(line);
-            View divider = new View(context);
-            divider.setBackgroundColor(Ui.hairline);
-            grid.addView(divider, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Ui.dpInt(context, 1)));
-        }
-        hsv.addView(grid);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+        LinearLayout card = new LinearLayout(context);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(Ui.roundStroke(Ui.surface, Ui.border, 12, context));
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.dpInt(context, 6);
-        lp.bottomMargin = Ui.dpInt(context, 6);
-        hsv.setLayoutParams(lp);
-        hsv.setBackground(Ui.roundStroke(Ui.surface, Ui.border, 10, context));
-        return hsv;
+        cardLp.topMargin = Ui.dpInt(context, 6);
+        cardLp.bottomMargin = Ui.dpInt(context, 6);
+        card.setLayoutParams(cardLp);
+        card.setClipToOutline(true);
+
+        if (block.rows.isEmpty()) {
+            return card;
+        }
+        List<String> header = block.rows.get(0);
+
+        // 表头
+        LinearLayout head = new LinearLayout(context);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setBackgroundColor(Ui.surfaceAlt);
+        head.setPadding(Ui.dpInt(context, 12), Ui.dpInt(context, 8), Ui.dpInt(context, 12),
+                Ui.dpInt(context, 8));
+        for (int c = 0; c < header.size(); c++) {
+            TextView cell = text(context, "", 10.5f, Ui.textSub, false);
+            cell.setText(inline(context, header.get(c), Ui.textSub));
+            cell.setMaxLines(1);
+            cell.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            head.addView(cell, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, c == 0 ? 3f : 4f));
+        }
+        card.addView(head);
+        card.addView(divider(context));
+
+        // 数据行
+        for (int r = 1; r < block.rows.size(); r++) {
+            List<String> row = block.rows.get(r);
+            LinearLayout wrap = new LinearLayout(context);
+            wrap.setOrientation(LinearLayout.VERTICAL);
+            wrap.setPadding(Ui.dpInt(context, 12), Ui.dpInt(context, 10), Ui.dpInt(context, 12),
+                    Ui.dpInt(context, 10));
+            if (r % 2 == 0) {
+                wrap.setBackgroundColor(Ui.alpha(Ui.surfaceAlt, 0.45f));
+            }
+
+            TextHolder first = new TextHolder();
+            TextView title = text(context, "", 14f, Ui.text, false);
+            title.setText(inline(context, row.isEmpty() ? "" : row.get(0), Ui.text));
+            wrap.addView(title);
+
+            if (row.size() > 1) {
+                LinearLayout kvRow = new LinearLayout(context);
+                kvRow.setOrientation(LinearLayout.HORIZONTAL);
+                kvRow.setPadding(0, Ui.dpInt(context, 4), 0, 0);
+                for (int c = 1; c < row.size(); c++) {
+                    LinearLayout cellBox = new LinearLayout(context);
+                    cellBox.setOrientation(LinearLayout.VERTICAL);
+                    String name = c < header.size() ? header.get(c) : "";
+                    if (name.length() > 0) {
+                        TextView key = text(context, name, 9.5f, Ui.textFaint, false);
+                        key.setMaxLines(1);
+                        key.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                        cellBox.addView(key);
+                    }
+                    TextView value = text(context, "", 12.5f, Ui.textSub, false);
+                    value.setText(inline(context, row.get(c), Ui.textSub));
+                    cellBox.addView(value);
+                    LinearLayout.LayoutParams cellLp = new LinearLayout.LayoutParams(0,
+                            ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                    if (c > 1) {
+                        cellLp.leftMargin = Ui.dpInt(context, 6);
+                    }
+                    kvRow.addView(cellBox, cellLp);
+                }
+                wrap.addView(kvRow);
+            }
+            card.addView(wrap);
+            if (r < block.rows.size() - 1) {
+                card.addView(divider(context));
+            }
+        }
+        return card;
+    }
+
+    private static final class TextHolder {
+    }
+
+    private static View divider(Context context) {
+        View line = new View(context);
+        line.setBackgroundColor(Ui.hairline);
+        line.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dpInt(context, 1)));
+        return line;
     }
 
     /** 行内样式 → Spannable。 */

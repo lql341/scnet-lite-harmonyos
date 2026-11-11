@@ -125,6 +125,7 @@ public class MainActivity extends Activity {
     private LinearLayout attachRow;
     private EditText input;
     private TextView sendButton;
+    private TextView channelChip;
     private TextView statusLabel;
     private TextView titleLabel;
     private LinearLayout emptyState;
@@ -449,26 +450,14 @@ public class MainActivity extends Activity {
         LinearLayout wrap = new LinearLayout(this);
         wrap.setOrientation(LinearLayout.VERTICAL);
         wrap.setBackgroundColor(Ui.bg);
-        wrap.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 6), Ui.dpInt(this, 12),
+        wrap.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 6), Ui.dpInt(this, 14),
                 Ui.dpInt(this, 8));
 
         LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.HORIZONTAL);
-        box.setGravity(Gravity.BOTTOM);
-        box.setBackground(Ui.roundStroke(Ui.surface, Ui.border, 16, this));
-        box.setPadding(Ui.dpInt(this, 6), Ui.dpInt(this, 4), Ui.dpInt(this, 4),
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackground(Ui.roundStroke(Ui.surface, Ui.border, 20, this));
+        box.setPadding(Ui.dpInt(this, 4), Ui.dpInt(this, 2), Ui.dpInt(this, 4),
                 Ui.dpInt(this, 4));
-
-        TextView plus = Widgets.glyphButton(this, "＋", new Widgets.Action() {
-            @Override
-            public void run() {
-                pickAttachment();
-            }
-        });
-        LinearLayout.LayoutParams plusLp = new LinearLayout.LayoutParams(Ui.dpInt(this, 32),
-                Ui.dpInt(this, 32));
-        plusLp.bottomMargin = Ui.dpInt(this, 2);
-        box.addView(plus, plusLp);
 
         input = new EditText(this);
         input.setHint(Ui.t("问点什么，或说清要做的科研任务…", "Ask anything, or describe a research task…"));
@@ -478,8 +467,8 @@ public class MainActivity extends Activity {
         input.setBackgroundColor(0);
         input.setMaxLines(5);
         input.setMinLines(1);
-        input.setPadding(Ui.dpInt(this, 8), Ui.dpInt(this, 8), Ui.dpInt(this, 4),
-                Ui.dpInt(this, 8));
+        input.setPadding(Ui.dpInt(this, 10), Ui.dpInt(this, 9), Ui.dpInt(this, 10),
+                Ui.dpInt(this, 4));
         input.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
@@ -490,8 +479,93 @@ public class MainActivity extends Activity {
                 return false;
             }
         });
-        box.addView(input, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        input.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s2, int st, int c, int a) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s2, int st, int b, int c) {
+                updateSendButton();
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s2) {
+            }
+        });
+        box.addView(input);
+
+        // 底行：＋ / 场景 / 当前通道 ······ 发送
+        LinearLayout tools = new LinearLayout(this);
+        tools.setOrientation(LinearLayout.HORIZONTAL);
+        tools.setGravity(Gravity.CENTER_VERTICAL);
+        tools.setPadding(Ui.dpInt(this, 6), 0, Ui.dpInt(this, 4), 0);
+
+        TextView plus = new TextView(this);
+        plus.setText("＋");
+        plus.setTextSize(Ui.sp(17f));
+        plus.setTextColor(Ui.textSub);
+        plus.setGravity(Gravity.CENTER);
+        plus.setBackground(Ui.round(Ui.surfaceAlt, 999, this));
+        plus.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                pickAttachment();
+            }
+        });
+        tools.addView(plus, new LinearLayout.LayoutParams(Ui.dpInt(this, 28),
+                Ui.dpInt(this, 28)));
+
+        // 场景 chip（对齐 HAP：场景 ▸）
+        TextView sceneChip = Widgets.chip(this, Ui.t("场景 ▸", "Scenes ▸"), Ui.textSub,
+                Ui.surfaceAlt);
+        LinearLayout.LayoutParams sceneLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sceneLp.leftMargin = Ui.dpInt(this, 8);
+        sceneChip.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (scenarios.list().isEmpty()) {
+                    Widgets.tip(MainActivity.this, Ui.t("场景目录未加载", "Scenarios not loaded"));
+                    return;
+                }
+                List<Sheet.Item> items = new ArrayList<>();
+                for (Scenarios.Category category : scenarios.list()) {
+                    items.add(new Sheet.Item("", category.id, category.title,
+                            Ui.t(category.items.size() + " 个场景",
+                                    category.items.size() + " items"), false, false));
+                }
+                Sheet.show(MainActivity.this, Ui.t("领域场景", "Scenarios"), items,
+                        new Sheet.OnPick() {
+                            @Override
+                            public void onPick(Sheet.Item picked) {
+                                for (Scenarios.Category category : scenarios.list()) {
+                                    if (category.id.equals(picked.key)) {
+                                        showScenarios(category);
+                                        return;
+                                    }
+                                }
+                            }
+                        }, false, null);
+            }
+        });
+        tools.addView(sceneChip, sceneLp);
+
+        // 当前通道 chip（对齐 HAP：当前模型 ▾）
+        channelChip = Widgets.chip(this, currentLabel() + " ▾", Ui.accent, Ui.accentGhost);
+        LinearLayout.LayoutParams channelLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        channelLp.leftMargin = Ui.dpInt(this, 5);
+        channelChip.setSingleLine(true);
+        channelChip.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showModelSheet();
+            }
+        });
+        tools.addView(channelChip, channelLp);
+
+        tools.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
 
         sendButton = new TextView(this);
         sendButton.setText("↑");
@@ -500,9 +574,6 @@ public class MainActivity extends Activity {
         sendButton.setGravity(Gravity.CENTER);
         sendButton.setTypeface(Typeface.DEFAULT_BOLD);
         sendButton.setBackground(Ui.round(Ui.accent, 999, this));
-        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(Ui.dpInt(this, 34),
-                Ui.dpInt(this, 34));
-        box.addView(sendButton, sendLp);
         sendButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -513,13 +584,20 @@ public class MainActivity extends Activity {
                 }
             }
         });
-        wrap.addView(box);
+        tools.addView(sendButton, new LinearLayout.LayoutParams(Ui.dpInt(this, 34),
+                Ui.dpInt(this, 34)));
+        box.addView(tools);
 
-        TextView footer = Ui.label(this, Ui.t("AI 生成内容可能不准确，请自行核实", "AI output may be inaccurate; verify before use"),
-                10.5f, Ui.textFaint);
+        LinearLayout.LayoutParams boxLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        boxLp.bottomMargin = Ui.dpInt(this, 6);
+        wrap.addView(box, boxLp);
+
+        TextView footer = Ui.label(this, Ui.t("内容由 AI 生成，请自行核对", "AI-generated · please verify"),
+                10f, Ui.textFaint);
         footer.setGravity(Gravity.CENTER);
-        footer.setPadding(0, Ui.dpInt(this, 6), 0, 0);
         wrap.addView(footer);
+        updateSendButton();
         return wrap;
     }
 
@@ -1154,6 +1232,9 @@ public class MainActivity extends Activity {
                 ? Ui.t("网关已就绪", "Gateway ready")
                 : Ui.t("未就绪", "Not ready")) + " · " + currentLabel());
         statusLabel.setTextColor(ready ? Ui.ok : Ui.textFaint);
+        if (channelChip != null) {
+            channelChip.setText(currentLabel() + " ▾");
+        }
     }
 
     // ---------------------------------------------------------------- 消息渲染
@@ -1753,8 +1834,10 @@ public class MainActivity extends Activity {
         if (sendButton == null) {
             return;
         }
+        boolean hasText = input != null && input.getText().toString().trim().length() > 0;
         sendButton.setText(busy ? "■" : "↑");
-        sendButton.setBackground(Ui.round(busy ? Ui.textSub : Ui.accent, 999, this));
+        sendButton.setBackground(Ui.round(busy ? Ui.danger : Ui.accent, 999, this));
+        sendButton.setAlpha(busy || hasText ? 1f : 0.34f);
     }
 
     private List<ChatText.Turn> buildTurns(List<Msg> list) {
