@@ -41,8 +41,9 @@ public class ProfileActivity extends Activity {
 
     private LinearLayout root;
     private TextView versionView;
-    private TextView accountValue;
+
     private TextView clusterValue;
+    private TextView clusterAccountValue;
     private TextView schedulerValue;
     private TextView channelValue;
     private TextView routeValue;
@@ -138,13 +139,12 @@ public class ProfileActivity extends Activity {
         // 信息卡（HAP 5 行：账号 / 集群账号 / 集群 / 当前通道 / 集群调度器）
         LinearLayout infoCard = Widgets.card(this);
         infoCard.setPadding(Ui.dpInt(this, 14), 0, Ui.dpInt(this, 14), 0);
-        accountValue = Ui.label(this, "—", 12f, Ui.text);
-        clusterValue = Ui.label(this, "—", 12f, Ui.text);
+        clusterAccountValue = Ui.label(this, "—", 12f, Ui.text);
         schedulerValue = Ui.label(this, "—", 12f, Ui.text);
         userValue = Ui.label(this, "—", 12f, Ui.text);
         infoCard.addView(infoRow(Ui.t("账号", "Account"), userValue, null));
         infoCard.addView(divider());
-        infoCard.addView(infoRow(Ui.t("集群账号", "Cluster acct"), clusterValue, null));
+        infoCard.addView(infoRow(Ui.t("集群账号", "Cluster acct"), clusterAccountValue, null));
         infoCard.addView(divider());
         channelValue = Ui.label(this, "—", 12f, Ui.text);
         infoCard.addView(infoRow(Ui.t("集群", "Cluster"), channelValue, new Widgets.Action() {
@@ -519,11 +519,9 @@ public class ProfileActivity extends Activity {
         }, new Task.Call<String[]>() {
             @Override
             public void ok(String[] value) {
-                if (accountValue != null) {
-                    accountValue.setText(value[0]);
-                }
-                if (clusterValue != null) {
-                    clusterValue.setText(value[1]);
+
+                if (clusterAccountValue != null) {
+                    clusterAccountValue.setText(value[0]);   // 集群账号（accountId）
                 }
                 if (channelValue != null) {
                     String count = value[4];
