@@ -26,6 +26,8 @@ public final class Sheet {
 
     public static class Item {
         public final String group;
+        /** 分组副标题（只在该组第一项生效） */
+        public final String groupHint;
         public final String key;
         public final String label;
         public final String sub;
@@ -34,7 +36,13 @@ public final class Sheet {
 
         public Item(String group, String key, String label, String sub, boolean free,
                     boolean selected) {
+            this(group, key, label, sub, free, selected, "");
+        }
+
+        public Item(String group, String key, String label, String sub, boolean free,
+                    boolean selected, String groupHint) {
             this.group = group == null ? "" : group;
+            this.groupHint = groupHint == null ? "" : groupHint;
             this.key = key;
             this.label = label == null ? "" : label;
             this.sub = sub == null ? "" : sub;
@@ -138,9 +146,19 @@ public final class Sheet {
                     }
                     if (item.group.length() > 0 && !item.group.equals(lastGroup)) {
                         lastGroup = item.group;
-                        TextView head = Ui.label(ctx, item.group, 11f, Ui.textFaint);
+                        LinearLayout head = new LinearLayout(ctx);
+                        head.setOrientation(LinearLayout.HORIZONTAL);
+                        head.setGravity(Gravity.CENTER_VERTICAL);
                         head.setPadding(Ui.dpInt(ctx, 18), Ui.dpInt(ctx, 10),
                                 Ui.dpInt(ctx, 18), Ui.dpInt(ctx, 4));
+                        head.addView(Ui.label(ctx, item.group, 11f, Ui.textFaint));
+                        if (item.groupHint.length() > 0) {
+                            TextView hint = Ui.label(ctx, item.groupHint, 10f,
+                                    Ui.alpha(Ui.textFaint, 0.8f));
+                            hint.setPadding(Ui.dpInt(ctx, 6), 0, 0, 0);
+                            hint.setSingleLine(true);
+                            head.addView(hint);
+                        }
                         list.addView(head);
                     }
                     LinearLayout row = new LinearLayout(ctx);

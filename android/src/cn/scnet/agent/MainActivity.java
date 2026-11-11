@@ -1456,25 +1456,115 @@ public class MainActivity extends Activity {
     }
 
     private void showScenarios(final Scenarios.Category category) {
-        List<Sheet.Item> items = new ArrayList<>();
-        for (Scenarios.Item item : category.items) {
-            items.add(new Sheet.Item("", item.id, item.title,
-                    item.summary + (item.inputCount > 0
-                            ? " · " + Ui.t("附件 " + item.inputCount, item.inputCount + " files") : ""),
-                    false, false));
-        }
-        Sheet.show(this, category.title, items, new Sheet.OnPick() {
+        final android.app.Dialog dialog = new android.app.Dialog(this);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(Ui.round(Ui.surface, 20, this));
+        root.setPadding(Ui.dpInt(this, 16), Ui.dpInt(this, 10), Ui.dpInt(this, 16),
+                Ui.dpInt(this, 16));
+
+        View handle = new View(this);
+        handle.setBackground(Ui.round(Ui.surfaceSunken, 3, this));
+        LinearLayout.LayoutParams handleLp = new LinearLayout.LayoutParams(Ui.dpInt(this, 36),
+                Ui.dpInt(this, 4));
+        handleLp.gravity = Gravity.CENTER_HORIZONTAL;
+        handleLp.bottomMargin = Ui.dpInt(this, 8);
+        root.addView(handle, handleLp);
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        TextView title = Ui.label(this, category.title, 16f, Ui.text);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        titles.addView(title);
+        titles.addView(Ui.label(this, Ui.t("选一个领域任务，直接带着指令开始",
+                "Pick a domain task and start with a prompt"), 10.5f, Ui.textFaint));
+        head.addView(titles, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView close = Ui.label(this, "✕", 13f, Ui.textFaint);
+        close.setGravity(Gravity.CENTER);
+        close.setBackground(Ui.round(Ui.surfaceAlt, 999, this));
+        close.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onPick(Sheet.Item picked) {
-                for (Scenarios.Item item : category.items) {
-                    if (item.id.equals(picked.key)) {
-                        input.setText(item.toPrompt());
-                        send();
-                        return;
-                    }
-                }
+            public void onClick(View v) {
+                dialog.dismiss();
             }
-        }, true, null);
+        });
+        head.addView(close, new LinearLayout.LayoutParams(Ui.dpInt(this, 30),
+                Ui.dpInt(this, 30)));
+        root.addView(head);
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(0, Ui.dpInt(this, 10), 0, 0);
+        scroll.addView(list);
+        root.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        for (final Scenarios.Item item : category.items) {
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.HORIZONTAL);
+            card.setGravity(Gravity.CENTER_VERTICAL);
+            card.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 10), Ui.dpInt(this, 10),
+                    Ui.dpInt(this, 10));
+            card.setBackground(Ui.roundStroke(Ui.surface, Ui.hairline, 12, this));
+
+            LinearLayout texts = new LinearLayout(this);
+            texts.setOrientation(LinearLayout.VERTICAL);
+            TextView itemTitle = Ui.label(this, item.title, 14f, Ui.text);
+            itemTitle.setTypeface(Typeface.DEFAULT_BOLD);
+            itemTitle.setMaxLines(1);
+            itemTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            texts.addView(itemTitle);
+            TextView summary = Ui.label(this, item.summary, 10.5f, Ui.textFaint);
+            summary.setMaxLines(2);
+            summary.setLineSpacing(Ui.dp(this, 2), 1f);
+            summary.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            texts.addView(summary);
+            card.addView(texts, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            if (item.inputCount > 0) {
+                TextView badge = Widgets.chip(this,
+                        Ui.t("附件 " + item.inputCount, item.inputCount + " files"),
+                        Ui.warn, Ui.alpha(Ui.warn, 0.14f));
+                LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                badgeLp.leftMargin = Ui.dpInt(this, 6);
+                card.addView(badge, badgeLp);
+            }
+            TextView arrow = Ui.label(this, "›", 16f, Ui.textFaint);
+            arrow.setPadding(Ui.dpInt(this, 6), 0, 0, 0);
+            card.addView(arrow);
+
+            card.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    dialog.dismiss();
+                    input.setText(item.toPrompt());
+                    send();
+                }
+            });
+            LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cardLp.bottomMargin = Ui.dpInt(this, 8);
+            list.addView(card, cardLp);
+        }
+
+        dialog.setContentView(root);
+        android.view.Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+            window.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                    (int) (getResources().getDisplayMetrics().heightPixels * 0.7f));
+            window.setGravity(Gravity.BOTTOM);
+        }
+        dialog.show();
     }
 
     private void addBubble(final Msg msg) {
@@ -2230,12 +2320,16 @@ public class MainActivity extends Activity {
             items.add(new Sheet.Item(Ui.t("智能体服务", "Agent services"), service.identify,
                     service.name, Ui.t("平台运行时 · 领域任务由服务端路由",
                             "Platform runtime · routed server-side"),
-                    true, agentModelId == service.modelId && "agent".equals(channel)));
+                    true, agentModelId == service.modelId && "agent".equals(channel),
+                    items.isEmpty() ? Ui.t("平台运行时，领域任务由服务端路由",
+                            "Platform runtime, tasks routed server-side") : ""));
         }
         for (String model : gatewayModels) {
+            boolean firstModel = items.isEmpty() || "agent".equals(items.get(items.size() - 1).group);
             items.add(new Sheet.Item(Ui.t("模型", "Models"), model, ChatText.prettyModel(model),
                     model, Store.DEFAULT_MODEL.equals(model), !"agent".equals(channel)
-                    && gatewayModel.equals(model)));
+                    && gatewayModel.equals(model),
+                    firstModel ? Ui.t("网关 OpenAI 兼容", "Gateway, OpenAI compatible") : ""));
         }
         if (items.isEmpty()) {
             Widgets.tip(this, Ui.t("还没有拿到可用模型，请检查登录态", "No models yet — check sign-in"));
