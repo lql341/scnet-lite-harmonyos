@@ -105,7 +105,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(envelope({
                 "hpcUrls": [{"url": "http://127.0.0.1:%d/hpc" % PORT, "enable": "true"}],
                 "efileUrls": [{"url": "http://127.0.0.1:%d/efile" % PORT}],
-                "clusterUserInfo": {"userName": "hpc0409", "homePath": "/public/home/hpc0409"},
+                "clusterUserInfo": {"userName": "<用户名>", "homePath": "/public/home/<用户名>"},
             }))
         elif path == "/hpc/hpc/openapi/v2/cluster":
             self.send_json(envelope([{"id": 7, "text": "SLURM", "JobManagerType": "SLURM"}]))
@@ -119,7 +119,7 @@ class Handler(BaseHTTPRequestHandler):
                  "queNcpus": "2496", "queMaxPPN": "32", "queNodes": "78"},
             ]))
         elif path == "/hpc/hpc/openapi/v2/userquotas/userlimit":
-            self.send_json(envelope({"userName": "hpc0409", "accountMaxCpu": 640,
+            self.send_json(envelope({"userName": "<用户名>", "accountMaxCpu": 640,
                                      "accountMaxDcu": 8, "accountMaxSubmitJob": 20,
                                      "accountMaxRunJob": 5}))
         elif path == "/hpc/hpc/openapi/v2/jobs":
@@ -160,13 +160,13 @@ class Handler(BaseHTTPRequestHandler):
             }]))
         elif path == "/acx/user/users/cluster-user-detail":
             self.send_json(envelope([
-                {"clusterId": 1, "clusterName": "华东一区·昆山", "accountId": "427416191724683264",
+                {"clusterId": 1, "clusterName": "华东一区·昆山", "accountId": "<集群账号ID>",
                  "groupId": "9", "userId": "u1", "status": "active"},
-                {"clusterId": 2, "clusterName": "华北二区·哈尔滨", "accountId": "427416191724683264",
+                {"clusterId": 2, "clusterName": "华北二区·哈尔滨", "accountId": "<集群账号ID>",
                  "groupId": "9", "userId": "u1", "status": "inactive"}
             ]))
         elif path == "/acx/llm/account/config/status":
-            self.send_json(envelope({"accountId": "427416191724683264",
+            self.send_json(envelope({"accountId": "<集群账号ID>",
                                      "modelServiceEnabled": 1, "unpaidStatus": 0,
                                      "accessibleModelScope": "ALL"}))
         elif path == "/api/llm/v1/models":

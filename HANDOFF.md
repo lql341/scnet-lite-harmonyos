@@ -77,9 +77,9 @@ OcrPage,AiHubPage,MarketPage,WebPage}
 node v26.13.0 · jdk 21
 ```
 
-**已连接真机**（hdc over TCP）：`192.168.1.63:36333`，HUAWEI **PLA-AL10**，
+**已连接真机**（hdc over TCP）：`<局域网IP:端口>`，HUAWEI **<HarmonyOS 测试机>**，
 `7.0.0.111(SP12C00E111R9P3)`，API 26，UDID
-`01EB73B36178DC1617F81CD8E07625C84F80DC2CC2D90103E3A01C8166DC37FB`。
+`<设备UDID>`。
 它是 HarmonyOS NEXT 底座（API 26），**装不了 APK**，也**不接受 OpenHarmony 自签证书**。
 
 ## 4. 构建 / 签名 / 安装
@@ -233,7 +233,7 @@ POST https://api.scnet.cn/api/gw/v1/chat/completions  -H "Authorization: Bearer 
 
 ## 10. 已确认 / 仍待确认
 
-- ~~目标设备是 HarmonyOS 4.x 还是 NEXT？~~ → **NEXT，PLA-AL10 / 7.0.0.111 / API 26**，侧载 APK 不可行。
+- ~~目标设备是 HarmonyOS 4.x 还是 NEXT？~~ → **NEXT，<HarmonyOS 测试机> / 7.0.0.111 / API 26**，侧载 APK 不可行。
 - 平台是否有可登录的 Web 端入口？（决定 ArkWeb 套壳是否比原生重写更划算）
 - 是否要发布到应用市场？涉及实名/签名证书/隐私声明与合规，会改变实现要求。
 - bundleName `cn.scnet.hmos` 是否就用这个（换域名前缀要趁现在，证书绑定它）。

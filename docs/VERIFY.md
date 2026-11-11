@@ -1,6 +1,6 @@
 # VERIFY — 真机验证记录与待验清单
 
-> **2026-11-10 已跑一轮**（PLA-AL10 / HarmonyOS / API 26，USB 连接）。结果见文末「验证记录」。
+> **2026-11-10 已跑一轮**（<HarmonyOS 测试机> / HarmonyOS / API 26，USB 连接）。结果见文末「验证记录」。
 
 
 
@@ -44,7 +44,7 @@ hdc shell aa start -a EntryAbility -b cn.scnet.hmos
 
 | 步骤 | 期望 |
 | --- | --- |
-| 作业页 → 右上「文件」 | 列出 `/public/home/luql` 下的目录（`apprepo` / `BASE` / `cases` / `kylinflow` …） |
+| 作业页 → 右上「文件」 | 列出 `/public/home/<用户名>` 下的目录（`apprepo` / `BASE` / `cases` / `kylinflow` …） |
 | 点目录 | 进入下一级；左上 `‹` 返回上一级；到 home 后再 `‹` 回作业页 |
 | 点文件 | 文件内容显示在深色卡片（可复制） |
 
@@ -118,7 +118,7 @@ hdc shell aa start -a EntryAbility -b cn.scnet.hmos
 
 ## 验证记录（2026-11-10）
 
-设备：PLA-AL10，`hdc` USB `Connected`（需要 udev 规则，见「环境问题」）。
+设备：<HarmonyOS 测试机>，`hdc` USB `Connected`（需要 udev 规则，见「环境问题」）。
 
 | # | 项目 | 结果 |
 | --- | --- | --- |

@@ -8,8 +8,8 @@
  *   兜底：POST /acx/llm/api-key/query（团队维度查）→ POST /acx/llm/api-key/create
  *
  * 关键事实（2026-11-09 实测）：
- * - `authorize` / 团队 key 的 `accountId` 必须是**集群账号**（427416191724683264），
- *   用 `current-user-info.id`（11224910962）会 `API010006 无权限访问`；
+ * - `authorize` / 团队 key 的 `accountId` 必须是**集群账号**（<集群账号ID>），
+ *   用 `current-user-info.id`（<用户ID>）会 `API010006 无权限访问`；
  * - 授权成功（`modelServiceEnabled: 1`）后若账号**余额为 0**，chat 仍回 `402 Insufficient Balance`；
  * - 平台下发的 baseUrl 是 `https://api.scnet.cn/api/llm/v1`（不是 `/api/gw/v1`）；
  * - `/api-key/query` 只支持 POST（GET → `405 Request method 'GET' not supported`）；

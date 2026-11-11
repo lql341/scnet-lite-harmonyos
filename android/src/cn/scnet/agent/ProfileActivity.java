@@ -455,20 +455,38 @@ public class ProfileActivity extends Activity {
         return 0;
     }
 
+    /** 关于：与 HAP 统一（版本 / 非官方声明 / 作者 / 项目 / 查看 Releases）。 */
     private void showAbout() {
+        final String project = "https://github.com/lql341/scnet-lite-harmonyos";
         new android.app.AlertDialog.Builder(this)
                 .setTitle("SCNet " + newVersionName())
-                .setMessage(Ui.t("SCNet 智能体\n非官方客户端，仅调用公开接口\n\n作者：lql341\n"
-                                + "项目：scnet-lite-harmonyos（私有仓库）\n\n"
-                                + "非官方项目，与曙光智算 / 国家超算互联网无隶属关系。",
-                        "SCNet Agent\nUnofficial client, public APIs only\n\nAuthor: lql341\n"
-                                + "Project: scnet-lite-harmonyos (private)\n\n"
-                                + "Not affiliated with Sugon or SCNet."))
-                .setPositiveButton(Ui.t("关闭", "Close"), null)
+                .setMessage(Ui.t(
+                        "SCNet 智能体（非官方客户端）\n\n"
+                                + "非官方项目，与曙光智算 / 国家超算互联网无隶属关系。\n"
+                                + "只复用公开的 HTTP 接口契约，不含厂商代码与二进制。\n\n"
+                                + "作者：lql341\n项目：github.com/lql341/scnet-lite-harmonyos",
+                        "SCNet Agent (unofficial client)\n\n"
+                                + "Not affiliated with Sugon or SCNet.\n"
+                                + "Only public HTTP contracts are reused.\n\n"
+                                + "Author: lql341\nProject: github.com/lql341/scnet-lite-harmonyos"))
+                .setPositiveButton(Ui.t("查看 Releases", "Open releases"),
+                        new android.content.DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(android.content.DialogInterface d, int which) {
+                                openUrl(project + "/releases");
+                            }
+                        })
+                .setNeutralButton(Ui.t("作者主页", "Author profile"),
+                        new android.content.DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(android.content.DialogInterface d, int which) {
+                                openUrl("https://github.com/lql341");
+                            }
+                        })
+                .setNegativeButton(Ui.t("关闭", "Close"), null)
                 .show();
     }
 
-    /** 一行：左侧标题（可点击不做事）+ 右侧可变的 TextView。 */
     private LinearLayout labeledRow(String title, TextView value) {
         LinearLayout line = new LinearLayout(this);
         line.setOrientation(LinearLayout.HORIZONTAL);

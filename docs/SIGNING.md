@@ -21,16 +21,16 @@
 
 ```
 bundleName : cn.scnet.hmos
-证书主体   : C=CN, O=卢麒麟, OU=1819811706877027905, CN=卢麒麟(…)\,Development
+证书主体   : C=CN, O=开发者, OU=<开发者ID>, CN=开发者(…)\,Development
 证书链     : Huawei CBG Root CA G2 → Huawei CBG Developer Relations CA G2 → 上面这张
 profile    : type=debug, bundle-name=cn.scnet.hmos
-device-ids : 01EB73B36178DC1617F81CD8E07625C84F80DC2CC2D90103E3A01C8166DC37FB   ← PLA-AL10
+device-ids : <设备UDID>   ← <HarmonyOS 测试机>
 有效期     : 2026-11-08 → 2027-11-08
 ```
 
 **改 bundleName 必须重签**；**换设备必须把新 UDID 加进 profile 并重新下载 `.p7b`**。
 
-> 当前场景是**换电脑、手机不变**（PLA-AL10 继续用）→ UDID 不变，**`.p7b` 不用重签**，
+> 当前场景是**换电脑、手机不变**（<HarmonyOS 测试机> 继续用）→ UDID 不变，**`.p7b` 不用重签**，
 > 只要把 4 个文件拷过去 + `check-signing.sh` PASS 即可装同一台手机。
 
 ## 2.5 已经打好的迁移包（本机）

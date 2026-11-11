@@ -356,7 +356,7 @@ struct JobSubmit {
                 this.field(L.t('内存', 'Memory'), this.memory, '4G', false, (v: string) => {
                   this.memory = v;
                 })
-                this.field(L.t('工作目录（绝对路径）', 'Work dir (absolute)'), this.workDir, '/home/luql', false,
+                this.field(L.t('工作目录（绝对路径）', 'Work dir (absolute)'), this.workDir, '/public/home/username', false,
                   (v: string) => {
                     this.workDir = v;
                   })

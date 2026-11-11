@@ -85,8 +85,8 @@ POST /acx/llm/account/config/authorize?accountId=…    → 开通平台模型�
 
 | accountId | 来源 | `authorize` 结果 |
 | --- | --- | --- |
-| `427416191724683264` | `cluster-user-detail[].accountId` | ✅ `{"code":"0"}`，`modelServiceEnabled` 0 → 1 |
-| `11224910962` | `current-user-info.id` | ❌ `{"code":"API010006","msg":"无权限访问"}` |
+| `<集群账号ID>` | `cluster-user-detail[].accountId` | ✅ `{"code":"0"}`，`modelServiceEnabled` 0 → 1 |
+| `<用户ID>` | `current-user-info.id` | ❌ `{"code":"API010006","msg":"无权限访问"}` |
 
 `cluster-user-detail` 按集群返回多行（本账号 13 行，一集群一行），同一账号的
 `accountId` / `groupId` / `userId` 在各 active 行里相同，按 status != inactive 取第一行即可。
@@ -95,7 +95,7 @@ POST /acx/llm/account/config/authorize?accountId=…    → 开通平台模型�
 ### 3.2 status 字段
 
 ```jsonc
-{ "accountId": "427416191724683264",
+{ "accountId": "<集群账号ID>",
   "modelServiceEnabled": 1,        // 必须为 1，否则网关一律拒
   "unpaidStatus": 1,               // 1 = 有未结清账单（只影响付费模型）
   "accessibleModelScope": "CUSTOM",

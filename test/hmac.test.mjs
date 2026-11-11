@@ -32,7 +32,7 @@ for (const v of vectors) {
   eq(got, v.expect, `RFC 4231 向量（keyLen=${v.key.length}）`);
 }
 // 与 Node crypto 随机对照
-for (const [k, m] of [['key', 'The quick brown fox jumps over the lazy dog'], ['015b119973a34d748f4d8b54b685a1a7', '{"accessKey":"a","timestamp":"1","user":"luql"}']]) {
+for (const [k, m] of [['key', 'The quick brown fox jumps over the lazy dog'], ['015b119973a34d748f4d8b54b685a1a7', '{"accessKey":"a","timestamp":"1","user":"u"}']]) {
   const got = hmac.toHex(hmac.hmacSha256(hmac.utf8(k), hmac.utf8(m), sha256));
   eq(got, ref(k, m), `与 node:crypto 对照（${k.slice(0, 6)}…）`);
 }
@@ -40,7 +40,7 @@ for (const [k, m] of [['key', 'The quick brown fox jumps over the lazy dog'], ['
 const cn = '{"user":"卢麒麟","n":"🎉"}';
 eq(Buffer.from(hmac.utf8(cn)).toString('hex'), Buffer.from(cn, 'utf8').toString('hex'), 'utf8 编码与 Node 一致');
 // 签名 message 字段顺序固定
-eq(hmac.hpcSignMessage('AK', '123', 'luql'), '{"accessKey":"AK","timestamp":"123","user":"luql"}', '签名 message 字段顺序');
+eq(hmac.hpcSignMessage('AK', '123', 'u'), '{"accessKey":"AK","timestamp":"123","user":"u"}', '签名 message 字段顺序');
 
 console.log(`\nHMAC: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

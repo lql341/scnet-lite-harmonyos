@@ -197,8 +197,8 @@ class Auth {
 
   /**
    * 集群身份（`cluster-user-detail`）。
-   * ⚠️ `authorize` / 团队 key 用的是这里的 `accountId`（集群账号，如 427416191724683264），
-   * **不是** `current-user-info` 里的 `id`（11224910962）—— 用后者会 `API010006 无权限访问`。
+   * ⚠️ `authorize` / 团队 key 用的是这里的 `accountId`（集群账号，如 <集群账号ID>），
+   * **不是** `current-user-info` 里的 `id`（<用户ID>）—— 用后者会 `API010006 无权限访问`。
    * 该接口按集群返回多行（一台集群一行），同一账号的 accountId/groupId/userId 是重复的，取第一行即可。
    */
   /**

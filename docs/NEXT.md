@@ -5,7 +5,7 @@
 > 真实账号联调（登录/出字/作业）仍待做。
 >
 > 对话走**网关模型链路**（与 `../scnet-cli` 一致），平台 v2 智能体通道已从代码中移除（历史 `b60d149`）。
-> 真机已跑通（2026-11-09/10，PLA-AL10）：登录 / 出字 / 停止 / 402 文案 / 作业真提交（jobId `127537835`）。
+> 真机已跑通（2026-11-09/10，<HarmonyOS 测试机>）：登录 / 出字 / 停止 / 402 文案 / 作业真提交（jobId `127537835`）。
 > 下一步：0.3.1 真机回归（[`VERIFY.md`](VERIFY.md)）→ UI 精修 → 本地多会话打磨。
 
 ---
@@ -34,7 +34,7 @@
 ```bash
 . ~/opt/module-init.sh && module load harmonyos jdk
 hvigorw assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
-hdc tconn 192.168.1.63:36333      # 无线调试；IP/端口变了就在手机上重新看
+hdc tconn <局域网IP:端口>      # 无线调试；IP/端口变了就在手机上重新看
 hdc list targets                  # 必须不是 [Empty]
 ./scripts/sign.sh --install       # 需要 signing/ 软链到 ~/Downloads/scnet-hmos（当前不在本机）
 ```
@@ -67,7 +67,7 @@ hdc list targets                  # 必须不是 [Empty]
 再换一份 `jsessionid`（参数名就是 `desktopToken`）。也可 `SC_TOKEN`/`SC_COOKIE` 覆盖。
 
 **关键坑**：`authorize` 和团队 key 用的 `accountId` 必须是 `cluster-user-detail` 里的
-**集群账号**（`427416191724683264`），用 `current-user-info.id`（`11224910962`）会
+**集群账号**（`<集群账号ID>`），用 `current-user-info.id`（`<用户ID>`）会
 `API010006 无权限访问`。
 
 调试纪律：**先在本机 curl 复现 → 改协议 → 再上机**。
@@ -194,7 +194,7 @@ P5（账号/团队/计费）、P6（语音/OCR/相机/打磨）。
 | --- | --- | --- |
 | 签名私钥 | `~/Downloads/scnet-hmos/scnet.hmos.debug.p12` | **丢了就要重新申请证书**（已踩过一次） |
 | 应用证书 | `…/scnet.hmos.debug.cer` | AGC 下载的证书链（3 级） |
-| 调试 profile | `…/scnet.hmos.debug.p7b` | 绑 `cn.scnet.hmos` + UDID `01EB73B3…DC37FB` |
+| 调试 profile | `…/scnet.hmos.debug.p7b` | 绑 `cn.scnet.hmos` + UDID `<设备UDID>` |
 | 签名变量 | `…/signing.env` | 别名/密码/路径，`chmod 600` |
 | 网关 key（可选） | 真机 preferences 里 | 也可重新从网页复制 |
 
@@ -216,7 +216,7 @@ $CLT/hvigor/bin/hvigorw assembleHap --mode module -p product=default -p buildMod
 Node ≥22（用全局 `WebSocket`）、JDK 21、`gh` 已登录 `lql341`。
 
 ### 已连接的调试设备
-`192.168.1.63:36333`（HUAWEI PLA-AL10，HarmonyOS 7.0.0.111，API 26）。
+`<局域网IP:端口>`（HUAWEI <HarmonyOS 测试机>，HarmonyOS 7.0.0.111，API 26）。
 新机器要装就得保证 UDID 在 profile 的 `device-ids` 里，否则装不上（报 9568322）。
 
 ---

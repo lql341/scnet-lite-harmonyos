@@ -177,7 +177,7 @@
 
 ## 13. UI 对齐（以 HAP 为准，2026-11-11 真机截图比对）
 
-对照设备：HAP 装在 PLA-AL10（HarmonyOS 7.0 / API 26），Android 装在 Redmi M2012K10C + Android 11 模拟器。
+对照设备：HAP 装在 <HarmonyOS 测试机>（HarmonyOS 7.0 / API 26），Android 装在 Redmi <Android 测试机> + Android 11 模拟器。
 
 | 元素 | HAP（基准） | Android 已对齐 |
 | --- | --- | --- |
