@@ -21,7 +21,56 @@ import java.nio.charset.Charset;
 public final class Crash {
 
     private static final String FILE = "crash.log";
+    private static final String STAGE_FILE = "startup.log";
     private static String pending;
+
+    /** 记录一个启动/流程阶段（写入 filesDir/startup.log，便于硬崩时定位）。 */
+    public static void stage(Context context, String name) {
+        try {
+            java.text.SimpleDateFormat fmt =
+                    new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US);
+            String line = fmt.format(new java.util.Date()) + "  " + name + "\n";
+            File file = new File(context.getFilesDir(), STAGE_FILE);
+            String old = "";
+            if (file.exists() && file.length() < 64 * 1024) {
+                java.io.FileInputStream in = new java.io.FileInputStream(file);
+                byte[] buf = new byte[(int) file.length()];
+                int off = 0;
+                int n;
+                while (off < buf.length && (n = in.read(buf, off, buf.length - off)) > 0) {
+                    off += n;
+                }
+                in.close();
+                old = new String(buf, 0, off, Charset.forName("UTF-8"));
+            }
+            FileOutputStream out = new FileOutputStream(file, false);
+            out.write((old + line).getBytes(Charset.forName("UTF-8")));
+            out.flush();
+            out.close();
+        } catch (Throwable ignored) {
+        }
+        android.util.Log.d("SCNetDbg", "stage: " + name);
+    }
+
+    public static String stages(Context context) {
+        try {
+            File file = new File(context.getFilesDir(), STAGE_FILE);
+            if (!file.exists()) {
+                return "";
+            }
+            java.io.FileInputStream in = new java.io.FileInputStream(file);
+            byte[] buf = new byte[(int) file.length()];
+            int off = 0;
+            int n;
+            while (off < buf.length && (n = in.read(buf, off, buf.length - off)) > 0) {
+                off += n;
+            }
+            in.close();
+            return new String(buf, 0, off, Charset.forName("UTF-8"));
+        } catch (Throwable e) {
+            return "";
+        }
+    }
 
     private Crash() {
     }
@@ -200,6 +249,10 @@ public final class Crash {
             sb.append("model  : ").append(Store.get().getModel())
                     .append("  channel: ").append(Store.get().getChannel()).append('\n');
         } catch (Throwable ignored) {
+        }
+        String stages = stages(context);
+        if (stages.length() > 0) {
+            sb.append("\n=== 启动阶段 ===\n").append(stages);
         }
         String last = last(context);
         if (last.length() > 0) {

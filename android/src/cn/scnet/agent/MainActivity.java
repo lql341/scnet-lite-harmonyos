@@ -133,6 +133,7 @@ public class MainActivity extends Activity {
     /** 长会话只渲染最近这么多条，更早的点按钮再加载（对齐 HAP 的 LazyForEach 体验） */
     private static final int WINDOW = 40;
     private int windowStart = 0;
+    private long lastUnauthorizedAt;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -150,6 +151,7 @@ public class MainActivity extends Activity {
     }
 
     private void boot() {
+        Crash.stage(this, "boot: start");
         applyAppearance();
         Http.setUnauthorizedHandler(new Http.UnauthorizedHandler() {
             @Override
@@ -158,11 +160,20 @@ public class MainActivity extends Activity {
                 Task.onMain(new Runnable() {
                     @Override
                     public void run() {
+                        long now = System.currentTimeMillis();
+                        if (now - lastUnauthorizedAt < 3000) {
+                            return; // 去抖：并发请求会连续 401
+                        }
+                        lastUnauthorizedAt = now;
                         Auth.get().noteSessionExpired();
+                        Widgets.tip(MainActivity.this,
+                                Ui.t("登录已过期，请重新登录", "Session expired, sign in again"));
                         try {
                             startActivity(new Intent(MainActivity.this, LoginActivity.class)
                                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
-                        } catch (Throwable ignored) {
+                        } catch (Throwable error) {
+                            Crash.fatal(MainActivity.this, error);
+                            return;
                         }
                         finish();
                     }
@@ -186,7 +197,9 @@ public class MainActivity extends Activity {
         userName = Store.get().getPlatformUserName();
 
         buildUi();
+        Crash.stage(this, "boot: ui built");
         openLatestSession();
+        Crash.stage(this, "boot: session opened (" + messages.size() + " msgs)");
         loadCloud();
         if (getIntent() != null && getIntent().getStringExtra("prefill") != null) {
             input.setText(getIntent().getStringExtra("prefill"));
@@ -215,6 +228,16 @@ public class MainActivity extends Activity {
         if (root == null) {
             return;
         }
+        Crash.stage(this, "onResume");
+        Crash.guard(this, new Runnable() {
+            @Override
+            public void run() {
+                onResumed();
+            }
+        });
+    }
+
+    private void onResumed() {
         // 从设置页回来：外观 / 头像可能改了
         String mode = Store.get().getColorMode();
         boolean wantDark = "dark".equals(mode) || ("system".equals(mode) && isSystemDark());
@@ -770,6 +793,7 @@ public class MainActivity extends Activity {
         }, new Task.Call<Void>() {
             @Override
             public void ok(Void value) {
+                Crash.stage(MainActivity.this, "cloud: loaded");
                 try {
                     applySelection();
                     refreshStatus();

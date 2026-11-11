@@ -160,12 +160,9 @@ public class Auth {
         me.mobile = J.str(data, "mobilephoneNum");
         me.email = J.str(data, "email");
         me.acctRole = J.str(data, "acctRole");
-        // 刷新接口可能顺带换 token
-        String fresh = J.str(data, "token");
-        if (fresh.length() > 0) {
-            Http.token = fresh;
-            Store.get().setCloudToken(fresh);
-        }
+        // ⚠️ 不要用这里的 token 覆盖登录 token：`includeToken=true` 回的字段与
+        // 登录拿到的 accessToken 不是一回事（HAP 版也不覆盖）。覆盖过一次就会
+        // 变成"登录成功 → 后续请求全 401 → 被踢回登录页"，看起来像闪退。
         return me;
     }
 
