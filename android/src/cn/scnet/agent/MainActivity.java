@@ -28,6 +28,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import cn.scnet.agent.core.ChatText;
+import cn.scnet.agent.core.Md;
 import cn.scnet.agent.core.Http;
 import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
@@ -106,6 +107,12 @@ public class MainActivity extends Activity {
     private String sessionTitle = "";
     private int trimmedCount;
     private long lastRenderAt;
+    private String lastAssistantText = "";
+    private boolean pendingAutosend;
+    /** 本轮服务端下发的资源（图片/文件），结束时拼进回答正文 */
+    private final java.util.List<String> turnResources = new ArrayList<>();
+    /** 流式渲染时上一次的块结构（用于判断能否只更新最后一块） */
+    private List<Md.Block> streamingBlocks = new ArrayList<>();
 
     private final Gateway gateway = new Gateway();
     private final AgentChat agentChat = new AgentChat();
@@ -129,6 +136,8 @@ public class MainActivity extends Activity {
     private LinearLayout streamingBox;
     private TextView streamingMeta;
     private TextView progressLabel;
+    private LinearLayout traceBox;
+    private final java.util.List<String> trace = new ArrayList<>();
     private long attachBusyAt;
     /** 长会话只渲染最近这么多条，更早的点按钮再加载（对齐 HAP 的 LazyForEach 体验） */
     private static final int WINDOW = 40;
@@ -183,7 +192,10 @@ public class MainActivity extends Activity {
         Sessions.get().init(this);
         scenarios.load(this);
 
-        if (!Auth.get().restore()) {
+        boolean restored = Auth.get().restore();
+        Crash.stage(this, "boot: restore=" + restored + " token="
+                + Http.mask(Http.token));
+        if (!restored) {
             startActivity(new Intent(this, LoginActivity.class));
             finish();
             return;
@@ -201,9 +213,99 @@ public class MainActivity extends Activity {
         openLatestSession();
         Crash.stage(this, "boot: session opened (" + messages.size() + " msgs)");
         loadCloud();
+        // 调试用：清空当前会话（--ez newchat true），配合 mdfile/mdtest 干净验证渲染
+        if (getIntent() != null && getIntent().getBooleanExtra("newchat", false)) {
+            messages.clear();
+            currentSessionId = "";
+            sessionTitle = "";
+            windowStart = 0;
+            agentConversationId = "";
+            agentChat.conversationId = "";
+        }
+        // 调试用：从 files/md.txt 读 markdown 渲染（--ez mdfile true），避免命令行转义问题
+        if (getIntent() != null && getIntent().getBooleanExtra("mdfile", false)) {
+            Task.onMain(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        java.io.File f = new java.io.File(getExternalFilesDir(null), "md.txt");
+                        java.io.FileInputStream in = new java.io.FileInputStream(f);
+                        byte[] buf = new byte[(int) f.length()];
+                        int off = 0;
+                        int n;
+                        while (off < buf.length && (n = in.read(buf, off, buf.length - off)) > 0) {
+                            off += n;
+                        }
+                        in.close();
+                        messages.add(new Msg("assistant", new String(buf, 0, off, "UTF-8"),
+                                "md file"));
+                        renderMessages();
+                        scrollToEnd();
+                    } catch (Throwable e) {
+                        messages.add(new Msg("assistant", "read md.txt failed: " + e, "md file"));
+                        renderMessages();
+                    }
+                }
+            });
+        }
+        // 调试用：渲染任意 markdown 文本（--es mdtext "…"）
+        if (getIntent() != null && getIntent().getStringExtra("mdtext") != null) {
+            final String md = getIntent().getStringExtra("mdtext");
+            Task.onMain(new Runnable() {
+                @Override
+                public void run() {
+                    messages.add(new Msg("assistant", md, "mdtext"));
+                    renderMessages();
+                    scrollToEnd();
+                }
+            });
+        }
+        if (getIntent() != null && getIntent().getBooleanExtra("mdtest", false)) {
+            Task.onMain(new Runnable() {
+                @Override
+                public void run() {
+                    messages.add(new Msg("assistant", Ui.t(
+                            "# 图片渲染自检\n\n下面是行内图片：\n\n![logo](https://www.baidu.com/img/flexible/logo/pc/result.png)\n\n"
+                                    + "再一张单独成行的：\n\n![png](https://www.baidu.com/img/flexible/logo/pc/result@2.png)\n\n"
+                                    + "| 列 | 值 |\n|---|---|\n| A | 1 |\n\n```bash\necho ok\n```\n",
+                            "# Image render test\n\n![logo](https://www.baidu.com/img/flexible/logo/pc/result.png)\n"),
+                            "mdtest"));
+                    renderMessages();
+                    scrollToEnd();
+                }
+            });
+        }
+        if (getIntent() != null && getIntent().getStringExtra("open") != null) {
+            final String page = getIntent().getStringExtra("open");
+            Task.onMain(new Runnable() {
+                @Override
+                public void run() {
+                    Crash.stage(MainActivity.this, "deep-link open=" + page);
+                    openPage(page);
+                }
+            });
+        }
         if (getIntent() != null && getIntent().getStringExtra("prefill") != null) {
             input.setText(getIntent().getStringExtra("prefill"));
             input.setSelection(input.getText().length());
+        }
+        // 调试用：直接打开某个平台会话（--es convid <id>），便于验证历史里的图片渲染
+        if (getIntent() != null && getIntent().getStringExtra("convid") != null) {
+            final String cid = getIntent().getStringExtra("convid");
+            Task.onMain(new Runnable() {
+                @Override
+                public void run() {
+                    openCloudConversation(cid);
+                }
+            });
+        }
+        // 调试用：把平台历史的原始 JSON 落盘（排查图片/资源字段）
+        if (getIntent() != null && getIntent().getBooleanExtra("dumphistory", false)) {
+            dumpHistory();
+        }
+        // 调试用：自动发一条（配合 --es prefill）；延后到云端加载完成，避免"没有可用通道"
+        if (getIntent() != null && getIntent().getBooleanExtra("autosend", false)) {
+            pendingAutosend = true;
         }
     }
 
@@ -474,27 +576,43 @@ public class MainActivity extends Activity {
         }
         drawerPanel.removeAllViews();
 
+        // ---- 账号行（点头像/名字进设置，✕ 关闭抽屉）
         LinearLayout account = new LinearLayout(this);
         account.setOrientation(LinearLayout.HORIZONTAL);
         account.setGravity(Gravity.CENTER_VERTICAL);
         account.setPadding(Ui.dpInt(this, 16), Ui.dpInt(this, 4), Ui.dpInt(this, 16),
                 Ui.dpInt(this, 12));
-        account.addView(Widgets.avatar(this, userName, avatarSpec, 42, new Widgets.Action() {
+        View avatar = Widgets.avatar(this, userName, avatarSpec, 42, new Widgets.Action() {
             @Override
             public void run() {
                 startActivity(new Intent(MainActivity.this, ProfileActivity.class));
             }
-        }));
+        });
+        account.addView(avatar);
         LinearLayout names = new LinearLayout(this);
         names.setOrientation(LinearLayout.VERTICAL);
         names.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
         names.addView(Ui.label(this, userName.length() > 0 ? userName
-                : Ui.t("已登录", "Signed in"), 15f, Ui.text));
-        names.addView(Ui.label(this, Store.get().getPlatformUserName().length() > 0
-                ? Ui.t("平台账号", "Platform account") : "", 11f, Ui.textFaint));
-        account.addView(names);
+                : Ui.t("未命名用户", "Unnamed"), 14f, Ui.text));
+        names.addView(Ui.label(this, Ui.t("已登录 · 超算互联网", "Signed in · SCNet"),
+                10.5f, Ui.textFaint));
+        LinearLayout.LayoutParams namesLp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        account.addView(names, namesLp);
+        TextView close = Ui.label(this, "✕", 13f, Ui.textFaint);
+        close.setGravity(Gravity.CENTER);
+        close.setBackground(Ui.round(Ui.surfaceAlt, 999, this));
+        close.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleDrawer(false);
+            }
+        });
+        account.addView(close, new LinearLayout.LayoutParams(Ui.dpInt(this, 28),
+                Ui.dpInt(this, 28)));
         drawerPanel.addView(account);
 
+        // ---- ＋ 新对话
         TextView newChat = Widgets.primaryButton(this, Ui.t("＋  新对话", "＋  New chat"), 44,
                 new Widgets.Action() {
                     @Override
@@ -508,14 +626,87 @@ public class MainActivity extends Activity {
         newLp.rightMargin = Ui.dpInt(this, 16);
         drawerPanel.addView(newChat, newLp);
 
-        drawerPanel.addView(Widgets.section(this, Ui.t("本地会话", "Local sessions")));
+        // ---- 服务入口（顺序与 HAP / PC 客户端一致）
+        String[][] services = {
+                {"HPC", Ui.t("算力服务", "Compute service"),
+                        Ui.t("集群 · 队列 · 作业 · 文件", "Clusters · queues · jobs"), "jobs"},
+                {"＋", Ui.t("插件", "Plugins"),
+                        Ui.t("精选连接器 / 技能", "Featured connectors & skills"), "market"},
+                {"AI", Ui.t("AI 社区", "AI community"),
+                        Ui.t("领域智能体 / 应用市场", "Domain agents & apps"), "aihub"},
+                {"OCR", Ui.t("文字识别", "OCR"),
+                        Ui.t("识别 · 文档解析 · 格式转换", "OCR · parse · convert"), "ocr"}
+        };
+        LinearLayout serviceBox = new LinearLayout(this);
+        serviceBox.setOrientation(LinearLayout.VERTICAL);
+        serviceBox.setBackground(Ui.round(Ui.surfaceAlt, 9, this));
+        LinearLayout.LayoutParams serviceLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        serviceLp.leftMargin = Ui.dpInt(this, 16);
+        serviceLp.rightMargin = Ui.dpInt(this, 16);
+        serviceLp.topMargin = Ui.dpInt(this, 12);
+        for (final String[] service : services) {
+            serviceBox.addView(Widgets.entryRow(this, service[0], service[1], service[2],
+                    new Widgets.Action() {
+                        @Override
+                        public void run() {
+                            toggleDrawer(false);
+                            openPage(service[3]);
+                        }
+                    }));
+        }
+        drawerPanel.addView(serviceBox, serviceLp);
+
+        // ---- 本机会话
+        drawerPanel.addView(Widgets.section(this, Ui.t("本机会话", "Local chats")));
         drawerSessions = new LinearLayout(this);
         drawerSessions.setOrientation(LinearLayout.VERTICAL);
         drawerPanel.addView(drawerSessions);
 
-        drawerPanel.addView(Widgets.section(this, Ui.t("平台历史", "Platform history")));
+        // ---- 平台历史（带刷新）
+        LinearLayout historyHead = new LinearLayout(this);
+        historyHead.setOrientation(LinearLayout.HORIZONTAL);
+        historyHead.setGravity(Gravity.CENTER_VERTICAL);
+        historyHead.setPadding(Ui.dpInt(this, 16), Ui.dpInt(this, 14), Ui.dpInt(this, 16),
+                Ui.dpInt(this, 6));
+        historyHead.addView(Ui.label(this, Ui.t("平台历史", "Platform history"), 11.5f,
+                Ui.textFaint), new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView refresh = Ui.label(this, Ui.t("刷新", "Refresh"), 11.5f, Ui.accent);
+        refresh.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Task.run(new Task.Work<List<Auth.Conversation>>() {
+                    @Override
+                    public List<Auth.Conversation> run() {
+                        return Auth.get().conversationList();
+                    }
+                }, new Task.Call<List<Auth.Conversation>>() {
+                    @Override
+                    public void ok(List<Auth.Conversation> value) {
+                        conversations.clear();
+                        conversations.addAll(value);
+                        refreshDrawer();
+                    }
+
+                    @Override
+                    public void fail(String message) {
+                        Widgets.tip(MainActivity.this, message);
+                    }
+                });
+            }
+        });
+        historyHead.addView(refresh);
+        drawerPanel.addView(historyHead);
+
         LinearLayout history = new LinearLayout(this);
         history.setOrientation(LinearLayout.VERTICAL);
+        if (conversations.isEmpty()) {
+            TextView empty = Ui.label(this, Ui.t("没有平台历史", "No platform history yet"),
+                    12f, Ui.textFaint);
+            empty.setPadding(Ui.dpInt(this, 16), Ui.dpInt(this, 6), Ui.dpInt(this, 16), 0);
+            history.addView(empty);
+        }
         for (final Auth.Conversation c : conversations) {
             final String title = c.title.length() > 0 ? c.title : Ui.t("（无标题）", "(untitled)");
             LinearLayout row = Widgets.row(this, title, c.createTime, "",
@@ -547,7 +738,8 @@ public class MainActivity extends Activity {
                                         public void ok(Boolean done) {
                                             Widgets.tip(MainActivity.this, done
                                                     ? Ui.t("已改名", "Renamed")
-                                                    : Ui.t("平台不支持改名或失败", "Rename failed"));
+                                                    : Ui.t("平台不支持改名或失败",
+                                                    "Rename failed"));
                                             if (done) {
                                                 c.title = next;
                                                 refreshDrawer();
@@ -568,25 +760,15 @@ public class MainActivity extends Activity {
         }
         drawerPanel.addView(history);
 
-        drawerPanel.addView(Widgets.section(this, Ui.t("更多", "More")));
-        String[][] entries = {
-                {"算力服务", "jobs"},
-                {"文字识别", "ocr"},
-                {"文件浏览", "files"},
-                {"插件市场", "market"},
-                {"AI 社区", "aihub"},
-                {"设置", "profile"}
-        };
-        for (final String[] entry : entries) {
-            drawerPanel.addView(Widgets.row(this, Ui.t(entry[0], entryEn(entry[1])), "", "",
-                    new Widgets.Action() {
-                        @Override
-                        public void run() {
-                            toggleDrawer(false);
-                            openPage(entry[1]);
-                        }
-                    }));
-        }
+        // ---- 设置 / 退出登录
+        drawerPanel.addView(Widgets.row(this, Ui.t("设置", "Settings"), "", "",
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        toggleDrawer(false);
+                        startActivity(new Intent(MainActivity.this, ProfileActivity.class));
+                    }
+                }));
         drawerPanel.addView(Widgets.row(this, Ui.t("退出登录", "Sign out"), "", "",
                 new Widgets.Action() {
                     @Override
@@ -607,8 +789,7 @@ public class MainActivity extends Activity {
                                             public void ok(Void value) {
                                                 startActivity(new Intent(MainActivity.this,
                                                         LoginActivity.class)
-                                                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                                                | Intent.FLAG_ACTIVITY_NEW_TASK));
+                                                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
                                                 finish();
                                             }
 
@@ -620,6 +801,7 @@ public class MainActivity extends Activity {
                                 });
                     }
                 }));
+
         refreshLocalSessions();
     }
 
@@ -801,6 +983,11 @@ public class MainActivity extends Activity {
                     renderEmptyState();
                     refreshDrawer();
                     renderBanner();
+                    if (pendingAutosend) {
+                        pendingAutosend = false;
+                        Crash.stage(MainActivity.this, "autosend after cloud loaded");
+                        send();
+                    }
                 } catch (Throwable error) {
                     errorMsg = Ui.t("界面渲染出错：", "Render error: ") + error;
                     try {
@@ -814,6 +1001,43 @@ public class MainActivity extends Activity {
             @Override
             public void fail(String message) {
                 refreshStatus();
+            }
+        });
+    }
+
+    /** 调试：把最近一个会话的原始 history JSON 与全部 URL 落盘。 */
+    private void dumpHistory() {
+        Task.run(new Task.Work<String>() {
+            @Override
+            public String run() {
+                List<Auth.Conversation> list = Auth.get().conversationList();
+                StringBuilder sb = new StringBuilder();
+                sb.append("conversations=").append(list.size()).append('\n');
+                int shown = 0;
+                for (Auth.Conversation c : list) {
+                    if (shown >= 3) {
+                        break;
+                    }
+                    Auth.get().loadHistory(c.id);
+                    String raw = Auth.get().lastHistoryRaw;
+                    sb.append("---- conv ").append(c.id).append(" len=").append(raw.length())
+                            .append(" ----\n");
+                    sb.append(raw.length() > 6000 ? raw.substring(0, 6000) + "…" : raw)
+                            .append('\n');
+                    shown++;
+                }
+                return sb.toString();
+            }
+        }, new Task.Call<String>() {
+            @Override
+            public void ok(String value) {
+                cn.scnet.agent.core.StreamLog.event(MainActivity.this, "HISTORY DUMP\n" + value);
+            }
+
+            @Override
+            public void fail(String message) {
+                cn.scnet.agent.core.StreamLog.event(MainActivity.this, "HISTORY DUMP failed: "
+                        + message);
             }
         });
     }
@@ -1180,9 +1404,33 @@ public class MainActivity extends Activity {
         progressLabel.setVisibility(View.GONE);
         cell.addView(progressLabel);
 
+        // 服务端 harness 的工具轨迹（todolist / tool-*）
+        traceBox = new LinearLayout(this);
+        traceBox.setOrientation(LinearLayout.VERTICAL);
+        traceBox.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 6), Ui.dpInt(this, 12),
+                Ui.dpInt(this, 6));
+        traceBox.setBackground(Ui.round(Ui.surfaceAlt, 10, this));
+        traceBox.setVisibility(View.GONE);
+        cell.addView(traceBox);
+
         messagesBox.addView(cell);
         streamingBubble = cell;
         renderStreaming(true);
+    }
+
+    /** 把工具轨迹画到气泡下方（最多保留最近 6 条）。 */
+    private void renderTrace() {
+        if (traceBox == null) {
+            return;
+        }
+        traceBox.removeAllViews();
+        traceBox.setVisibility(trace.isEmpty() ? View.GONE : View.VISIBLE);
+        int from = Math.max(0, trace.size() - 6);
+        for (int i = from; i < trace.size(); i++) {
+            TextView line = Ui.label(this, trace.get(i), 10.5f, Ui.textSub);
+            line.setSingleLine(true);
+            traceBox.addView(line);
+        }
     }
 
     private void renderStreaming(boolean force) {
@@ -1190,7 +1438,7 @@ public class MainActivity extends Activity {
             return;
         }
         long now = System.currentTimeMillis();
-        if (!force && now - lastRenderAt < 110) {
+        if (!force && now - lastRenderAt < 90) {
             return;
         }
         lastRenderAt = now;
@@ -1198,7 +1446,22 @@ public class MainActivity extends Activity {
         if (text.length() == 0) {
             text = Ui.t("正在生成…", "Generating…");
         }
+        // 流式性能：块结构没变时只改最后一个文本控件，不整段重建（否则长回答会一顿一顿）
+        List<Md.Block> blocks = Md.parse(text);
+        if (!force && canPatch(blocks)) {
+            TextView last = MdView.lastText;
+            if (last != null) {
+                last.setText(MdView.inline(this, blocks.get(blocks.size() - 1).text, Ui.text));
+                streamingBlocks = blocks;
+                if (progressLabel != null) {
+                    progressLabel.setVisibility(View.GONE);
+                }
+                scrollToEnd();
+                return;
+            }
+        }
         MdView.render(this, streamingBox, text);
+        streamingBlocks = blocks;
         if (progressLabel != null) {
             boolean show = progressText.length() > 0 && streaming.length() == 0;
             progressLabel.setText(progressText);
@@ -1207,7 +1470,33 @@ public class MainActivity extends Activity {
         scrollToEnd();
     }
 
+    /** 新文本与上次的块结构除最后一块外完全一致 → 可以只更新最后一块。 */
+    private boolean canPatch(List<Md.Block> next) {
+        List<Md.Block> prev = streamingBlocks;
+        if (prev == null || prev.size() == 0 || next.size() != prev.size()) {
+            return false;
+        }
+        int last = next.size() - 1;
+        int lastKind = next.get(last).kind;
+        if (lastKind != Md.P && lastKind != Md.H1 && lastKind != Md.H2 && lastKind != Md.H3
+                && lastKind != Md.BULLET && lastKind != Md.ORDERED) {
+            return false;
+        }
+        for (int i = 0; i < last; i++) {
+            Md.Block a = prev.get(i);
+            Md.Block b = next.get(i);
+            if (a.kind != b.kind || !a.text.equals(b.text) || !a.code.equals(b.code)
+                    || a.rows.size() != b.rows.size()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private void clearStreamingBubble() {
+        trace.clear();
+        traceBox = null;
+        streamingBlocks = new ArrayList<>();
         streamingBubble = null;
         streamingBox = null;
         streamingMeta = null;
@@ -1324,6 +1613,45 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onTool(String phase, String name, String detail) {
+                String line;
+                if ("progress".equals(phase)) {
+                    line = (name != null && name.length() > 0 ? name + " · " : "") + detail;
+                } else if (phase.endsWith("start")) {
+                    line = "▸ " + (name.length() > 0 ? name : "工具");
+                } else if (phase.endsWith("available")) {
+                    line = "✓ " + (name.length() > 0 ? name : "工具") + " 完成";
+                } else {
+                    return;
+                }
+                line = line.trim();
+                if (line.length() == 0 || trace.contains(line)) {
+                    return;
+                }
+                trace.add(line);
+                renderTrace();
+            }
+
+            @Override
+            public void onResource(String name, String url, String mime) {
+                if (url == null || url.length() == 0) {
+                    return;
+                }
+                if (mime != null && mime.length() > 0 && !mime.startsWith("image/")) {
+                    String md = "\n\n[📎 " + (name.length() > 0 ? name : "附件") + "](" + url + ")";
+                    streaming += md;
+                    turnResources.add(md);
+                    renderStreaming(true);
+                    return;
+                }
+                String alt = name.length() > 0 ? name : "图片";
+                String md = "\n\n![" + alt + "](" + url + ")";
+                streaming += md;
+                turnResources.add(md);
+                renderStreaming(true);
+            }
+
+            @Override
             public void onTitle(String title) {
                 sessionTitle = title;
                 persistSession();
@@ -1348,6 +1676,10 @@ public class MainActivity extends Activity {
                     customModel.length() > 0 ? customModel : "gpt-4o-mini", trimmed.turns, handlers);
             return;
         }
+        agentChat.ctx = this;
+        gateway.ctx = this;
+        cn.scnet.agent.core.StreamLog.event(this, "=== send via " + via + " ===");
+        turnResources.clear();
         if ("agent".equals(channel) && agentModelId > 0) {
             agentChat.conversationId = agentConversationId;
             agentChat.stream(agentModelId, text, new ArrayList<>(attachments), handlers);
@@ -1367,6 +1699,7 @@ public class MainActivity extends Activity {
     }
 
     private void finishStream(String via) {
+        lastAssistantText = streaming;
         if (streaming.length() > 0) {
             messages.add(new Msg("assistant", streaming, via));
             if (streamingBubble != null) {
@@ -1377,6 +1710,8 @@ public class MainActivity extends Activity {
             messagesBox.removeView(streamingBubble);
         }
         agentConversationId = agentChat.conversationId;
+        cn.scnet.agent.core.StreamLog.finalText(this, via,
+                streaming.length() > 0 ? streaming : lastAssistantText);
         streaming = "";
         progressText = "";
         busy = false;
@@ -1588,13 +1923,14 @@ public class MainActivity extends Activity {
     // ---------------------------------------------------------------- 附件
 
     private void pickAttachment() {
+        // 一步到位：系统文件选择器（*/* 里包含图片，可多选），不再先弹面板分图片/文件
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
         intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         try {
             startActivityForResult(Intent.createChooser(intent,
-                    Ui.t("选择文件", "Choose file")), 2001);
+                    Ui.t("选择附件", "Choose attachment")), 2001);
         } catch (Exception e) {
             Widgets.tip(this, Ui.t("没有可用的文件选择器", "No file picker available"));
         }

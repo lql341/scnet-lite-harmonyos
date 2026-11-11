@@ -191,6 +191,9 @@ public class AgentChat {
         }
     }
 
+    /** 由 UI 层注入的 Context，用于把原始帧落盘（可空）。 */
+    public android.content.Context ctx;
+
     private void handleLine(String raw, final Gateway.Handlers handlers, final boolean[] finished,
                             final boolean[] gotText) {
         String line = raw == null ? "" : raw.trim();
@@ -241,12 +244,47 @@ public class AgentChat {
                     @Override
                     public void run() {
                         handlers.onProgress(progress);
+                        handlers.onTool("progress", J.str(frame, "toolName"), progress);
                     }
                 });
             }
+            if ("todolist".equals(type)) {
+                android.util.Log.d("SCNetDbg", "todolist frame: " + payload);
+            }
+            return;
+        }
+        if (ctx != null) {
+            cn.scnet.agent.core.StreamLog.event(ctx, "frame " + type + " "
+                    + (payload.length() > 200 ? payload.substring(0, 200) : payload));
+        }
+        if (type.startsWith("tool")) {
+            final String toolName = J.str(frame, "toolName");
+            final String detail = J.str(frame, "errorText", J.str(frame, "progressText",
+                    J.str(frame, "inputTextDelta", "")));
+            android.util.Log.i("SCNetDbg", "tool frame " + type + " name=" + toolName
+                    + " detail=" + (detail.length() > 80 ? detail.substring(0, 80) : detail));
+            Task.onMain(new Runnable() {
+                @Override
+                public void run() {
+                    handlers.onTool(type, toolName, detail);
+                }
+            });
             return;
         }
         if (!"text-delta".equals(type)) {
+            // 资源卡片（图片/文件）：宽容地从帧里找 url/name/mime
+            if (type.contains("resource") || type.contains("card") || type.contains("image")
+                    || type.contains("file")) {
+                final String[] hit = findResource(frame);
+                if (hit != null) {
+                    Task.onMain(new Runnable() {
+                        @Override
+                        public void run() {
+                            handlers.onResource(hit[0], hit[1], hit[2]);
+                        }
+                    });
+                }
+            }
             return;
         }
         final String delta = J.str(frame, "delta");
@@ -259,6 +297,81 @@ public class AgentChat {
                 }
             });
         }
+    }
+
+    /** 在任意嵌套 JSON 里找第一个像图片/文件资源的 (name, url, mime)。 */
+    private static String[] findResource(org.json.JSONObject frame) {
+        final String[] found = new String[1];
+        walk(frame, found, 0);
+        if (found[0] == null) {
+            return null;
+        }
+        return found[0].split("\u0001", -1);
+    }
+
+    private static void walk(Object node, String[] found, int depth) {
+        if (found[0] != null || node == null || depth > 6) {
+            return;
+        }
+        if (node instanceof org.json.JSONArray) {
+            org.json.JSONArray arr = (org.json.JSONArray) node;
+            for (int i = 0; i < arr.length(); i++) {
+                walk(arr.opt(i), found, depth + 1);
+            }
+            return;
+        }
+        if (!(node instanceof org.json.JSONObject)) {
+            return;
+        }
+        org.json.JSONObject obj = (org.json.JSONObject) node;
+        String url = "";
+        String name = "";
+        String mime = "";
+        java.util.Iterator<String> keys = obj.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            Object value = obj.opt(key);
+            if (!(value instanceof String)) {
+                continue;
+            }
+            String text = (String) value;
+            String lower = key.toLowerCase();
+            if (url.length() == 0 && (lower.contains("url") || lower.equals("src")
+                    || lower.equals("path") || lower.equals("href"))
+                    && (text.startsWith("http") || text.startsWith("/")
+                    || text.startsWith("data:"))) {
+                url = text;
+            } else if (name.length() == 0 && (lower.contains("name") || lower.contains("title"))
+                    && text.length() > 0 && !text.contains("/")) {
+                name = text;
+            } else if (mime.length() == 0 && lower.contains("mime") && text.length() > 0) {
+                mime = text;
+            }
+        }
+        if (url.length() > 0 && (mime.startsWith("image/") || looksLikeImage(url))) {
+            found[0] = name + "\u0001" + url + "\u0001" + (mime.length() > 0 ? mime
+                    : cn.scnet.agent.ui.ImageLoader.normalize(url).contains(".")
+                    ? "image/*" : "");
+            return;
+        }
+        keys = obj.keys();
+        while (keys.hasNext()) {
+            Object value = obj.opt(keys.next());
+            if (value instanceof org.json.JSONObject || value instanceof org.json.JSONArray) {
+                walk(value, found, depth + 1);
+            }
+        }
+    }
+
+    private static boolean looksLikeImage(String url) {
+        String lower = url.toLowerCase();
+        int q = lower.indexOf('?');
+        if (q > 0) {
+            lower = lower.substring(0, q);
+        }
+        return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                || lower.endsWith(".gif") || lower.endsWith(".webp") || lower.endsWith(".svg")
+                || lower.contains("/image") || lower.contains("image/");
     }
 
     private void finish(final Gateway.Handlers handlers, final boolean[] finished, final String error) {

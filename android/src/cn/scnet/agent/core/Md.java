@@ -14,7 +14,7 @@ import java.util.List;
 public final class Md {
 
     public static final int H1 = 0, H2 = 1, H3 = 2, P = 3, BULLET = 4,
-            ORDERED = 5, CODE = 6, QUOTE = 7, HR = 8, TABLE = 9;
+            ORDERED = 5, CODE = 6, QUOTE = 7, HR = 8, TABLE = 9, IMAGE = 10;
 
     public static final class Block {
         public int kind;
@@ -25,6 +25,8 @@ public final class Md {
         public String code = "";
         /** 表格：首行是表头，其余数据行 */
         public List<List<String>> rows = new ArrayList<>();
+        /** 表格列对齐：0 左 1 中 2 右（按分隔行的冒号位置） */
+        public List<Integer> aligns = new ArrayList<>();
 
         Block(int kind) {
             this.kind = kind;
@@ -36,12 +38,25 @@ public final class Md {
         public final boolean bold;
         public final boolean italic;
         public final boolean code;
+        public final boolean strike;
+        /** 非空表示这段是链接文字，值为目标 URL。 */
+        public final String link;
 
         Seg(String text, boolean bold, boolean italic, boolean code) {
+            this(text, bold, italic, code, false, "");
+        }
+
+        Seg(String text, boolean bold, boolean italic, boolean code, boolean strike) {
+            this(text, bold, italic, code, strike, "");
+        }
+
+        Seg(String text, boolean bold, boolean italic, boolean code, boolean strike, String link) {
             this.text = text;
             this.bold = bold;
             this.italic = italic;
             this.code = code;
+            this.strike = strike;
+            this.link = link == null ? "" : link;
         }
     }
 
@@ -64,6 +79,18 @@ public final class Md {
         return out;
     }
 
+    /** 从 `|---|:--:|` 解析每列对齐：0 左 / 1 中 / 2 右。 */
+    private static List<Integer> alignsOf(String line) {
+        List<Integer> out = new ArrayList<>();
+        for (String cell : splitRow(line)) {
+            String c = cell.replaceAll("\\s", "");
+            boolean left = c.startsWith(":");
+            boolean right = c.endsWith(":");
+            out.add(left && right ? 1 : (right ? 2 : 0));
+        }
+        return out;
+    }
+
     private static boolean isSeparator(String line) {
         String body = line == null ? "" : line.trim();
         if (body.indexOf('-') < 0) {
@@ -76,6 +103,73 @@ public final class Md {
             }
         }
         return !cells.isEmpty();
+    }
+
+    /** 整行就是一个图片：`![alt](url)`（可带标题） */
+    /** 图片行：`![alt](url)` 或 `[img](oss:///…)`（平台素材用后者）。 */
+    private static String imageUrl(String line) {
+        String t = line == null ? "" : line.trim();
+        if (t.startsWith("[img](")) {
+            int close = t.indexOf(')', 6);
+            if (close > 6) {
+                String url = t.substring(6, close).trim();
+                return isImageLike(url) ? url : "";
+            }
+            return "";
+        }
+        if (!t.startsWith("![")) {
+            return "";
+        }
+        int mid = t.indexOf("](");
+        if (mid < 0) {
+            return "";
+        }
+        int close = t.indexOf(')', mid + 2);
+        if (close < 0) {
+            return "";
+        }
+        String url = t.substring(mid + 2, close).trim();
+        if (url.startsWith("<") && url.endsWith(">")) {
+            url = url.substring(1, url.length() - 1);
+        }
+        // 去掉 title：![a](url "title")
+        int space = url.indexOf(' ');
+        if (space > 0) {
+            url = url.substring(0, space);
+        }
+        return url;
+    }
+
+    /** 地址看起来是图片（按扩展名判断，oss:// 也适用）。 */
+    public static boolean isImageLike(String url) {
+        if (url == null) {
+            return false;
+        }
+        String lower = url.trim().toLowerCase();
+        int q = lower.indexOf('?');
+        if (q > 0) {
+            lower = lower.substring(0, q);
+        }
+        return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                || lower.endsWith(".gif") || lower.endsWith(".webp")
+                || lower.endsWith(".svg") || lower.endsWith(".bmp");
+    }
+
+    /** 整行就是一个图片直链（png/jpg/gif/webp）。 */
+    private static boolean isBareImageUrl(String line) {
+        if (line.startsWith("oss://")) {
+            return isImageLike(line);
+        }
+        if (!line.startsWith("http://") && !line.startsWith("https://")) {
+            return false;
+        }
+        String lower = line.toLowerCase();
+        int q = lower.indexOf('?');
+        if (q > 0) {
+            lower = lower.substring(0, q);
+        }
+        return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                || lower.endsWith(".gif") || lower.endsWith(".webp");
     }
 
     private static boolean isFence(String line) {
@@ -130,6 +224,7 @@ public final class Md {
                 if (isSeparator(next)) {
                     flushParagraph(blocks, paragraph);
                     Block table = new Block(TABLE);
+                    table.aligns = alignsOf(next);
                     table.rows.add(splitRow(trimmed));
                     int j = i + 2;
                     while (j < lines.length) {
@@ -144,6 +239,20 @@ public final class Md {
                     i = j;
                     continue;
                 }
+            }
+
+            // 图片（整行）：![](url) 或裸图片链接
+            String image = imageUrl(trimmed);
+            if (image.length() == 0 && isBareImageUrl(trimmed)) {
+                image = trimmed;
+            }
+            if (image.length() > 0) {
+                flushParagraph(blocks, paragraph);
+                Block img = new Block(IMAGE);
+                img.text = image;
+                blocks.add(img);
+                i++;
+                continue;
             }
 
             if (trimmed.equals("---") || trimmed.equals("***") || trimmed.equals("___")) {
@@ -164,7 +273,7 @@ public final class Md {
                         flushParagraph(blocks, paragraph);
                         Block head = new Block(level == 1 ? H1 : (level == 2 ? H2 : H3));
                         head.text = rest;
-                        head.level = level;
+                        head.level = level;  // 4~6 仍归 H3 块，但 level 决定字号
                         blocks.add(head);
                         i++;
                         continue;
@@ -174,14 +283,26 @@ public final class Md {
 
             if (trimmed.startsWith(">")) {
                 flushParagraph(blocks, paragraph);
-                String text = trimmed;
-                while (text.startsWith(">")) {
-                    text = text.substring(1).trim();
+                StringBuilder quoteText = new StringBuilder();
+                int depth = 0;
+                while (i < lines.length && lines[i].trim().startsWith(">")) {
+                    String line2 = lines[i].trim();
+                    int level2 = 0;
+                    while (line2.startsWith(">")) {
+                        level2++;
+                        line2 = line2.substring(1).trim();
+                    }
+                    depth = Math.max(depth, level2);
+                    if (quoteText.length() > 0) {
+                        quoteText.append('\n');
+                    }
+                    quoteText.append(line2);
+                    i++;
                 }
                 Block quote = new Block(QUOTE);
-                quote.text = text;
+                quote.text = quoteText.toString();
+                quote.level = Math.max(0, depth - 1);  // 嵌套引用缩进
                 blocks.add(quote);
-                i++;
                 continue;
             }
 
@@ -192,7 +313,13 @@ public final class Md {
                 flushParagraph(blocks, paragraph);
                 int indent = line.length() - line.replaceAll("^\\s+", "").length();
                 Block item = new Block(BULLET);
-                item.text = trimmed.substring(1).trim();
+                String body = trimmed.substring(1).trim();
+                if (body.startsWith("[ ] ")) {
+                    body = "☐ " + body.substring(4);
+                } else if (body.startsWith("[x] ") || body.startsWith("[X] ")) {
+                    body = "☑ " + body.substring(4);
+                }
+                item.text = body;
                 item.level = Math.min(2, indent / 2);
                 blocks.add(item);
                 i++;
@@ -235,12 +362,65 @@ public final class Md {
 
     private static void flushParagraph(List<Block> blocks, StringBuilder paragraph) {
         String text = paragraph.toString().trim();
-        if (text.length() > 0) {
+        paragraph.setLength(0);
+        if (text.length() == 0) {
+            return;
+        }
+        int i = 0;
+        while (i < text.length()) {
+            int start = text.indexOf("![", i);
+            int imgLink = text.indexOf("[img](", i);
+            if (imgLink >= 0 && (start < 0 || imgLink < start)) {
+                int start2 = imgLink + 1; // 等价于 "![" 位置的替代物
+                int mid2 = text.indexOf("](", imgLink);
+                int close2 = mid2 < 0 ? -1 : text.indexOf(')', mid2 + 2);
+                if (mid2 > 0 && close2 > mid2) {
+                    String candidate = text.substring(mid2 + 2, close2).trim();
+                    if (isImageLike(candidate)) {
+                        if (imgLink > i) {
+                            addText(blocks, text.substring(i, imgLink));
+                        }
+                        Block img = new Block(IMAGE);
+                        img.text = candidate;
+                        blocks.add(img);
+                        i = close2 + 1;
+                        continue;
+                    }
+                }
+            }
+            int mid = start < 0 ? -1 : text.indexOf("](", start);
+            int close = mid < 0 ? -1 : text.indexOf(')', mid + 2);
+            if (start < 0 || mid < 0 || close < 0) {
+                addText(blocks, text.substring(i));
+                return;
+            }
+            if (start > i) {
+                addText(blocks, text.substring(i, start));
+            }
+            String url = text.substring(mid + 2, close).trim();
+            int space = url.indexOf(' ');
+            if (space > 0) {
+                url = url.substring(0, space);
+            }
+            if (url.startsWith("<") && url.endsWith(">")) {
+                url = url.substring(1, url.length() - 1);
+            }
+            if (url.length() > 0) {
+                Block img = new Block(IMAGE);
+                img.text = url;
+                blocks.add(img);
+            }
+            i = close + 1;
+        }
+    }
+
+    private static void addText(List<Block> blocks, String text) {
+        String t = text.trim();
+        if (t.length() > 0) {
             Block p = new Block(P);
-            p.text = text;
+            p.text = t;
             blocks.add(p);
         }
-        paragraph.setLength(0);
     }
 
     /** `[文字](url)` → `文字`。 */
@@ -305,6 +485,20 @@ public final class Md {
                 }
             }
 
+            // 删除线 ~~x~~
+            if (ch == '~' && i + 1 < text.length() && text.charAt(i + 1) == '~') {
+                int end = text.indexOf("~~", i + 2);
+                if (end > i + 2) {
+                    String inner = text.substring(i + 2, end);
+                    if (inner.trim().length() > 0) {
+                        push(segs, pending);
+                        push(segs, new Seg(inner, false, false, false, true));
+                        i = end + 2;
+                        continue;
+                    }
+                }
+            }
+
             if (ch == '*') {
                 int end = text.indexOf('*', i + 1);
                 if (end > i + 1) {
@@ -326,7 +520,15 @@ public final class Md {
                 int close = mid > 0 ? text.indexOf(')', mid + 2) : -1;
                 if (mid > 0 && close > mid) {
                     push(segs, pending);
-                    push(segs, new Seg(text.substring(i + 1, mid), false, false, false));
+                    String label = text.substring(i + 1, mid);
+                    String target = text.substring(mid + 2, close).trim();
+                    int space = target.indexOf(' ');
+                    if (space > 0) {
+                        target = target.substring(0, space);
+                    }
+                    if (label.length() > 0) {
+                        segs.add(new Seg(label, false, false, false, false, target));
+                    }
                     i = close + 1;
                     continue;
                 }
@@ -351,6 +553,6 @@ public final class Md {
         if (cleaned.length() == 0) {
             return;
         }
-        segs.add(new Seg(cleaned, seg.bold, seg.italic, seg.code));
+        segs.add(new Seg(cleaned, seg.bold, seg.italic, seg.code, seg.strike, seg.link));
     }
 }

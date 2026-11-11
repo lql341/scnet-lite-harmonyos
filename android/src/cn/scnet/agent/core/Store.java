@@ -248,6 +248,15 @@ public class Store {
         write("modelProvider", "platform");
     }
 
+    /** 自定义更新源（公开 JSON，空 = 走 GitHub Releases API）。 */
+    public String getUpdateUrl() {
+        return read("updateUrl", "");
+    }
+
+    public void setUpdateUrl(String v) {
+        write("updateUrl", v);
+    }
+
     /** 调试用：把平台域名换成自建 mock（空 = 用 https://www.scnet.cn）。 */
     public String getDebugBase() {
         return read("debugApiBase", "");

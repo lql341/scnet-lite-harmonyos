@@ -28,7 +28,9 @@ public class Http {
 
     /** source 头标识客户端；version 是平台协议版本。 */
     public static String token = "";
+    /** 对外仍是一个 "k=v; k=v" 字符串；内部用 JAR 做合并，避免被单个 Set-Cookie 冲掉。 */
     public static String cookie = "";
+    private static final Map<String, String> JAR = new LinkedHashMap<>();
     public static String version = "1.0.0";
     public static String source = "Android";
 
@@ -123,7 +125,11 @@ public class Http {
             }
 
             resp.status = conn.getResponseCode();
-            captureCookies(conn);
+            updateJar(conn);
+            if (loggable(url)) {
+                android.util.Log.i("SCNetDbg", "HTTP " + method + " " + pathOf(url)
+                        + " -> " + resp.status + " cookie[" + cookieSummary() + "]");
+            }
 
             InputStream in = resp.status >= 400 ? conn.getErrorStream() : conn.getInputStream();
             resp.body = in == null ? "" : readAll(in);
@@ -142,51 +148,96 @@ public class Http {
         }
     }
 
-    /** 登录态：平台把 token 也可能放在 Set-Cookie 里（`Token=…`）。 */
-    private static void captureCookies(HttpURLConnection conn) {
+    /**
+     * 合并 Set-Cookie 到 cookie jar。
+     *
+     * ⚠️ 这里必须是「合并」而不是「替换」：平台在 current-user-info?refresh=true 等响应里
+     * 会轮换 jsessionid 或只回 SKIP_SESSION_UPDATE，整体替换会把会话 cookie 冲掉，
+     * 下一个请求就 401（实测就是 cluster-user-detail 401 → 被踢回登录页）。
+     */
+    private static synchronized void updateJar(HttpURLConnection conn) {
         List<String> sets = new ArrayList<>();
         for (Map.Entry<String, List<String>> e : conn.getHeaderFields().entrySet()) {
             String key = e.getKey();
-            if (key != null && key.equalsIgnoreCase("Set-Cookie")) {
+            if (key != null && key.equalsIgnoreCase("Set-Cookie") && e.getValue() != null) {
                 sets.addAll(e.getValue());
             }
         }
         if (sets.isEmpty()) {
             return;
         }
-        List<String> picked = new ArrayList<>();
-        String[] names = {"jsessionid", "Token", "SKIP_SESSION_UPDATE"};
         for (String raw : sets) {
-            for (String name : names) {
-                int idx = raw.indexOf(name + "=");
-                if (idx < 0) {
-                    continue;
-                }
-                int end = idx;
-                while (end < raw.length()) {
-                    char ch = raw.charAt(end);
-                    if (ch == ';' || ch == '\n' || ch == '"') {
-                        break;
-                    }
-                    end++;
-                }
-                String kv = raw.substring(idx, end).trim();
-                if (kv.length() > 0 && !picked.contains(kv)) {
-                    picked.add(kv);
+            String head = raw.split(";", 2)[0].trim();
+            int eq = head.indexOf('=');
+            if (eq <= 0) {
+                continue;
+            }
+            String name = head.substring(0, eq).trim();
+            String value = head.substring(eq + 1).trim();
+            boolean expired = value.length() == 0
+                    || raw.toLowerCase().contains("max-age=0")
+                    || value.equalsIgnoreCase("deleted");
+            if (expired) {
+                JAR.remove(name);
+            } else {
+                JAR.put(name, value);
+            }
+            // 平台把 SSO token 也放在 cookie 里（Token=…）
+            if (name.equalsIgnoreCase("Token") && value.length() > 0
+                    && !value.equalsIgnoreCase("deleted")) {
+                token = value;
+                try {
+                    Store.get().setCloudToken(value);
+                } catch (Exception ignored) {
                 }
             }
         }
-        if (!picked.isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            for (String kv : picked) {
-                if (sb.length() > 0) {
-                    sb.append("; ");
-                }
-                sb.append(kv);
+        rebuildCookie();
+    }
+
+    private static void rebuildCookie() {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : JAR.entrySet()) {
+            if (sb.length() > 0) {
+                sb.append("; ");
             }
-            cookie = sb.toString();
+            sb.append(e.getKey()).append('=').append(e.getValue());
+        }
+        cookie = sb.toString();
+        try {
             Store.get().setCloudCookie(cookie);
+        } catch (Exception ignored) {
         }
+    }
+
+    /** 从持久化的 cookie 字符串恢复 jar（冷启动）。 */
+    public static synchronized void restoreCookie(String raw) {
+        JAR.clear();
+        if (raw != null && raw.length() > 0) {
+            for (String part : raw.split(";")) {
+                String item = part.trim();
+                int eq = item.indexOf('=');
+                if (eq > 0) {
+                    JAR.put(item.substring(0, eq).trim(), item.substring(eq + 1).trim());
+                }
+            }
+        }
+        rebuildCookie();
+    }
+
+    /** jar 里的 cookie 名 + 长度（排查用，不打印明文）。 */
+    public static synchronized String cookieSummary() {
+        if (JAR.isEmpty()) {
+            return "<empty>";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : JAR.entrySet()) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(e.getKey()).append("=").append(e.getValue().length());
+        }
+        return sb.toString();
     }
 
     public static String readAll(InputStream in) throws IOException {
@@ -196,6 +247,22 @@ public class Http {
     }
 
     /** 解析信封；`code` 非 0/200/空 视为失败。401 会清凭据并回调。 */
+    /** 带一次重试的请求：401 常见于会话 cookie 轮换的竞态，重放一次通常就好。 */
+    public static Response sendRetry(String method, String url, Map<String, String> headers,
+                                     byte[] body) throws ApiError {
+        Response resp = send(method, url, headers, body);
+        if (resp.status == 401 && token.length() > 0) {
+            android.util.Log.w("SCNetDbg", "HTTP 401 on " + pathOf(url)
+                    + ", retry once. cookie[" + cookieSummary() + "]");
+            try {
+                Thread.sleep(150);
+            } catch (InterruptedException ignored) {
+            }
+            resp = send(method, url, baseHeaders(true), body);
+        }
+        return resp;
+    }
+
     public static org.json.JSONObject envelope(Response resp) throws ApiError {
         String raw = resp.body == null ? "" : resp.body.trim();
         if (raw.length() == 0) {
@@ -229,20 +296,20 @@ public class Http {
     }
 
     public static org.json.JSONObject get(String path) throws ApiError {
-        Response resp = send("GET", base() + path, baseHeaders(true), null);
+        Response resp = sendRetry("GET", base() + path, baseHeaders(true), null);
         org.json.JSONObject env = envelope(resp);
         return J.jo(env, "data");
     }
 
     /** 有些接口 data 是数组，单独给一个。 */
     public static org.json.JSONArray getArray(String path) throws ApiError {
-        Response resp = send("GET", base() + path, baseHeaders(true), null);
+        Response resp = sendRetry("GET", base() + path, baseHeaders(true), null);
         org.json.JSONObject env = envelope(resp);
         return J.ja(env, "data");
     }
 
     public static org.json.JSONObject postJson(String path, String json) throws ApiError {
-        Response resp = send("POST", base() + path, baseHeaders(true),
+        Response resp = sendRetry("POST", base() + path, baseHeaders(true),
                 json.getBytes(java.nio.charset.Charset.forName("UTF-8")));
         org.json.JSONObject env = envelope(resp);
         return J.jo(env, "data");
@@ -260,6 +327,28 @@ public class Http {
     public static Response postRaw(String path, String json) throws ApiError {
         return send("POST", base() + path, baseHeaders(true),
                 json.getBytes(java.nio.charset.Charset.forName("UTF-8")));
+    }
+
+    private static boolean loggable(String url) {
+        return url.contains("/ac/api/auth/") || url.contains("/acx/user/")
+                || url.contains("/acx/llm/") || url.contains("/acx/chatbot/config");
+    }
+
+    private static String pathOf(String url) {
+        try {
+            java.net.URL u = new java.net.URL(url);
+            return u.getPath() + (u.getQuery() == null ? "" : "?" + u.getQuery());
+        } catch (Exception e) {
+            return url;
+        }
+    }
+
+    /** 掩码后的 token（前 6 位 + 长度），用于日志排查。 */
+    public static String mask(String value) {
+        if (value == null || value.length() == 0) {
+            return "<empty>";
+        }
+        return value.substring(0, Math.min(6, value.length())) + "…len=" + value.length();
     }
 
     public static String enc(String value) {

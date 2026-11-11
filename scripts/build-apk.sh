@@ -12,7 +12,8 @@
 #   scripts/build-apk.sh                 # 输出 dist/android/scnet-agent-webview-*.apk
 #   ANDROID_HOME=/path/to/sdk scripts/build-apk.sh
 #
-# 依赖：Android SDK（platforms;android-34 + build-tools;34.0.0）、JDK 17+。
+# 依赖：Android SDK（platforms;android-34 + build-tools;35.0.0）、JDK 17+。
+#       已按 module 规范纳管：`. ~/opt/module-init.sh && module load android-sdk jdk`
 # 没装 SDK 时脚本会给出安装命令并退出。
 set -euo pipefail
 
@@ -20,8 +21,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=$ROOT/android
 OUT=${OUT:-$ROOT/dist/android}
 PKG=cn.scnet.agent
-VER_NAME=${VER_NAME:-0.4.1}
-VER_CODE=${VER_CODE:-6}
+VER_NAME=${VER_NAME:-0.6.0}
+VER_CODE=${VER_CODE:-20}
 # DEBUG=1 出可调试包（仅本机联调用：aapt2 --debug-mode → android:debuggable=true）
 DEBUG=${DEBUG:-0}
 ENTRY=${ENTRY:-https://www.scnet.cn/ui/chatbot/index.html}
@@ -34,7 +35,8 @@ note() { printf '[..] %s\n' "$1"; }
 # ---- 找 SDK ----
 SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
 if [[ -z $SDK || ! -d $SDK/platforms/android-34 ]]; then
-  for cand in "$HOME/android-sdk" "$HOME/Android/Sdk" /tmp/asdk/sdk /opt/android-sdk; do
+  for cand in "$HOME"/opt/apps/android-sdk/* "$HOME/android-sdk" "$HOME/Android/Sdk" \
+              /tmp/asdk/sdk /opt/android-sdk /opt/android-sdk/*; do
     [[ -d $cand/platforms/android-34 ]] && SDK=$cand && break
   done
 fi

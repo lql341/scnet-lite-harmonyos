@@ -95,6 +95,35 @@ adb shell am force-stop cn.scnet.agent && adb shell am start -n cn.scnet.agent/.
 
 会话文件结构见 `svc/Sessions.java`：`{id,title,model,createdAt,updatedAt,messages[{role,content,via}]}`。
 
+## 5.1 调试钩子（无常驻自动化时最有用）
+
+MIUI 默认禁输入注入（`input tap` 报 `INJECT_EVENTS`），所以验证靠这些 Intent 参数：
+
+```bash
+# 打开某个页面（绕过点击）：profile / jobs / files / ocr / market / aihub
+adb shell am start -n cn.scnet.agent/.MainActivity --es open jobs
+
+# 渲染内置样张（行内图/表格/代码块）
+adb shell am start -n cn.scnet.agent/.MainActivity --ez mdtest true
+
+# 渲染任意 markdown：先推到 files/md.txt，再拉起
+adb push md.txt /sdcard/Android/data/cn.scnet.agent/files/md.txt
+adb shell am start -n cn.scnet.agent/.MainActivity --ez newchat true --ez mdfile true
+
+# 自动发一条（验证真实 SSE / 图片帧）
+adb shell am start -n cn.scnet.agent/.MainActivity \
+  --es prefill "如何上传算例文件？" --ez autosend true
+
+# 打开平台历史里某个会话
+adb shell am start -n cn.scnet.agent/.MainActivity --es convid <conversationId>
+
+# 把平台历史原始 JSON 落盘（排查图片/资源字段）
+adb shell am start -n cn.scnet.agent/.MainActivity --ez dumphistory true
+adb pull /sdcard/Android/data/cn.scnet.agent/files/stream.log
+```
+
+`stream.log` 还会记录每次流的非正文帧（`todolist` / `tool-*` / 资源卡片）与最终正文里的全部 URL。
+
 ## 6. 已知坑
 
 | 现象 | 原因 |
@@ -104,3 +133,6 @@ adb shell am force-stop cn.scnet.agent && adb shell am start -n cn.scnet.agent/.
 | 底部面板高度为 0 | Dialog 是 wrap_content，不能给 ScrollView 用 weight |
 | `run-as` 报错 | 装的是 release 包（不可调试） |
 | 网络请求全失败 | 模拟器飞行模式忘了关 |
+| `adb install` 报 `INSTALL_FAILED_USER_RESTRICTED` | MIUI：开发者选项打开「USB 安装」 |
+| 设备在 `adb devices` 里消失、`lsusb` 显示 `2717:ff40` | USB 用途被重置成 MTP；重新选「传输文件」，让 PID 回到 `ff08` |
+| `input tap` 报 `INJECT_EVENTS` | 需要「USB 调试（安全设置）」；没开就用上面的 Intent 钩子 |

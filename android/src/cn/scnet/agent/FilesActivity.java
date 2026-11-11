@@ -1,6 +1,7 @@
 package cn.scnet.agent;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -10,12 +11,12 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Stack;
 
 import cn.scnet.agent.core.Crash;
 import cn.scnet.agent.core.Store;
+import cn.scnet.agent.svc.Hpc;
 import cn.scnet.agent.core.Task;
 import cn.scnet.agent.svc.Hpc;
 import cn.scnet.agent.ui.Ui;
@@ -97,6 +98,33 @@ public class FilesActivity extends Activity {
 
     private void open(final String target) {
         content.removeAllViews();
+        if (!Hpc.get().hasCredentials()) {
+            LinearLayout card = Widgets.card(this);
+            card.addView(Ui.label(this, Ui.t("未配置 AK/SK", "AK/SK not configured"), 14f,
+                    Ui.text));
+            TextView hint = Ui.label(this,
+                    Ui.t("到「设置 → 算力服务」填 AccessKey / SecretKey（32 位十六进制）。",
+                            "Go to Settings → Compute service to add AccessKey / SecretKey."),
+                    12f, Ui.textFaint);
+            hint.setPadding(0, Ui.dpInt(this, 6), 0, Ui.dpInt(this, 10));
+            card.addView(hint);
+            card.addView(Widgets.ghostButton(this, Ui.t("去设置", "Open settings"),
+                    new Widgets.Action() {
+                        @Override
+                        public void run() {
+                            startActivity(new Intent(FilesActivity.this, ProfileActivity.class));
+                        }
+                    }));
+            addCard(card);
+            card.addView(Widgets.ghostButton(this, Ui.t("重试", "Retry"), new Widgets.Action() {
+                @Override
+                public void run() {
+                    open("");
+                }
+            }));
+            pathView.setText("");
+            return;
+        }
         content.addView(Ui.label(this, Ui.t("加载中…", "Loading…"), 13f, Ui.textFaint));
         Task.run(new Task.Work<List<Hpc.Entry>>() {
             @Override

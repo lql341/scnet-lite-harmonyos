@@ -190,6 +190,20 @@ public final class CoreTest {
         List<Md.Seg> open = Md.inline("**没闭合");
         eq(open.get(0).text, "**没闭合", "未闭合粗体保留字面量");
 
+        // 平台素材图片：[img](oss:///…)
+        List<Md.Block> oss = Md.parse("说明如下：\n\n[img](oss:///hpc/beginner-guide/upload-example/1.png)\n\n继续");
+        eq(oss.get(1).kind, Md.IMAGE, "[img](oss://) 识别为图片");
+        eq(oss.get(1).text, "oss:///hpc/beginner-guide/upload-example/1.png", "oss 路径保留");
+        // 段落里夹着的也可切出来
+        List<Md.Block> inlineOss = Md.parse("先看图 [img](oss:///a/b/2.png) 然后继续");
+        boolean hasImage = false;
+        for (Md.Block b : inlineOss) {
+            if (b.kind == Md.IMAGE) {
+                hasImage = true;
+            }
+        }
+        eq(hasImage, "true", "段落内 [img] 切出图片");
+
         // 引用 / 分隔线 / 有序列表
         List<Md.Block> misc = Md.parse("> 引用\n\n---\n\n1. 第一\n2. 第二");
         eq(misc.get(0).kind, Md.QUOTE, "引用");

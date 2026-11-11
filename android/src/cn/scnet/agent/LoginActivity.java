@@ -41,6 +41,8 @@ public class LoginActivity extends Activity {
     private TextView smsSend;
     private boolean smsMode;
     private boolean busy;
+    /** 主界面是否已经把本页 pause 掉（用于判断 startActivity 是否真的生效） */
+    private boolean leftForMain;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -241,6 +243,12 @@ public class LoginActivity extends Activity {
         errorView.setVisibility(View.GONE);
     }
 
+    @Override
+    protected void onPause() {
+        super.onPause();
+        leftForMain = true;
+    }
+
     private void showError(String message) {
         errorView.setText(message);
         errorView.setVisibility(View.VISIBLE);
@@ -291,23 +299,49 @@ public class LoginActivity extends Activity {
         }, loginCallback());
     }
 
+    /** 跳主界面：成功才 finish；系统静默吞掉 startActivity 时留在登录页并说明原因。 */
+    private void goMain() {
+        leftForMain = false;
+        try {
+            android.util.Log.i("SCNetDbg", "login: startActivity(MainActivity)");
+            startActivity(new Intent(LoginActivity.this, MainActivity.class));
+        } catch (Throwable error) {
+            android.util.Log.e("SCNetDbg", "login: startActivity failed: " + error);
+            Crash.fatal(this, error);
+            return;
+        }
+        // 若 1.2s 内本页还没被 pause，说明目标页没起来（有的 ROM 会静默拦截）
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (leftForMain || isFinishing()) {
+                    finish();
+                    return;
+                }
+                android.util.Log.w("SCNetDbg", "login: MainActivity did not come up");
+                setBusy(false);
+                showError(Ui.t("登录成功，但主界面启动被系统拦截（请检查「应用锁/后台弹出界面」权限）",
+                        "Signed in, but the system blocked opening the main screen"));
+            }
+        }, 1200);
+    }
+
     private Task.Call<Void> loginCallback() {
         return new Task.Call<Void>() {
             @Override
             public void ok(Void value) {
                 setBusy(false);
-                try {
-                    // 不带 NEW_TASK：容器类环境里跨任务启动最容易出问题
-                    startActivity(new Intent(LoginActivity.this, MainActivity.class));
-                    finish();
-                } catch (Throwable error) {
-                    Crash.fatal(LoginActivity.this, error);
-                }
+                android.util.Log.i("SCNetDbg", "login: callback ok, token="
+                        + cn.scnet.agent.core.Http.mask(cn.scnet.agent.core.Http.token)
+                        + " storeToken=" + cn.scnet.agent.core.Http.mask(
+                        cn.scnet.agent.core.Store.get().getCloudToken()));
+                goMain();
             }
 
             @Override
             public void fail(String message) {
                 setBusy(false);
+                android.util.Log.w("SCNetDbg", "login: callback fail: " + message);
                 // 网络错误 / 平台错误码都翻译一下
                 if (message.contains("network")) {
                     showError(Ui.t("网络错误，检查网络后重试", "Network error"));

@@ -4,7 +4,7 @@
 # 覆盖从 ArkTS 移植到 Java 的四块纯逻辑：Markdown / SSE / 上下文裁剪 / HMAC，
 # 向量与仓库根 test/*.test.mjs 保持一致。
 #
-# 用法：scripts/test-android.sh
+# 用法：. ~/opt/module-init.sh && module load jdk && scripts/test-android.sh
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)

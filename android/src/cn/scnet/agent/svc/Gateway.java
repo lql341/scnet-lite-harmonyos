@@ -33,6 +33,14 @@ public class Gateway {
         public void onTitle(String title) {
         }
 
+        /** 工具调用轨迹（服务端 harness 下发的 tool-* 帧）。 */
+        public void onTool(String phase, String name, String detail) {
+        }
+
+        /** 服务端下发的资源（图片卡片 / 文件卡片）：name 可为空，url 已归一。 */
+        public void onResource(String name, String url, String mime) {
+        }
+
         public abstract void onDone();
 
         public abstract void onError(String message);
@@ -185,6 +193,9 @@ public class Gateway {
         }
     }
 
+    /** 由 UI 层注入的 Context，用于把原始行落盘（可空）。 */
+    public android.content.Context ctx;
+
     private void handleLine(String rawLine, final Handlers handlers, final boolean[] finished,
                             final String[] serverError, final boolean[] gotDelta) {
         String line = rawLine == null ? "" : rawLine.trim();
@@ -192,6 +203,10 @@ public class Gateway {
             return;
         }
         if (!line.startsWith("data:")) {
+            if (ctx != null) {
+                cn.scnet.agent.core.StreamLog.event(ctx, "raw "
+                        + (line.length() > 200 ? line.substring(0, 200) : line));
+            }
             if (line.startsWith("{") && line.contains("\"error\"")) {
                 serverError[0] = describeError(line);
             }

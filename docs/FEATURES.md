@@ -1,7 +1,7 @@
 # FEATURES — 功能清单
 
 > 本文件是「这个 App 到底能做什么」的权威清单。每条都标注**是否真机验证**。
-> 最后更新：2026-11-11（0.4.1）。**Android 版已与本文功能对齐**，逐条状态见 [`PARITY-ANDROID.md`](PARITY-ANDROID.md)。代码规模 **12 468 行 ArkTS**（40 个 `.ets`）+ **约 7 900 行 Java**（Android 原生版，`android/src`）。
+> 最后更新：2026-11-11（0.6.0）。**Android 版已与本文功能对齐**，逐条状态见 [`PARITY-ANDROID.md`](PARITY-ANDROID.md)。代码规模 **12 468 行 ArkTS**（40 个 `.ets`）+ **约 7 900 行 Java**（Android 原生版，`android/src`）。
 
 图例：✅ 真机验证过 · 🟡 已实现但只做过主机侧/部分验证 · ⛔ 平台不支持或按需求去掉
 

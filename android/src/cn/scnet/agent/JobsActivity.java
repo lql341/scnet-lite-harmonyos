@@ -100,6 +100,16 @@ public class JobsActivity extends Activity {
         title.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
         bar.addView(title, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView files = Widgets.ghostButton(this, Ui.t("文件", "Files"), new Widgets.Action() {
+            @Override
+            public void run() {
+                startActivity(new Intent(JobsActivity.this, FilesActivity.class));
+            }
+        });
+        LinearLayout.LayoutParams filesLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        filesLp.rightMargin = Ui.dpInt(this, 6);
+        bar.addView(files, filesLp);
         TextView submit = Widgets.ghostButton(this, Ui.t("提交作业", "Submit"), new Widgets.Action() {
             @Override
             public void run() {

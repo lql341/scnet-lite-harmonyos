@@ -89,7 +89,7 @@ public class Auth {
     /** 启动恢复登录态。 */
     public boolean restore() {
         Http.token = Store.get().getCloudToken();
-        Http.cookie = Store.get().getCloudCookie();
+        Http.restoreCookie(Store.get().getCloudCookie());
         if (Http.token.length() > 0) {
             Store.get().setHadSession(true);
             loginReason = "";
@@ -105,15 +105,20 @@ public class Auth {
 
     /** 账号密码登录：先客户端 .action，再回落 /sso/login。 */
     public void loginByPassword(String userName, String password) throws Http.ApiError {
+        android.util.Log.i("SCNetDbg", "login: start user=" + userName
+                + " pwdLen=" + (password == null ? 0 : password.length()));
         StringBuilder attempts = new StringBuilder();
         try {
             String form = "username=" + Http.enc(userName) + "&password=" + Http.enc(password);
             Http.Response raw = Http.postForm("/ac/api/auth/loginDesktopClient.action", form);
+            android.util.Log.i("SCNetDbg", "login: desktopClient http=" + raw.status
+                    + " bodyLen=" + (raw.body == null ? 0 : raw.body.length()));
             consume(raw, "登录失败");
             lastLoginRoute = "loginDesktopClient";
             markLoggedIn(userName.trim());
             return;
         } catch (Http.ApiError e) {
+            android.util.Log.w("SCNetDbg", "login: desktopClient failed " + e.code + " " + e.getMessage());
             attempts.append("loginDesktopClient: ").append(e.code).append(' ').append(e.getMessage());
             if ("1014".equals(e.code)) {
                 boolean need = needCaptcha();
@@ -126,6 +131,8 @@ public class Auth {
             String form = "userName=" + Http.enc(userName) + "&password=" + Http.enc(password)
                     + "&rememberMe=true";
             Http.Response raw = Http.postForm("/sso/login", form);
+            android.util.Log.i("SCNetDbg", "login: sso http=" + raw.status
+                    + " bodyLen=" + (raw.body == null ? 0 : raw.body.length()));
             consume(raw, "登录失败");
             lastLoginRoute = "sso/login";
             markLoggedIn(userName.trim());
@@ -287,12 +294,19 @@ public class Auth {
         return out;
     }
 
+    /** 最近一次 history 的原始 JSON（排查图片/资源字段用）。 */
+    public String lastHistoryRaw = "";
+
     /** 平台历史会话（只读）。 */
     public java.util.List<HistoryMessage> loadHistory(String conversationId) {
+        lastHistoryRaw = "";
         java.util.List<HistoryMessage> out = new java.util.ArrayList<>();
         try {
-            JSONObject page = Http.get("/acx/chatbot/v2/agent/conversation/"
-                    + conversationId + "/history?page=1&size=50");
+            Http.Response resp = Http.sendRetry("GET",
+                    Http.base() + "/acx/chatbot/v2/agent/conversation/" + conversationId
+                            + "/history?page=1&size=50", Http.baseHeaders(true), null);
+            lastHistoryRaw = resp.body == null ? "" : resp.body;
+            JSONObject page = J.jo(Http.envelope(resp), "data");
             JSONArray messages = J.ja(page, "messages");
             for (int i = 0; i < messages.length(); i++) {
                 JSONObject m = J.at(messages, i);
@@ -406,8 +420,12 @@ public class Auth {
         }
         if (Http.token.length() == 0) {
             String tail = text.length() > 120 ? text.substring(0, 120) : text;
+            android.util.Log.w("SCNetDbg", "login: no token; body=" + tail
+                    + " cookie=" + Http.mask(Http.cookie));
             throw new Http.ApiError("", "登录成功但没拿到 token（响应：" + tail + "）");
         }
+        android.util.Log.i("SCNetDbg", "login: ok route=" + lastLoginRoute
+                + " token=" + Http.mask(Http.token) + " cookie=" + Http.mask(Http.cookie));
     }
 
     private void expectOk(Http.Response raw, String fallback) throws Http.ApiError {

@@ -197,6 +197,12 @@ public class ProfileActivity extends Activity {
                     }
                 }));
         channelCard.addView(divider());
+        channelCard.addView(Widgets.row(this, Ui.t("当前通道", "Current channel"),
+                "agent".equals(Store.get().getChannel())
+                        ? Ui.t("智能体服务", "Agent service")
+                        : (Ui.t("模型网关 · ", "Model gateway · ") + Store.get().getModel()),
+                "", null));
+        channelCard.addView(divider());
         channelCard.addView(Widgets.row(this, Ui.t("自定义模型服务", "Custom model service"),
                 customLabel(), "", new Widgets.Action() {
                     @Override
@@ -255,6 +261,27 @@ public class ProfileActivity extends Activity {
                     }
                 }));
         debugCard.addView(divider());
+        final String updateUrl = Store.get().getUpdateUrl();
+        debugCard.addView(Widgets.row(this, Ui.t("更新源（JSON）", "Update source (JSON)"),
+                updateUrl.length() > 0 ? updateUrl : Ui.t("GitHub Releases（私有仓库会 404）",
+                        "GitHub Releases (404 when private)"), "",
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        Widgets.prompt(ProfileActivity.this,
+                                Ui.t("更新源 URL（留空=GitHub）", "Update URL (empty = GitHub)"),
+                                Store.get().getUpdateUrl(),
+                                "https://example.com/scnet-agent-update.json", false,
+                                new Widgets.OnText() {
+                                    @Override
+                                    public void onText(String value) {
+                                        Store.get().setUpdateUrl(value.trim());
+                                        rebuild();
+                                    }
+                                });
+                    }
+                }));
+        debugCard.addView(divider());
         debugCard.addView(Widgets.row(this, Ui.t("复制诊断信息", "Copy diagnostics"),
                 Ui.t("版本/网络/配置 + 上次崩溃", "Version/network/config + last crash"), "",
                 new Widgets.Action() {
@@ -281,12 +308,11 @@ public class ProfileActivity extends Activity {
         about.addView(versionView);
         about.addView(divider());
         about.addView(Widgets.row(this, Ui.t("检查更新", "Check for updates"),
-                Ui.t("当前版本 ", "Current ") + newVersionName() + Ui.t(" · 内嵌打开 Releases",
-                        " · opens Releases"), "",
+                Ui.t("当前版本 ", "Current ") + newVersionName(), "",
                 new Widgets.Action() {
                     @Override
                     public void run() {
-                        openUrl("https://github.com/lql341/scnet-lite-harmonyos/releases");
+                        checkUpdate();
                     }
                 }));
         about.addView(divider());
@@ -297,14 +323,7 @@ public class ProfileActivity extends Activity {
                         openUrl("https://github.com/lql341");
                     }
                 }));
-        about.addView(divider());
-        about.addView(Widgets.row(this, Ui.t("GitHub 仓库", "GitHub repository"),
-                "lql341/scnet-lite-harmonyos", "", new Widgets.Action() {
-                    @Override
-                    public void run() {
-                        openUrl("https://github.com/lql341/scnet-lite-harmonyos");
-                    }
-                }));
+
         about.addView(divider());
         TextView disclaimer = Ui.label(this,
                 Ui.t("非官方项目，与曙光智算 / 国家超算互联网无隶属关系。不含厂商代码与二进制，只复用公开接口契约。",
@@ -768,6 +787,77 @@ public class ProfileActivity extends Activity {
         lp.bottomMargin = Ui.dpInt(this, 6);
         et.setLayoutParams(lp);
         return et;
+    }
+
+    /** 检查更新：自定义 JSON 源优先，其次 GitHub Releases API；结果用对话框给出。 */
+    private void checkUpdate() {
+        Widgets.tip(this, Ui.t("正在检查更新…", "Checking for updates…"));
+        Task.run(new Task.Work<cn.scnet.agent.svc.Update.Info>() {
+            @Override
+            public cn.scnet.agent.svc.Update.Info run() {
+                return cn.scnet.agent.svc.Update.check(ProfileActivity.this);
+            }
+        }, new Task.Call<cn.scnet.agent.svc.Update.Info>() {
+            @Override
+            public void ok(final cn.scnet.agent.svc.Update.Info info) {
+                if (info.error.length() > 0) {
+                    new android.app.AlertDialog.Builder(ProfileActivity.this)
+                            .setTitle(Ui.t("检查更新失败", "Update check failed"))
+                            .setMessage(info.error + "\n\n" + Ui.t(
+                                    "提示：仓库是私有的，匿名访问 GitHub 会 404。\n"
+                                            + "可以在「调试 → 更新源」填一个公开的 JSON 地址，格式：\n"
+                                            + "{\"versionName\":\"0.5.3\",\"versionCode\":13,\"url\":\"https://…/x.apk\"}",
+                                    "The repo is private, so anonymous GitHub requests 404.\n"
+                                            + "Set a public JSON URL in Debug → update source."))
+                            .setPositiveButton(Ui.t("去配更新源", "Set source"),
+                                    new android.content.DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(android.content.DialogInterface d,
+                                                            int which) {
+                                            Store.get().setUpdateUrl("");
+                                            Widgets.tip(ProfileActivity.this,
+                                                    Ui.t("请在调试区填写更新源",
+                                                            "Fill the update source in Debug"));
+                                        }
+                                    })
+                            .setNegativeButton(Ui.t("关闭", "Close"), null)
+                            .show();
+                    return;
+                }
+                if (!info.newer) {
+                    new android.app.AlertDialog.Builder(ProfileActivity.this)
+                            .setTitle(Ui.t("已是最新版本", "Up to date"))
+                            .setMessage(Ui.t("当前版本 ", "Current ") + newVersionName())
+                            .setPositiveButton(Ui.t("好", "OK"), null)
+                            .show();
+                    return;
+                }
+                new android.app.AlertDialog.Builder(ProfileActivity.this)
+                        .setTitle(Ui.t("发现新版本 ", "New version ") + info.versionName)
+                        .setMessage(info.notes.length() > 0 ? info.notes
+                                : Ui.t("（无更新说明）", "(no release notes)"))
+                        .setPositiveButton(Ui.t("下载并安装", "Download & install"),
+                                new android.content.DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(android.content.DialogInterface d,
+                                                        int which) {
+                                        long id = cn.scnet.agent.svc.Update.download(
+                                                ProfileActivity.this, info);
+                                        Widgets.tip(ProfileActivity.this, id > 0
+                                                ? Ui.t("开始下载，完成后点通知安装",
+                                                "Downloading — tap the notification to install")
+                                                : Ui.t("无法启动下载", "Cannot start download"));
+                                    }
+                                })
+                        .setNegativeButton(Ui.t("取消", "Cancel"), null)
+                        .show();
+            }
+
+            @Override
+            public void fail(String message) {
+                Widgets.tip(ProfileActivity.this, message);
+            }
+        });
     }
 
     private void openUrl(String url) {

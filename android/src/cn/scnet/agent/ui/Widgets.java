@@ -305,6 +305,49 @@ public final class Widgets {
         android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show();
     }
 
+    /** 服务入口行：左侧方形徽标 + 标题/副标题 + ›（对齐 HAP 抽屉的服务入口）。 */
+    public static LinearLayout entryRow(Context context, String badge, String title, String sub,
+                                        final Action onTap) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(Ui.dpInt(context, 10), Ui.dpInt(context, 9), Ui.dpInt(context, 10),
+                Ui.dpInt(context, 9));
+
+        TextView mark = new TextView(context);
+        mark.setText(badge);
+        mark.setTextSize(Ui.sp(9f));
+        mark.setTypeface(Typeface.DEFAULT_BOLD);
+        mark.setTextColor(Ui.accent);
+        mark.setGravity(Gravity.CENTER);
+        mark.setBackground(Ui.round(Ui.accentGhost, 7, context));
+        row.addView(mark, new LinearLayout.LayoutParams(Ui.dpInt(context, 24),
+                Ui.dpInt(context, 24)));
+
+        LinearLayout texts = new LinearLayout(context);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textLp.leftMargin = Ui.dpInt(context, 8);
+        TextView titleView = Ui.label(context, title, 13.5f, Ui.text);
+        texts.addView(titleView);
+        if (sub != null && sub.length() > 0) {
+            texts.addView(Ui.label(context, sub, 10f, Ui.textFaint));
+        }
+        row.addView(texts, textLp);
+        row.addView(Ui.label(context, "›", 14f, Ui.textFaint));
+
+        if (onTap != null) {
+            row.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    onTap.run();
+                }
+            });
+        }
+        return row;
+    }
+
     /** 分组标题。 */
     public static TextView section(Context context, String text) {
         TextView tv = Ui.label(context, text, 11.5f, Ui.textFaint);

@@ -111,6 +111,11 @@ public final class Crash {
 
     private static void write(Context context, String text) {
         writeQuiet(new File(context.getFilesDir(), FILE), text);
+        // 外部私有目录：adb pull /sdcard/Android/data/<pkg>/files/crash.log 可直取
+        File ext = context.getExternalFilesDir(null);
+        if (ext != null) {
+            writeQuiet(new File(ext, FILE), text);
+        }
         pending = text;
     }
 
@@ -258,7 +263,16 @@ public final class Crash {
         if (last.length() > 0) {
             sb.append("\n=== 上次崩溃 ===\n").append(last);
         }
-        return sb.toString();
+        String text = sb.toString();
+        try {
+            File ext = context.getExternalFilesDir(null);
+            if (ext != null) {
+                writeQuiet(new File(ext, "diag.txt"), text);
+            }
+            writeQuiet(new File(context.getFilesDir(), "diag.txt"), text);
+        } catch (Throwable ignored) {
+        }
+        return text;
     }
 
     public static void showIfAny(final Activity activity) {
