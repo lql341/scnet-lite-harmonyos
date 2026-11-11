@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "cn.scnet.hmos",
     "vendor": "unofficial",
-    "versionCode": 35,
-    "versionName": "0.7.7",
+    "versionCode": 36,
+    "versionName": "0.7.8",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

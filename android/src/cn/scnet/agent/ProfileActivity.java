@@ -255,20 +255,6 @@ public class ProfileActivity extends Activity {
                 }));
         addCard(aboutCard);
 
-        // 算力密钥（HAP 在作业页入口，这里保留一行方便找）
-        LinearLayout keyCard = Widgets.card(this);
-        keyCard.setPadding(0, 0, 0, 0);
-        keyCard.addView(Widgets.row(this, Ui.t("算力密钥（AK/SK）", "Compute AK/SK"),
-                Store.get().getHpcAk().length() > 0
-                        ? Ui.t("已配置", "Configured") : Ui.t("未配置", "Not configured"),
-                "", new Widgets.Action() {
-                    @Override
-                    public void run() {
-                        editAkSk();
-                    }
-                }));
-        addCard(keyCard);
-
         // 退出登录（HAP：浅红底按钮）
         TextView logout = new TextView(this);
         logout.setText(Ui.t("退出登录", "Sign out"));

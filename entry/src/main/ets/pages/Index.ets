@@ -1561,7 +1561,8 @@ struct Index {
 
   @Builder
   drawer() {
-    Column() {
+    Scroll() {
+      Column() {
       Row({ space: 10 }) {
         this.avatarBox(40, 15)
         Column({ space: 2 }) {
@@ -1743,19 +1744,18 @@ struct Index {
           .width('100%')
           .padding({ left: 10, top: 2, bottom: 6 })
       } else {
-        List() {
+        Column() {
           ForEach(this.localSessions, (meta: SessionMeta) => {
-            ListItem() {
+            Column() {
               this.localItem(meta)
             }
+            .width('100%')
             .onClick(() => {
               this.openLocal(meta);
             })
           }, (meta: SessionMeta) => meta.id)
         }
         .width('100%')
-        .constraintSize({ maxHeight: 190 })
-        .scrollBar(BarState.Off)
       }
 
       Row({ space: 6 }) {
@@ -1776,11 +1776,12 @@ struct Index {
       .width('100%')
       .padding({ top: 16, bottom: 6, left: 2, right: 2 })
 
-      List() {
+      Column() {
         ForEach(this.conversations, (item: Conversation) => {
-          ListItem() {
+          Column() {
             this.drawerItem(item)
           }
+          .width('100%')
           .onClick(() => {
             this.openConversation(item);
           })
@@ -1789,9 +1790,7 @@ struct Index {
           }))
         }, (item: Conversation) => `${item.id}`)
       }
-      .layoutWeight(1)
       .width('100%')
-      .scrollBar(BarState.Off)
 
       Divider().color(Theme.hairline).margin({ top: 6, bottom: 6 })
 
@@ -1806,10 +1805,13 @@ struct Index {
         .onClick(() => {
           this.doLogout();
         })
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 12, bottom: 16 })
     }
     .width(296)
     .height('100%')
-    .padding({ left: 16, right: 16, top: 12, bottom: 16 })
+    .scrollBar(BarState.Off)
     .backgroundColor(Theme.surface)
     .borderRadius({ topRight: Theme.rXl, bottomRight: Theme.rXl })
   }
