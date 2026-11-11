@@ -77,18 +77,44 @@ public class OcrActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 10), Ui.dpInt(this, 14),
-                Ui.dpInt(this, 6));
-        bar.addView(Widgets.glyphButton(this, "‹", new Widgets.Action() {
+        bar.setPadding(Ui.dpInt(this, 8), Ui.dpInt(this, 8), Ui.dpInt(this, 12),
+                Ui.dpInt(this, 4));
+        TextView back = Ui.label(this, "‹", 20f, Ui.textSub);
+        back.setGravity(Gravity.CENTER);
+        back.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void run() {
+            public void onClick(View v) {
                 finish();
             }
-        }), new LinearLayout.LayoutParams(Ui.dpInt(this, 34), Ui.dpInt(this, 34)));
-        TextView title = Ui.label(this, Ui.t("文字识别 / 文档", "OCR / Documents"), 16f, Ui.text);
+        });
+        bar.addView(back, new LinearLayout.LayoutParams(Ui.dpInt(this, 32),
+                Ui.dpInt(this, 32)));
+
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setPadding(Ui.dpInt(this, 6), 0, 0, 0);
+        TextView title = Ui.label(this, Ui.t("文字识别", "OCR"), 17f, Ui.text);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
-        bar.addView(title);
+        titles.addView(title);
+        titles.addView(Ui.label(this, Ui.t("支持图片与 PDF（证照/票据/手写）",
+                "Images and PDF: cards, invoices, handwriting"), 10f, Ui.textFaint));
+        bar.addView(titles, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView selfTestTop = new TextView(this);
+        selfTestTop.setText(Ui.t("自检", "Test"));
+        selfTestTop.setTextSize(Ui.sp(11.5f));
+        selfTestTop.setTextColor(Ui.accent);
+        selfTestTop.setBackground(Ui.round(Ui.accentGhost, 999, this));
+        selfTestTop.setPadding(Ui.dpInt(this, 10), Ui.dpInt(this, 5), Ui.dpInt(this, 10),
+                Ui.dpInt(this, 5));
+        selfTestTop.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                runSelfTest();
+            }
+        });
+        bar.addView(selfTestTop);
         root.addView(bar);
 
         ScrollView scroll = new ScrollView(this);
@@ -102,7 +128,7 @@ public class OcrActivity extends Activity {
         LinearLayout modes = new LinearLayout(this);
         modes.setOrientation(LinearLayout.HORIZONTAL);
         modes.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 4), Ui.dpInt(this, 14), 0);
-        String[] labels = {Ui.t("文字识别", "OCR"), Ui.t("文档解析", "Parse"),
+        String[] labels = {Ui.t("通用文字识别", "OCR"), Ui.t("文档解析", "Parse"),
                 Ui.t("格式转换", "Convert")};
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
@@ -154,17 +180,6 @@ public class OcrActivity extends Activity {
                     }
                 }), new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView selfTest = Widgets.ghostButton(this, Ui.t("自检", "Self-test"),
-                new Widgets.Action() {
-                    @Override
-                    public void run() {
-                        runSelfTest();
-                    }
-                });
-        LinearLayout.LayoutParams selfLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        selfLp.leftMargin = Ui.dpInt(this, 6);
-        actions.addView(selfTest, selfLp);
         TextView run = Widgets.primaryButton(this, Ui.t("开始", "Run"), 42, new Widgets.Action() {
             @Override
             public void run() {

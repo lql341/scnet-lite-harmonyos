@@ -98,7 +98,35 @@ class Handler(BaseHTTPRequestHandler):
     # ---------------- routing ----------------
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
-        if path == "/acx/user/users/current-user-info":
+        if path == "/api/user/v3/tokens":
+            self.send_json([{"clusterId": 1, "clusterName": "华东一区【昆山】", "token": "mock-jwt"},
+                            {"clusterId": 2, "clusterName": "东北一区【哈尔滨】", "token": "mock-jwt"}])
+        elif path == "/ac/openapi/v2/center":
+            self.send_json(envelope({
+                "hpcUrls": [{"url": "http://127.0.0.1:%d/hpc" % PORT, "enable": "true"}],
+                "efileUrls": [{"url": "http://127.0.0.1:%d/efile" % PORT}],
+                "clusterUserInfo": {"userName": "hpc0409", "homePath": "/public/home/hpc0409"},
+            }))
+        elif path == "/hpc/hpc/openapi/v2/cluster":
+            self.send_json(envelope([{"id": 7, "text": "SLURM", "JobManagerType": "SLURM"}]))
+        elif path.startswith("/hpc/hpc/openapi/v2/queuenames/"):
+            self.send_json(envelope([
+                {"queueName": "hebhcnormal02", "queFreeNcpus": "739", "queNcpus": "8384",
+                 "queMaxPPN": "64", "queNodes": "131"},
+                {"queueName": "hebhcnormal01", "queFreeNcpus": "3984", "queNcpus": "44800",
+                 "queMaxPPN": "64", "queNodes": "700"},
+                {"queueName": "hebh dnormal".replace(" ", ""), "queFreeNcpus": "16",
+                 "queNcpus": "2496", "queMaxPPN": "32", "queNodes": "78"},
+            ]))
+        elif path == "/hpc/hpc/openapi/v2/userquotas/userlimit":
+            self.send_json(envelope({"userName": "hpc0409", "accountMaxCpu": 640,
+                                     "accountMaxDcu": 8, "accountMaxSubmitJob": 20,
+                                     "accountMaxRunJob": 5}))
+        elif path == "/hpc/hpc/openapi/v2/jobs":
+            self.send_json(envelope({"list": []}))
+        elif path.startswith("/efile/openapi/v2/file/list"):
+            self.send_json(envelope({"children": []}))
+        elif path == "/acx/user/users/current-user-info":
             self.send_json(envelope({"id": "1", "userName": "mockuser", "fullName": "张测试",
                                      "mobilephoneNum": "138****0000", "acctRole": "admin"}))
         elif path == "/acx/chatbot/config/list":
@@ -173,7 +201,10 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         body = self.read_body()
 
-        if path == "/ac/api/auth/loginDesktopClient.action":
+        if path == "/api/user/v3/tokens":
+            self.send_json([{"clusterId": 1, "clusterName": "华东一区【昆山】", "token": "mock-jwt"},
+                            {"clusterId": 2, "clusterName": "东北一区【哈尔滨】", "token": "mock-jwt"}])
+        elif path == "/ac/api/auth/loginDesktopClient.action":
             self.send_json(envelope({"token": "mock-token", "accessToken": "mock-token"}))
         elif path == "/acx/llm/account/config/authorize":
             self.send_json(envelope({}))

@@ -501,19 +501,85 @@ public class ProfileActivity extends Activity {
         }
     }
 
+    /** 配色：HAP 的圆形色板网格（4 列，选中打勾）。 */
     private void pickPalette() {
-        List<Sheet.Item> items = new ArrayList<>();
-        for (Ui.Palette palette : Ui.PALETTES) {
-            items.add(new Sheet.Item("", palette.id, palette.name, "",
-                    false, palette.id.equals(Store.get().getTheme())));
-        }
-        Sheet.show(this, Ui.t("配色", "Palette"), items, new Sheet.OnPick() {
-            @Override
-            public void onPick(Sheet.Item item) {
-                Store.get().setTheme(item.key);
-                rebuild();
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(Ui.round(Ui.surface, 18, this));
+        root.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 14), Ui.dpInt(this, 14),
+                Ui.dpInt(this, 18));
+
+        TextView title = Ui.label(this, Ui.t("主题色", "Palette"), 16f, Ui.text);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        root.addView(title);
+        root.addView(Ui.label(this, Ui.t("选中即刻生效，会记住", "Applies instantly"),
+                11f, Ui.textFaint));
+
+        final android.app.Dialog dialog = new android.app.Dialog(this);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        grid.setPadding(0, Ui.dpInt(this, 10), 0, 0);
+        LinearLayout row = null;
+        for (int i = 0; i < Ui.PALETTES.size(); i++) {
+            final Ui.Palette palette = Ui.PALETTES.get(i);
+            if (i % 4 == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                grid.addView(row);
             }
-        }, false, null);
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setGravity(Gravity.CENTER_HORIZONTAL);
+            cell.setPadding(0, Ui.dpInt(this, 8), 0, Ui.dpInt(this, 8));
+
+            TextView swatch = new TextView(this);
+            boolean active = palette.id.equals(Store.get().getTheme());
+            swatch.setText(active ? "✓" : "");
+            swatch.setTextColor(0xFFFFFFFF);
+            swatch.setTextSize(Ui.sp(15f));
+            swatch.setGravity(Gravity.CENTER);
+            swatch.setBackground(Ui.round(palette.accent, 999, this));
+            cell.addView(swatch, new LinearLayout.LayoutParams(Ui.dpInt(this, 44),
+                    Ui.dpInt(this, 44)));
+            TextView name = Ui.label(this, palette.name, 10.5f,
+                    active ? Ui.accent : Ui.textSub);
+            name.setPadding(0, Ui.dpInt(this, 6), 0, 0);
+            cell.addView(name);
+            cell.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Store.get().setTheme(palette.id);
+                    dialog.dismiss();
+                    rebuild();
+                }
+            });
+            row.addView(cell, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        }
+        root.addView(grid);
+
+        TextView close = Widgets.ghostButton(this, Ui.t("关闭", "Close"), new Widgets.Action() {
+            @Override
+            public void run() {
+                dialog.dismiss();
+            }
+        });
+        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        closeLp.topMargin = Ui.dpInt(this, 10);
+        root.addView(close, closeLp);
+
+        dialog.setContentView(root);
+        android.view.Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+            window.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                    android.view.WindowManager.LayoutParams.WRAP_CONTENT);
+            window.setGravity(Gravity.BOTTOM);
+        }
+        dialog.show();
     }
 
     private void pickColorMode() {
@@ -588,46 +654,127 @@ public class ProfileActivity extends Activity {
         });
     }
 
+    /** 头像：HAP 的分组网格（卡通 / 风景 / 字母 + 相册 + 让智能体生成）。 */
     private void pickAvatar() {
-        List<Sheet.Item> items = new ArrayList<>();
-        items.add(new Sheet.Item("", "reset", Ui.t("默认首字", "Initial"), "", false, false));
-        items.add(new Sheet.Item("", "photo", Ui.t("从相册选择", "Choose photo"), "", false, false));
-        items.add(new Sheet.Item("", "ai", Ui.t("让智能体生成", "Ask the agent"), "", false, false));
-        for (String emoji : PRESET_AVATARS) {
-            boolean letter = emoji.length() == 1 && emoji.charAt(0) < 0x2000;
-            items.add(new Sheet.Item(Ui.t(letter ? "字母" : "内置", letter ? "Letters" : "Presets"),
-                    "preset:" + emoji, emoji, "", false,
-                    ("preset:" + emoji).equals(Store.get().getAvatar())));
-        }
-        Sheet.show(this, Ui.t("更换头像", "Change avatar"), items, new Sheet.OnPick() {
-            @Override
-            public void onPick(Sheet.Item item) {
-                if ("reset".equals(item.key)) {
-                    Store.get().setAvatar("");
-                    rebuild();
-                } else if ("ai".equals(item.key)) {
-                    // 对齐 HAP：把生成头像的提示词带回对话页
-                    startActivity(new Intent(ProfileActivity.this, MainActivity.class)
-                            .putExtra("prefill", Ui.t(
-                                    "帮我设计一个头像：科幻风、超算主题、简洁，给出可用的图片提示词",
-                                    "Design an avatar for me: sci-fi, supercomputing, minimal — "
-                                            + "give me a usable image prompt"))
-                            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
-                    finish();
-                } else if ("photo".equals(item.key)) {
-                    Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                    intent.setType("image/*");
-                    try {
-                        startActivityForResult(intent, 3001);
-                    } catch (Exception e) {
-                        Widgets.tip(ProfileActivity.this, Ui.t("没有相册应用", "No gallery app"));
+        final android.app.Dialog dialog = new android.app.Dialog(this);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(Ui.round(Ui.surface, 18, this));
+        root.setPadding(Ui.dpInt(this, 16), Ui.dpInt(this, 12), Ui.dpInt(this, 16),
+                Ui.dpInt(this, 16));
+
+        TextView title = Ui.label(this, Ui.t("更换头像", "Change avatar"), 16f, Ui.text);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        root.addView(title);
+        root.addView(Ui.label(this, Ui.t("选一个内置头像，或从相册选，或让智能体帮你画一个",
+                "Pick a preset, choose a photo, or ask the agent"), 10.5f, Ui.textFaint));
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        scrollLp.topMargin = Ui.dpInt(this, 8);
+        root.addView(scroll, scrollLp);
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(box);
+
+        String[][] groups = {
+                {Ui.t("卡通", "Cartoon"), "🐼", "🦊", "🐳", "🦉", "🐙", "🌵"},
+                {Ui.t("风景", "Scenery"), "🌇", "🌊", "🏔", "🌌"},
+                {Ui.t("字母", "Letters"), "A", "S"}
+        };
+        for (final String[] group : groups) {
+            TextView head = Ui.label(this, group[0], 10.5f, Ui.textFaint);
+            head.setPadding(0, Ui.dpInt(this, 10), 0, Ui.dpInt(this, 6));
+            box.addView(head);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            for (int i = 1; i < group.length; i++) {
+                final String glyph = group[i];
+                boolean active = ("preset:" + glyph).equals(Store.get().getAvatar());
+                TextView cell = new TextView(this);
+                cell.setText(glyph);
+                cell.setTextSize(Ui.sp(glyph.length() == 1 && glyph.charAt(0) < 0x2000
+                        ? 17f : 22f));
+                cell.setGravity(Gravity.CENTER);
+                cell.setBackground(Ui.round(active ? Ui.lighten(Ui.accent) : Ui.surfaceAlt,
+                        999, this));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        Ui.dpInt(this, 46), Ui.dpInt(this, 46));
+                lp.rightMargin = Ui.dpInt(this, 10);
+                cell.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        Store.get().setAvatar("preset:" + glyph);
+                        dialog.dismiss();
+                        rebuild();
                     }
-                } else if (item.key.startsWith("preset:")) {
-                    Store.get().setAvatar(item.key);
-                    rebuild();
-                }
+                });
+                row.addView(cell, lp);
             }
-        }, false, null);
+            box.addView(row);
+        }
+
+        TextView more = Ui.label(this, Ui.t("其他", "More"), 10.5f, Ui.textFaint);
+        more.setPadding(0, Ui.dpInt(this, 14), 0, Ui.dpInt(this, 6));
+        box.addView(more);
+        box.addView(Widgets.row(this, Ui.t("默认首字", "Initial"), "", "",
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        Store.get().setAvatar("");
+                        dialog.dismiss();
+                        rebuild();
+                    }
+                }));
+        box.addView(Widgets.row(this, Ui.t("从相册选", "From gallery"), "", "",
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        dialog.dismiss();
+                        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                        intent.setType("image/*");
+                        try {
+                            startActivityForResult(intent, 3001);
+                        } catch (Exception e) {
+                            Widgets.tip(ProfileActivity.this,
+                                    Ui.t("没有相册应用", "No gallery app"));
+                        }
+                    }
+                }));
+        box.addView(Widgets.row(this, Ui.t("让智能体生成头像 →", "Ask the agent →"), "", "",
+                new Widgets.Action() {
+                    @Override
+                    public void run() {
+                        dialog.dismiss();
+                        startActivity(new Intent(ProfileActivity.this, MainActivity.class)
+                                .putExtra("prefill", Ui.t(
+                                        "帮我设计一个头像：科幻风、超算主题、简洁，给出可用的图片提示词",
+                                        "Design an avatar: sci-fi, supercomputing, minimal"))
+                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
+                        finish();
+                    }
+                }));
+
+        root.addView(Widgets.ghostButton(this, Ui.t("关闭", "Close"), new Widgets.Action() {
+            @Override
+            public void run() {
+                dialog.dismiss();
+            }
+        }));
+
+        dialog.setContentView(root);
+        android.view.Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+            window.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                    (int) (getResources().getDisplayMetrics().heightPixels * 0.72f));
+            window.setGravity(Gravity.BOTTOM);
+        }
+        dialog.show();
     }
 
     @Override

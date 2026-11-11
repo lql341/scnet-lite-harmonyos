@@ -226,6 +226,14 @@ public final class Ui {
         return v;
     }
 
+    /** 提亮（用于选中态色块，保证 emoji 可见）。 */
+    public static int lighten(int color) {
+        int r = Math.min(255, (int) (Color.red(color) * 0.55f + 255 * 0.45f));
+        int g = Math.min(255, (int) (Color.green(color) * 0.55f + 255 * 0.45f));
+        int b = Math.min(255, (int) (Color.blue(color) * 0.55f + 255 * 0.45f));
+        return Color.rgb(r, g, b);
+    }
+
     public static int alpha(int color, float ratio) {
         return Color.argb((int) (ratio * 255), Color.red(color), Color.green(color), Color.blue(color));
     }

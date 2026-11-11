@@ -30,8 +30,24 @@ import cn.scnet.agent.core.Store;
  */
 public class Hpc {
 
-    private static final String API_BASE = "https://api.scnet.cn";
-    private static final String WEB_BASE = "https://www.scnet.cn";
+    private static final String API_BASE_DEFAULT = "https://api.scnet.cn";
+    private static final String WEB_BASE_DEFAULT = "https://www.scnet.cn";
+
+    /** 联调用：debugApiBase 非空时把 HPC 域名也指向 mock。 */
+    private static String apiBase() {
+        try {
+            String override = Store.get().getDebugBase();
+            if (override != null && override.trim().length() > 0) {
+                return J.trimSlash(override.trim());
+            }
+        } catch (Exception ignored) {
+        }
+        return API_BASE_DEFAULT;
+    }
+
+    private static String webBase() {
+        return apiBase();
+    }
 
     public static class Region {
         public String clusterId = "";
@@ -204,7 +220,7 @@ public class Hpc {
         head.put("signature", signature);
         head.put("timestamp", ts);
         try {
-            Http.Response resp = Http.send("POST", API_BASE + "/api/user/v3/tokens", head, null);
+            Http.Response resp = Http.send("POST", apiBase() + "/api/user/v3/tokens", head, null);
             if (resp.status != 200) {
                 throw new HpcError(String.valueOf(resp.status),
                         "签名/凭据被拒：" + cut(resp.body, 120));
@@ -279,7 +295,7 @@ public class Hpc {
             throw new HpcError("no-region", "集群 " + clusterId + " 没有可用令牌");
         }
         try {
-            JSONObject centerEnv = getJson(WEB_BASE + "/ac/openapi/v2/center", picked.token);
+            JSONObject centerEnv = getJson(webBase() + "/ac/openapi/v2/center", picked.token);
             JSONObject center = J.jo(centerEnv, "data");
             JSONArray hpcUrls = J.ja(center, "hpcUrls");
             JSONArray efileUrls = J.ja(center, "efileUrls");

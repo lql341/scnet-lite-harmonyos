@@ -51,6 +51,7 @@ public class JobsActivity extends Activity {
     private String errorMsg = "";
     private String highlightId = "";
     private boolean jobsUnavailable;
+    private TextView clusterLabel;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -87,36 +88,80 @@ public class JobsActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 10), Ui.dpInt(this, 14),
-                Ui.dpInt(this, 6));
+        bar.setPadding(Ui.dpInt(this, 10), Ui.dpInt(this, 8), Ui.dpInt(this, 10),
+                Ui.dpInt(this, 4));
         bar.addView(Widgets.glyphButton(this, "‹", new Widgets.Action() {
             @Override
             public void run() {
                 finish();
             }
         }), new LinearLayout.LayoutParams(Ui.dpInt(this, 34), Ui.dpInt(this, 34)));
-        TextView title = Ui.label(this, Ui.t("算力服务", "Compute jobs"), 16f, Ui.text);
+
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setPadding(Ui.dpInt(this, 8), 0, 0, 0);
+        TextView title = Ui.label(this, Ui.t("作业", "Jobs"), 17f, Ui.text);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setPadding(Ui.dpInt(this, 10), 0, 0, 0);
-        bar.addView(title, new LinearLayout.LayoutParams(0,
+        titles.addView(title);
+        clusterLabel = Ui.label(this, "", 10.5f, Ui.textFaint);
+        titles.addView(clusterLabel);
+        bar.addView(titles, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView files = Widgets.ghostButton(this, Ui.t("文件", "Files"), new Widgets.Action() {
+
+        TextView refresh = Ui.label(this, "↻", 16f, Ui.textSub);
+        refresh.setPadding(Ui.dpInt(this, 6), 0, Ui.dpInt(this, 6), 0);
+        refresh.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void run() {
+            public void onClick(View v) {
+                load();
+            }
+        });
+        bar.addView(refresh);
+
+        TextView filesBtn = Ui.label(this, Ui.t("文件", "Files"), 13f, Ui.accent);
+        filesBtn.setPadding(Ui.dpInt(this, 8), Ui.dpInt(this, 6), Ui.dpInt(this, 8),
+                Ui.dpInt(this, 6));
+        filesBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
                 startActivity(new Intent(JobsActivity.this, FilesActivity.class));
             }
         });
-        LinearLayout.LayoutParams filesLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        filesLp.rightMargin = Ui.dpInt(this, 6);
-        bar.addView(files, filesLp);
-        TextView submit = Widgets.ghostButton(this, Ui.t("提交作业", "Submit"), new Widgets.Action() {
+        bar.addView(filesBtn);
+
+        TextView submit = new TextView(this);
+        submit.setText(Ui.t("提交", "Submit"));
+        submit.setTextSize(Ui.sp(13f));
+        submit.setTextColor(0xFFFFFFFF);
+        submit.setTypeface(Typeface.DEFAULT_BOLD);
+        submit.setGravity(Gravity.CENTER);
+        submit.setBackground(Ui.round(Ui.accent, 999, this));
+        submit.setPadding(Ui.dpInt(this, 12), Ui.dpInt(this, 6), Ui.dpInt(this, 12),
+                Ui.dpInt(this, 6));
+        submit.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void run() {
+            public void onClick(View v) {
                 startActivity(new Intent(JobsActivity.this, JobSubmitActivity.class));
             }
         });
-        bar.addView(submit);
+        LinearLayout.LayoutParams submitLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        submitLp.leftMargin = Ui.dpInt(this, 6);
+        bar.addView(submit, submitLp);
+
+        TextView keys = Ui.label(this, Ui.t("算力密钥", "AK/SK"), 13f, Ui.accent);
+        keys.setPadding(Ui.dpInt(this, 8), Ui.dpInt(this, 6), Ui.dpInt(this, 4),
+                Ui.dpInt(this, 6));
+        keys.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(JobsActivity.this, ProfileActivity.class));
+            }
+        });
+        LinearLayout.LayoutParams keysLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        keysLp.leftMargin = Ui.dpInt(this, 4);
+        bar.addView(keys, keysLp);
         root.addView(bar);
 
         ScrollView scroll = new ScrollView(this);
@@ -222,18 +267,23 @@ public class JobsActivity extends Activity {
         if (ctx == null) {
             return;
         }
+        clusterLabel.setText(ctx.clusterName);
 
-        // 集群 chips
+        // 集群 chips（HAP：浅底圆角，点一下切集群）
         LinearLayout chips = new LinearLayout(this);
         chips.setOrientation(LinearLayout.HORIZONTAL);
-        chips.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 6), Ui.dpInt(this, 14), 0);
+        chips.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 4), Ui.dpInt(this, 14), 0);
         for (final Hpc.Region region : regions) {
-            boolean active = region.clusterId.equals(clusterId);
-            TextView chip = Widgets.chip(this, region.clusterName, active ? 0xFFFFFFFF : Ui.textSub,
-                    active ? Ui.accent : Ui.surface);
+            if (region.clusterId.equals(clusterId)) {
+                continue;
+            }
+            TextView chip = Widgets.chip(this, region.clusterName, Ui.text, Ui.surface);
+            chip.setBackground(Ui.roundStroke(Ui.surface, Ui.border, 999, this));
+            chip.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 8), Ui.dpInt(this, 14),
+                    Ui.dpInt(this, 8));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.rightMargin = Ui.dpInt(this, 6);
+            lp.rightMargin = Ui.dpInt(this, 8);
             chip.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -249,17 +299,26 @@ public class JobsActivity extends Activity {
         hsv.addView(chips);
         content.addView(hsv);
 
-        // 概览
-        LinearLayout summary = Widgets.card(this);
-        summary.addView(Ui.label(this, ctx.clusterName + " · " + ctx.userName, 13.5f, Ui.text));
-        if (quota != null) {
-            summary.addView(Ui.label(this,
-                    Ui.t("配额：CPU " + quota.accountMaxCpu + " · DCU " + quota.accountMaxDcu
-                            + " · 作业 " + quota.accountMaxJob,
-                            "Quota: CPU " + quota.accountMaxCpu + " · DCU " + quota.accountMaxDcu
-                                    + " · jobs " + quota.accountMaxJob), 11.5f, Ui.textFaint));
+        // 两张统计卡：空闲核 / 配额（HAP 布局）
+        LinearLayout stats = new LinearLayout(this);
+        stats.setOrientation(LinearLayout.HORIZONTAL);
+        int freeTotal = 0;
+        for (Hpc.Queue queue : queues) {
+            try {
+                freeTotal += Integer.parseInt(queue.freeCpus);
+            } catch (Exception ignored) {
+            }
         }
-        addWithMargins(summary);
+        stats.addView(statCard(Ui.t("空闲核", "Free cores"), String.valueOf(freeTotal),
+                Ui.t("共 " + queues.size() + " 个队列", queues.size() + " queues")),
+                weighted(context9(), 1f));
+        String quotaValue = quota == null ? "-" : String.valueOf(quota.accountMaxCpu);
+        String quotaSub = quota == null ? Ui.t("未获取", "n/a")
+                : Ui.t("DCU " + quota.accountMaxDcu + " · Job " + quota.accountMaxJob,
+                "DCU " + quota.accountMaxDcu + " · Job " + quota.accountMaxJob);
+        stats.addView(statCard(Ui.t("配额", "Quota"), quotaValue, quotaSub),
+                weighted(context9(), 1f, 8));
+        addWithMargins(stats);
 
         // 队列
         content.addView(Widgets.section(this, Ui.t("队列", "Queues")));
@@ -267,34 +326,65 @@ public class JobsActivity extends Activity {
         queueCard.setPadding(0, 0, 0, 0);
         if (queues.isEmpty()) {
             TextView empty = Ui.label(this, Ui.t("没有队列信息", "No queues"), 12f, Ui.textFaint);
-            empty.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 10), 0, Ui.dpInt(this, 10));
+            empty.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 12), 0, Ui.dpInt(this, 12));
             queueCard.addView(empty);
         }
-        for (Hpc.Queue queue : queues) {
+        for (int i = 0; i < queues.size(); i++) {
+            Hpc.Queue queue = queues.get(i);
             LinearLayout line = new LinearLayout(this);
             line.setOrientation(LinearLayout.HORIZONTAL);
             line.setGravity(Gravity.CENTER_VERTICAL);
-            line.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 9), Ui.dpInt(this, 14),
-                    Ui.dpInt(this, 9));
-            line.addView(Ui.label(this, queue.name, 13f, Ui.text), new LinearLayout.LayoutParams(0,
+            line.setPadding(Ui.dpInt(this, 14), Ui.dpInt(this, 10), Ui.dpInt(this, 14),
+                    Ui.dpInt(this, 10));
+
+            LinearLayout left = new LinearLayout(this);
+            left.setOrientation(LinearLayout.VERTICAL);
+            left.addView(Ui.label(this, queue.name, 13.5f, Ui.text));
+            String sub = queue.nodes.length() > 0
+                    ? Ui.t(queue.nodes + " 节点 · 单节点最多 " + queue.maxPpn + " 核",
+                    queue.nodes + " nodes · max " + queue.maxPpn + " cores/node")
+                    : "";
+            if (sub.length() > 0) {
+                left.addView(Ui.label(this, sub, 10.5f, Ui.textFaint));
+            }
+            line.addView(left, new LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            line.addView(Ui.label(this, Ui.t("空闲 " + queue.freeCpus + "/" + queue.totalCpus,
-                    "free " + queue.freeCpus + "/" + queue.totalCpus), 11.5f, Ui.textFaint));
+
+            LinearLayout right = new LinearLayout(this);
+            right.setOrientation(LinearLayout.VERTICAL);
+            right.setGravity(Gravity.END);
+            TextView free = Ui.label(this, queue.freeCpus, 17f, Ui.ok);
+            free.setTypeface(Typeface.DEFAULT_BOLD);
+            right.addView(free);
+            right.addView(Ui.label(this, "/ " + queue.totalCpus, 10.5f, Ui.textFaint));
+            line.addView(right);
             queueCard.addView(line);
+            if (i < queues.size() - 1) {
+                View divider = new View(this);
+                divider.setBackgroundColor(Ui.hairline);
+                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, Ui.dpInt(this, 1));
+                dlp.leftMargin = Ui.dpInt(this, 14);
+                queueCard.addView(divider, dlp);
+            }
         }
         addWithMargins(queueCard);
 
-        // 作业
-        content.addView(Widgets.section(this, Ui.t("作业", "Jobs")));
+        // 运行中作业
+        content.addView(Widgets.section(this, Ui.t("运行中作业", "Running jobs")));
         if (jobsUnavailable) {
             LinearLayout card = Widgets.card(this);
-            card.addView(Ui.label(this, Ui.t("作业列表暂时取不到（平台偶发 internal_error），下拉重试。",
-                    "Job list unavailable (platform internal_error). Retry."), 12f, Ui.warn));
+            card.addView(Ui.label(this, Ui.t("作业列表暂时取不到（平台偶发 internal_error），点刷新重试。",
+                    "Job list unavailable (platform internal_error). Refresh to retry."),
+                    12f, Ui.warn));
             addWithMargins(card);
-        }
-        if (jobs.isEmpty() && !jobsUnavailable) {
+        } else if (jobs.isEmpty()) {
             LinearLayout card = Widgets.card(this);
-            card.addView(Ui.label(this, Ui.t("没有运行中的作业", "No running jobs"), 12f, Ui.textFaint));
+            TextView empty = Ui.label(this, Ui.t("当前没有运行中的作业", "No running jobs"),
+                    13f, Ui.textSub);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(0, Ui.dpInt(this, 18), 0, Ui.dpInt(this, 18));
+            card.addView(empty);
             addWithMargins(card);
         }
         for (final Row job : jobs) {
@@ -340,6 +430,40 @@ public class JobsActivity extends Activity {
             });
             addWithMargins(card);
         }
+
+        TextView hint = Ui.label(this, Ui.t(
+                "提交作业：点右上「提交」进入表单（默认只做校验与脚本预览）",
+                "Submit: tap Submit at top right (dry-run by default)"), 11f, Ui.textFaint);
+        hint.setPadding(Ui.dpInt(this, 16), Ui.dpInt(this, 16), Ui.dpInt(this, 16), 0);
+        content.addView(hint);
+    }
+
+    private float context9() {
+        return 1f;
+    }
+
+    private LinearLayout.LayoutParams weighted(float unused, float weight) {
+        return weighted(unused, weight, 0);
+    }
+
+    private LinearLayout.LayoutParams weighted(float unused, float weight, int leftMarginDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, weight);
+        if (leftMarginDp > 0) {
+            lp.leftMargin = Ui.dpInt(this, leftMarginDp);
+        }
+        return lp;
+    }
+
+    /** HAP 的大数字统计卡。 */
+    private LinearLayout statCard(String label, String value, String sub) {
+        LinearLayout card = Widgets.card(this);
+        TextView big = Ui.label(this, value, 26f, Ui.text);
+        big.setTypeface(Typeface.DEFAULT_BOLD);
+        card.addView(big);
+        card.addView(Ui.label(this, label, 12f, Ui.textSub));
+        card.addView(Ui.label(this, sub, 10.5f, Ui.textFaint));
+        return card;
     }
 
     private void cancelJob(final String jobId) {
